@@ -1,21 +1,21 @@
-from typing import Type
+from typing import Optional, Type
 
 from playwright.sync_api import APIRequestContext
 from pydantic import BaseModel
 
 
 # 所有接口共用的请求/响应模型。
-class Request(BaseModel):
-    origin: str
-    path: str
+class RequestSpec(BaseModel):
+    url: str
+    params: Optional[dict] = None
     method: str
-    headers: dict[str, str]
-    model: Type[BaseModel]
+    headers: dict[str, str] = {}
+    schema: Type[BaseModel]
 
 
-class Response(BaseModel):
-    headers: dict[str, str]
-    model: Type[BaseModel]
+class ResponseSpec(BaseModel):
+    headers: dict[str, str] = {}
+    schema: Type[BaseModel]
 
 
 # 此接口独有的请求/响应模型和接口实现。
@@ -38,21 +38,20 @@ class GetUsersResponse(BaseModel):
 
 class GetUsers:
     def __init__(self, api_request_context: APIRequestContext):
-        self.request: Request = Request(
-            origin="https://jsonplaceholder.typicode.com",
-            path="/users",
+        self.request: RequestSpec = RequestSpec(
+            url="https://jsonplaceholder.typicode.com/users",
             method="GET",
             headers={},
-            model=GetUsersRequest,
+            schema=GetUsersRequest,
         )
-        self.response: Response = Response(
+        self.response: ResponseSpec = ResponseSpec(
             headers={
                 "Content-Type": "application/json; charset=utf-8",
             },
-            model=GetUsersResponse,
+            schema=GetUsersResponse,
         )
         self.api_request_context: APIRequestContext = api_request_context
 
-    def call(self) -> Response:
+    def call(self) -> ResponseSpec:
         response = self.api_request_context.get(self.request.origin + self.request.path)
-        return Response(**response.json())
+        return ResponseSpec(**response.json())
