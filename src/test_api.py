@@ -28,11 +28,11 @@ class User(BaseModel):
     website: str
 
 
-class GetUsersRequest(BaseModel):
+class GetUsersRequestSchema(BaseModel):
     pass
 
 
-class GetUsersResponse(BaseModel):
+class GetUsersResponseSchema(BaseModel):
     payload: list[User]
 
 
@@ -42,13 +42,13 @@ class GetUsers:
             url="https://jsonplaceholder.typicode.com/users",
             method="GET",
             headers={},
-            schema=GetUsersRequest,
+            schema=GetUsersRequestSchema,
         )
         self.response: ResponseSpec = ResponseSpec(
             headers={
                 "Content-Type": "application/json; charset=utf-8",
             },
-            schema=GetUsersResponse,
+            schema=GetUsersResponseSchema,
         )
         self.api_request_context: APIRequestContext = api_request_context
 
