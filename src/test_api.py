@@ -1,7 +1,66 @@
 from typing import Optional, Type
 
+from openapi_pydantic import (
+    DataType,
+    MediaType,
+    Operation,
+    PathItem,
+    Response,
+    Schema,
+    Server,
+)
 from playwright.sync_api import APIRequestContext
 from pydantic import BaseModel
+
+GET_USERS = PathItem(
+    servers=[Server(url="https://jsonplaceholder.typicode.com")],
+    get=Operation(
+        responses={
+            "200": Response(
+                description="Successful response",
+                content={
+                    "application/json": MediaType(
+                        schema=Schema(
+                            type=DataType.OBJECT,
+                            properties={
+                                "id": Schema(type=DataType.INTEGER),
+                                "name": Schema(type=DataType.STRING),
+                                "username": Schema(type=DataType.STRING),
+                                "email": Schema(type=DataType.STRING),
+                                "address": Schema(
+                                    type=DataType.OBJECT,
+                                    properties={
+                                        "street": Schema(type=DataType.STRING),
+                                        "suite": Schema(type=DataType.STRING),
+                                        "city": Schema(type=DataType.STRING),
+                                        "zipcode": Schema(type=DataType.STRING),
+                                        "geo": Schema(
+                                            type=DataType.OBJECT,
+                                            properties={
+                                                "lat": Schema(type=DataType.STRING),
+                                                "lng": Schema(type=DataType.STRING),
+                                            },
+                                        ),
+                                    },
+                                ),
+                                "phone": Schema(type=DataType.STRING),
+                                "website": Schema(type=DataType.STRING),
+                                "company": Schema(
+                                    type=DataType.OBJECT,
+                                    properties={
+                                        "name": Schema(type=DataType.STRING),
+                                        "catchPhrase": Schema(type=DataType.STRING),
+                                        "bs": Schema(type=DataType.STRING),
+                                    },
+                                ),
+                            },
+                        )
+                    )
+                },
+            )
+        },
+    ),
+)
 
 
 # 所有接口共用的请求/响应模型。
