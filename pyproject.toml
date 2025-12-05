@@ -8,3 +8,9 @@ dependencies = [
     "pytest>=8.4.2",
     "requests>=2.32.5",
 ]
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
