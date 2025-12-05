@@ -1,0 +1,1 @@
+An interface automation testing framework inspired by FastAPI.
