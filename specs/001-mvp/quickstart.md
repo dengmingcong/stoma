@@ -2,7 +2,7 @@
 
 ## 从 OpenAPI 生成代码
 
-stoma make --spec openapi.yaml --out src/generated --feature users
+stoma make --spec openapi.yaml --out src/example --feature users
 
 ## 运行测试（示例）
 
@@ -10,7 +10,7 @@ python -m stoma.run --suite default
 
 ## 生成的包结构
 
-src/generated/users/
+src/example/users/
 ├── __init__.py
 ├── router.py
 └── models.py

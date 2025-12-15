@@ -68,8 +68,8 @@
 
 **独立测试标准**: 
 - 准备一个最小 OpenAPI YAML（含 1 个端点 GET /users）
-- 执行 `stoma make --spec openapi.yaml --out src/generated --feature users`
-- 验证生成 `src/generated/users/router.py` 和 `src/generated/users/models.py`
+- 执行 `stoma make --spec openapi.yaml --out src/example --feature users`
+- 验证生成 `src/example/users/router.py` 和 `src/example/users/models.py`
 - 检查模型包含正确的 Pydantic 字段定义
 
 ### 任务列表

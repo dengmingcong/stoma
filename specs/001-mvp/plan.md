@@ -59,7 +59,7 @@ specs/[###-feature]/
 
 ```text
 src/
-└── generated/
+└── example/
   └── <feature>/
     ├── __init__.py
     ├── router.py
@@ -71,7 +71,7 @@ tests/
 └── unit/
 ```
 
-**结构决策**: 在 `src/generated/<feature>` 下按功能组织包，包含 `router.py` 和 `models.py`。
+**结构决策**: 在 `src/example/<feature>` 下按功能组织包，包含 `router.py` 和 `models.py`。
 
 ## 复杂度跟踪
 
