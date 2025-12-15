@@ -11,7 +11,7 @@
 
 - Q: OpenAPI Specification 的转换是运行时动态生成还是预先代码生成? → A: 预先代码生成
 - Q: 代码生成产物的输出结构应如何组织? → A: 按 feature 归档的包结构,参考 fastapi-best-practices: 每个功能一个包,`router.py` 存放该功能所有接口,`models.py` 存放该功能所有接口相关模型,其余辅助文件同包内组织。
-- Q: 代码生成 CLI 的入口命令与最小参数集合? → A: 使用 `stoma generate --spec <openapi.yaml> --out <dir> --feature <name>` 形式。
+- Q: 代码生成 CLI 的入口命令与最小参数集合? → A: 使用 `stoma make --spec <openapi.yaml> --out <dir> --feature <name>` 形式。
 
 ## 用户场景与测试（必填）
 
@@ -27,7 +27,7 @@
 
 **验收场景**:
 
-1. Given 已安装框架，When 用户定义 `@endpoint` 与 `RequestModel/ResponseModel` 并注册到套件，Then 运行生成的用例可执行、并对响应进行类型与字段校验。
+1. Given 已安装框架，When 用户定义 `@endpoint` 与 `Request/Response` 并注册到套件，Then 运行生成的用例可执行、并对响应进行类型与字段校验。
 2. Given 请求与响应模型包含必填与可选字段，When 被测系统返回缺失或类型不符，Then 测试判为失败且报告显示差异与定位信息。
 
 ## 需求（必填）
@@ -44,7 +44,7 @@
 - **FR-006**: 框架必须使用 Playwright 作为接口请求的客户端。
 - **FR-007**: 框架必须提供 CLI 工具,从 OpenAPI 规范文件预先生成 Python 请求/响应模型与端点定义代码,测试运行阶段仅加载生成代码而不再解析 OpenAPI 文件。
 - **FR-008**: 生成产物的目录结构必须按 feature 维度归档,每个功能一个包,至少包含 `router.py`(汇总该功能所有接口) 与 `models.py`(该功能所有接口相关模型);允许在包内扩展如 `schemas.py`, `utils.py` 等,整体参考 fastapi-best-practices 的组织方式,以提升可维护性与可发现性。
-- **FR-009**: 提供命令行入口 `stoma generate`,最小必需参数包括 `--spec <openapi.yaml>`、`--out <dir>`、`--feature <name>`; 其中 `--feature` 用于将同一业务域的接口与模型归档到同一包(例如 `users/`),命令执行后在输出目录按 `feature` 生成包含 `router.py` 与 `models.py` 的包结构。
+- **FR-009**: 提供命令行入口 `stoma make`,最小必需参数包括 `--spec <openapi.yaml>`、`--out <dir>`、`--feature <name>`; 其中 `--feature` 用于将同一业务域的接口与模型归档到同一包(例如 `users/`),命令执行后在输出目录按 `feature` 生成包含 `router.py` 与 `models.py` 的包结构。
 
 ### 关键实体
 
