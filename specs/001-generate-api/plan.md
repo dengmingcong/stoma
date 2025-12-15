@@ -1,7 +1,7 @@
-# 实施计划：Stoma 001-mvp
+# 实施计划：Stoma 001-generate-api
 
-**分支**: `001-mvp` | **日期**: 2025-12-15 | **规范**: specs/001-mvp/spec.md
-**输入**: 功能规范来自 `/specs/001-mvp/spec.md`
+**分支**: `001-generate-api` | **日期**: 2025-12-15 | **规范**: specs/001-generate-api/spec.md
+**输入**: 功能规范来自 `/specs/001-generate-api/spec.md`
 
 **说明**: 此模板由 `/speckit.plan` 命令填充。请参阅 `.specify/templates/commands/plan.md` 了解执行工作流。
 

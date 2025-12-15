@@ -1,6 +1,6 @@
-# 任务清单：Stoma 001-mvp
+# 任务清单：Stoma 001-generate-api
 
-**分支**: `001-mvp` | **日期**: 2025-12-15 | **规范**: [spec.md](spec.md) | **计划**: [plan.md](plan.md)
+**分支**: `001-generate-api` | **日期**: 2025-12-15 | **规范**: [spec.md](spec.md) | **计划**: [plan.md](plan.md)
 
 ## 概述
 
