@@ -5,6 +5,14 @@
 **状态**: 草稿  
 **输入**: 用户描述: "创建一个接口自动化测试框架，借鉴 fastapi 定义接口的方式，使用 pydantic 作为类型检查和序列化，但实际并不将 fastapi 作为依赖"
 
+## Clarifications
+
+### Session 2025-12-15
+
+- Q: OpenAPI Specification 的转换是运行时动态生成还是预先代码生成? → A: 预先代码生成
+- Q: 代码生成产物的输出结构应如何组织? → A: 按 feature 归档的包结构,参考 fastapi-best-practices: 每个功能一个包,`router.py` 存放该功能所有接口,`models.py` 存放该功能所有接口相关模型,其余辅助文件同包内组织。
+- Q: 代码生成 CLI 的入口命令与最小参数集合? → A: 使用 `stoma generate --spec <openapi.yaml> --out <dir> --feature <name>` 形式。
+
 ## 需求（必填）
 
 ---
@@ -17,6 +25,9 @@
 - **FR-004**: 框架必须生成可读的测试报告（含通过/失败统计、失败原因、差异对比、输入摘要）。
 - **FR-005**: 框架不得依赖 FastAPI，但允许“受其启发”的声明风格与注解设计。命名策略采用常见动词注解与参数标识：支持 `@get`, `@post`, `@put`, `@patch`, `@delete` 以及参数来源标记 `Query`, `Body`, `Header`, `Path`，并在文档中明确说明“本框架与 FastAPI 无依赖关系，仅保留通用语义命名”。
 - **FR-006**: 框架必须使用 Playwright 作为接口请求的客户端。
+- **FR-007**: 框架必须提供 CLI 工具,从 OpenAPI 规范文件预先生成 Python 请求/响应模型与端点定义代码,测试运行阶段仅加载生成代码而不再解析 OpenAPI 文件。
+- **FR-008**: 生成产物的目录结构必须按 feature 维度归档,每个功能一个包,至少包含 `router.py`(汇总该功能所有接口) 与 `models.py`(该功能所有接口相关模型);允许在包内扩展如 `schemas.py`, `utils.py` 等,整体参考 fastapi-best-practices 的组织方式,以提升可维护性与可发现性。
+- **FR-009**: 提供命令行入口 `stoma generate`,最小必需参数包括 `--spec <openapi.yaml>`、`--out <dir>`、`--feature <name>`; 其中 `--feature` 用于将同一业务域的接口与模型归档到同一包(例如 `users/`),命令执行后在输出目录按 `feature` 生成包含 `router.py` 与 `models.py` 的包结构。
 
 ### 关键实体
 
@@ -43,6 +54,7 @@
 - 命名/注解可借鉴范围：采用保留常见动词注解（get/post 等）与参数标识（Query/Body 等）的策略，且在文档中声明无 FastAPI 依赖，仅为通用约定，减少迁移成本。
 - 报告形式：内置 HTML 报告文件输出（同时保留控制台摘要），以便分享与归档；HTML 报告至少包含套件统计、用例明细、失败差异对比与输入摘要。
 - 框架的作用过程可以看作 FastAPI 的反面。FastAPI 是通过模型生成 OpenAPI Specification，框架是从 OpenAPI Specification 生成模型。
+	- 决策补充：采用“预先代码生成”工作流，通过 CLI 将 OpenAPI 转换为静态 Python 模型与端点定义，提升运行性能与类型安全；运行阶段不再进行动态解析。
 
 ## 用户场景与测试（必填）
 
