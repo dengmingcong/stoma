@@ -32,12 +32,12 @@
 
 ### 任务列表
 
-- [ ] T001 创建项目根目录结构：`src/`, `tests/`, `specs/`
-- [ ] T002 初始化 `pyproject.toml`，声明项目元信息与依赖（Pydantic v2, Playwright, pytest）
-- [ ] T003 [P] 创建 `src/__init__.py` 作为包入口
-- [ ] T004 [P] 创建 `.gitignore`，排除 `__pycache__/`, `.pytest_cache/`, `*.egg-info/`
-- [ ] T005 [P] 创建 `README.md`，包含快速开始与安装说明
-- [ ] T006 配置开发环境：验证 Python 3.11，安装依赖
+- [X] T001 创建项目根目录结构：`src/`, `tests/`, `specs/`
+- [X] T002 初始化 `pyproject.toml`，声明项目元信息与依赖（Pydantic v2, Playwright, pytest）
+- [X] T003 [P] 创建 `src/__init__.py` 作为包入口
+- [X] T004 [P] 创建 `.gitignore`，排除 `__pycache__/`, `.pytest_cache/`, `*.egg-info/`
+- [X] T005 [P] 创建 `README.md`，包含快速开始与安装说明
+- [X] T006 配置开发环境：验证 Python 3.11，安装依赖
 
 ---
 

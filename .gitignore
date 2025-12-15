@@ -5,9 +5,13 @@ build/
 dist/
 wheels/
 *.egg-info
+*.log
+*.tmp
+*.swp
 
 # Virtual environments
-.venv
+.venv/
+venv/
 
 # Test and reports
 .pytest_cache/
@@ -16,6 +20,8 @@ allure-results/
 # IDE/editor
 .idea/
 .vscode/
+.DS_Store
+Thumbs.db
 
 # Env files
-.env
+.env*
