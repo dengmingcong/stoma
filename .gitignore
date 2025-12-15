@@ -8,3 +8,14 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Test and reports
+.pytest_cache/
+allure-results/
+
+# IDE/editor
+.idea/
+.vscode/
+
+# Env files
+.env

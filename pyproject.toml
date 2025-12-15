@@ -3,12 +3,24 @@ name = "stoma"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.121.0",
+        # Core testing and runtime deps
     "playwright>=1.55.0",
     "pytest>=8.4.2",
-    "requests>=2.32.5",
-    "openapi-pydantic>=0.5.1",
-    "allure-pytest>=2.15.2",
+        # OpenAPI handling and typing
+        "openapi-schema-pydantic>=1.2.4",
+        "pydantic>=2.6.0",
+        # Reporting (optional)
+        "allure-pytest>=2.15.2",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.10.0",
+    "mypy>=1.10.0"
+]
+
+[tool.black]
+line-length = 100
+
