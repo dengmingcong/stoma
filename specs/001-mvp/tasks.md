@@ -32,7 +32,7 @@
 
 ### 任务列表
 
-- [x] T001 创建项目根目录结构：`src/`, `tests/`, `specs/`
+- [ ] T001 创建项目根目录结构：`src/`, `tests/`, `specs/`
 - [ ] T002 初始化 `pyproject.toml`，声明项目元信息与依赖（Pydantic v2, Playwright, pytest）
 - [ ] T003 [P] 创建 `src/__init__.py` 作为包入口
 - [ ] T004 [P] 创建 `.gitignore`，排除 `__pycache__/`, `.pytest_cache/`, `*.egg-info/`
