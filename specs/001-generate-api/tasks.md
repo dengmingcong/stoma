@@ -48,7 +48,7 @@
 ### 任务列表
 
 - [ ] T007 创建 CLI 入口点：`src/cli/__init__.py` 和 `src/cli/main.py`
-- [ ] T008 实现 `stoma` CLI 主命令框架（使用 argparse 或 click）
+- [ ] T008 实现 `stoma` CLI 主命令框架（使用 click）
 - [ ] T009 [P] 创建 OpenAPI 解析器模块：`src/parser/openapi_parser.py`
 - [ ] T010 实现 OpenAPI 到内部模型的转换逻辑（读取 paths, schemas, operations）
 - [ ] T011 [P] 创建代码生成器基类：`src/codegen/base_generator.py`
