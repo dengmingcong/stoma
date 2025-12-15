@@ -16,5 +16,6 @@ src/generated/users/
 └── models.py
 
 ## 说明
+
 - 使用 Pydantic v2 进行类型定义与校验
 - 使用 Playwright 作为 HTTP 客户端
