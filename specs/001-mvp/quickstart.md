@@ -2,7 +2,7 @@
 
 ## 从 OpenAPI 生成代码
 
-stoma generate --spec openapi.yaml --out src/generated --feature users
+stoma make --spec openapi.yaml --out src/generated --feature users
 
 ## 运行测试（示例）
 

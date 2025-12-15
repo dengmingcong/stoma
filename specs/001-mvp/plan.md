@@ -7,7 +7,7 @@
 
 ## 摘要
 
-从 OpenAPI 生成声明式 API 测试套件的框架。技术方案：通过 CLI (`stoma generate`) 预生成 Python 代码到按功能组织的包中（`router.py`, `models.py`），使用 Pydantic v2 进行校验，通过 Playwright 执行 HTTP 请求，并输出可读的 HTML + 控制台报告。
+从 OpenAPI 生成声明式 API 测试套件的框架。技术方案：通过 CLI (`stoma make`) 预生成 Python 代码到按功能组织的包中（`router.py`, `models.py`），使用 Pydantic v2 进行校验，通过 Playwright 执行 HTTP 请求，并输出可读的 HTML + 控制台报告。
 
 ## 技术上下文
 
@@ -32,7 +32,7 @@
 
 门槛：
 - 库优先：交付库 + CLI 入口点。
-- CLI 接口：`stoma generate` 必须支持 JSON/人类可读输出。
+- CLI 接口：`stoma make` 必须支持 JSON/人类可读输出。
 - 测试优先：在实现前定义契约/集成测试（待明确具体测试清单）。
 - 可观测性/版本控制/简洁性：优先使用文本 I/O，结构化日志，语义化版本（待明确细节）。
 

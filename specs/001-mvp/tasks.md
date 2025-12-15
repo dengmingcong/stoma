@@ -68,7 +68,7 @@
 
 **独立测试标准**: 
 - 准备一个最小 OpenAPI YAML（含 1 个端点 GET /users）
-- 执行 `stoma generate --spec openapi.yaml --out src/generated --feature users`
+- 执行 `stoma make --spec openapi.yaml --out src/generated --feature users`
 - 验证生成 `src/generated/users/router.py` 和 `src/generated/users/models.py`
 - 检查模型包含正确的 Pydantic 字段定义
 
@@ -77,8 +77,8 @@
 #### 模型生成
 
 - [ ] T013 [P] [US1] 创建 Pydantic 模型生成器：`src/codegen/model_generator.py`
-- [ ] T014 [US1] 实现从 OpenAPI schemas 生成 RequestModel 类（字段、类型、必填/可选、默认值）
-- [ ] T015 [US1] 实现从 OpenAPI schemas 生成 ResponseModel 类（字段、类型、验证规则）
+- [ ] T014 [US1] 实现从 OpenAPI schemas 生成 Request 类（字段、类型、必填/可选、默认值）
+- [ ] T015 [US1] 实现从 OpenAPI schemas 生成 Response 类（字段、类型、验证规则）
 - [ ] T016 [US1] 添加字段注解支持（Query, Body, Header, Path 标记）
 
 #### 路由生成
@@ -90,7 +90,7 @@
 
 #### CLI 集成
 
-- [ ] T021 [US1] 实现 `stoma generate` 子命令在 `src/cli/generate.py`
+- [ ] T021 [US1] 实现 `stoma make` 子命令在 `src/cli/make.py`
 - [ ] T022 [US1] 添加参数解析：`--spec`, `--out`, `--feature`
 - [ ] T023 [US1] 集成 OpenAPI 解析器与代码生成器流程
 - [ ] T024 [US1] 实现按 feature 创建目录结构（`<out>/<feature>/`）
@@ -109,7 +109,7 @@
 - [ ] T031 [US1] 测试边界情况：空 OpenAPI、无效路径、重复 feature 名
 
 **Phase 3 完成标准**:
-- ✅ CLI 命令 `stoma generate` 可成功执行
+- ✅ CLI 命令 `stoma make` 可成功执行
 - ✅ 生成目录结构符合 `<out>/<feature>/router.py`, `<out>/<feature>/models.py`
 - ✅ 生成的代码可通过 Python 语法检查（`python -m py_compile`）
 - ✅ 生成的 Pydantic 模型包含正确的字段、类型与验证器
@@ -207,7 +207,7 @@ Phase 4 (Polish: 测试运行 + 报告)
 
 ### MVP 验证（Phase 1-3 完成后）
 
-- [ ] 用户可在 5 分钟内完成：安装 → 准备 OpenAPI → 运行 `stoma generate` → 检查生成代码
+- [ ] 用户可在 5 分钟内完成：安装 → 准备 OpenAPI → 运行 `stoma make` → 检查生成代码
 - [ ] 生成的代码结构符合 fastapi-best-practices 风格
 - [ ] 生成的模型可导入且类型安全（通过 mypy 检查）
 - [ ] CLI 提供清晰的帮助信息与错误提示

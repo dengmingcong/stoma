@@ -4,13 +4,13 @@
 
 - 代码生成策略：通过 CLI 从 OpenAPI 预生成
 - 输出结构：按功能（feature）为单位的包，包含 router.py 与 models.py
-- CLI 命令：`stoma generate --spec <openapi.yaml> --out <dir> --feature <name>`
+- CLI 命令：`stoma make --spec <openapi.yaml> --out <dir> --feature <name>`
 
 ## 理由
 
 - 预生成可最大化运行时性能并提升类型安全
 - 按功能的包结构提升可发现性与可维护性
-- 使用动词 `generate` 加参数符合常见开发者体验模式
+- 使用动词 `make` 加参数符合常见开发者体验模式
 
 ## 备选方案评估
 
