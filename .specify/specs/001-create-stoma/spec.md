@@ -24,23 +24,44 @@
 **伪代码示例**（生成的接口类）：
 
 ```python
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, ClassVar, Literal, Callable, Type
 from pydantic import BaseModel
 
 T = TypeVar('T', bound=BaseModel)
 
-# 框架提供的基类（所有生成的接口类都继承此类）
+# 框架提供的基类与装饰器（所有生成的接口类都继承此类，并使用装饰器传入元数据）
 class BaseEndpoint(Generic[T]):
     """接口基类，通过泛型指定响应模型类型"""
-    
-    async def call(self) -> T:
+
+    method: ClassVar[Literal["GET","POST","PUT","PATCH","DELETE"]]
+    path: ClassVar[str]
+    operation_id: ClassVar[str]
+
+    async def __call__(self) -> T:
         """
-        通用 call 方法（由框架基类实现）：
+        通用 __call__ 方法（由框架基类实现）：
         1. 从实例属性自动收集请求参数（query/path/header/body）
         2. 使用 Playwright 发送 HTTP 请求
         3. 将响应 JSON 自动解析为泛型类型 T 的实例
         """
         # 框架内部实现：参数收集 -> HTTP 调用 -> 响应解析
+
+
+def endpoint_meta(
+    *,
+    method: Literal["GET","POST","PUT","PATCH","DELETE"],
+    path: str,
+    operation_id: str,
+) -> Callable[[Type[BaseEndpoint]], Type[BaseEndpoint]]:
+    """
+    类装饰器：在 class 声明处传入元数据。IDE 在此位置提供参数补全与类型检查。
+    """
+    def wrapper(cls: Type[BaseEndpoint]) -> Type[BaseEndpoint]:
+        cls.method = method
+        cls.path = path
+        cls.operation_id = operation_id
+        return cls
+    return wrapper
 
 
 # ===== 以下是生成的代码 =====
@@ -56,6 +77,7 @@ class UserCreateRequest(BaseModel):
     email: str
 
 # 生成的接口类：通过泛型参数明确响应类型
+@endpoint_meta(method="GET", path="/users", operation_id="list_users")
 class GetUsersEndpoint(BaseEndpoint[list[UserData]]):
     """GET /users - 列出用户（响应类型：list[UserData]）"""
     
@@ -74,9 +96,10 @@ class GetUsersEndpoint(BaseEndpoint[list[UserData]]):
         self.limit = limit
         self.offset = offset
         self.token = token
-    # 无需定义 call() 方法，继承自 BaseEndpoint
+    # 无需定义 __call__() 方法，继承自 BaseEndpoint
 
 
+@endpoint_meta(method="POST", path="/users", operation_id="create_user")
 class CreateUserEndpoint(BaseEndpoint[UserData]):
     """POST /users - 创建用户（响应类型：UserData）"""
     
@@ -94,6 +117,7 @@ class CreateUserEndpoint(BaseEndpoint[UserData]):
         self.idempotency_key = idempotency_key
 
 
+@endpoint_meta(method="GET", path="/users/{user_id}", operation_id="get_user_by_id")
 class GetUserByIdEndpoint(BaseEndpoint[UserData]):
     """GET /users/{user_id} - 获取特定用户（响应类型：UserData）"""
     
@@ -120,18 +144,18 @@ from users.models import UserCreateRequest, UserData
 
 # 1. 列出用户（使用默认参数）
 list_endpoint = GetUsersEndpoint(token="Bearer xxx")
-users = await list_endpoint.call()  # 返回 list[UserData]
+users = await list_endpoint()  # 直接调用实例，返回 list[UserData]
 
 # 2. 创建用户
 create_endpoint = CreateUserEndpoint(
     body=UserCreateRequest(name="Alice", email="alice@example.com"),
     idempotency_key="unique-key-123"
 )
-new_user = await create_endpoint.call()  # 返回 UserData
+new_user = await create_endpoint()  # 直接调用实例，返回 UserData
 
 # 3. 获取特定用户
 get_endpoint = GetUserByIdEndpoint(user_id=1, include_profile=True)
-user_data = await get_endpoint.call()  # 返回 UserData
+user_data = await get_endpoint()  # 直接调用实例，返回 UserData
 ```
 
 ## 需求（必填）
@@ -183,4 +207,5 @@ user_data = await get_endpoint.call()  # 返回 UserData
 
 ### Session 2025-12-16
 
-- Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 call() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `BaseEndpoint[T]`，通过泛型参数明确响应类型（如 `BaseEndpoint[list[UserData]]`），既保证 IDE/mypy 可正确推断 `call()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 call() 方法，完全继承基类的通用实现。
+- Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 __call__() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `BaseEndpoint[T]`，通过泛型参数明确响应类型（如 `BaseEndpoint[list[UserData]]`），既保证 IDE/mypy 可正确推断 `__call__()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 __call__() 方法，完全继承基类的通用实现。
+- Q: 元数据在子类定义时需要 IDE 自动补全与类型提示，如何实现？ → A: 采用类型签名明确的类装饰器 `endpoint_meta(method, path, operation_id)`，在类声明处传入元数据，IDE 可提供完整参数提示与校验；装饰器仅注入到类属性，保持代码简洁并符合“预生成静态代码”的设计。
