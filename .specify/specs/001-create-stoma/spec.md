@@ -7,18 +7,133 @@
 
 ## 用户场景与测试（必填）
 
-### 用户故事 1 - 声明式定义接口并生成用例（优先级：P1）
+### 用户故事 1 - 从 OpenAPI 生成类型化接口定义（优先级：P1）
 
-测试工程师或开发者希望以类似 FastAPI 的方式，使用可调用对象+装饰器+模型来声明接口的请求/响应结构，并自动生成可运行的测试用例（含校验与报告）。
+测试工程师或开发者希望从 OpenAPI Specification 预生成出类型化的接口定义。每个接口表示为一个**可调用的类**，其构造函数接收接口所需的全部参数（path 参数、查询参数、header 参数、request body），通过参数的类型注解和默认值，调用方能清晰地了解需要传入哪些参数、参数类型以及可选性。类的其他方法负责调用实际的 HTTP 接口并将响应按照生成的模型进行组装与校验。
 
-**为何优先**: 这是核心价值主张，决定框架的易用性与采用成本。
+**为何优先**: 这是核心价值主张，决定框架的易用性与采用成本。生成代码的质量（清晰度、类型安全、可维护性）直接影响测试脚本的编写效率。
 
-**独立测试**: 通过在空白项目中仅定义一个接口模型与测试声明，即可运行单条用例并得到报告，证明框架可独立工作。
+**独立测试**: 通过在空白项目中导入生成的接口类，仅通过类型提示和参数传递，即可完整理解接口的请求与响应结构；无需查阅 OpenAPI 文档或其他辅助信息。
 
 **验收场景**:
 
-1. Given 已安装框架，When 用户定义 `@endpoint` 与 `Request/Response` 并注册到套件，Then 运行生成的用例可执行、并对响应进行类型与字段校验。
-2. Given 请求与响应模型包含必填与可选字段，When 被测系统返回缺失或类型不符，Then 测试判为失败且报告显示差异与定位信息。
+1. Given 用户从 OpenAPI 生成接口定义，When 在 IDE 中查看生成的接口类，Then 类的构造函数签名明确列出所有参数及其类型/可选性，使用者可直接进行代码补全与静态类型检查。
+2. Given 接口包含 path/query/header/body 参数混合，When 实例化接口类，Then 构造函数强制规范参数来源（Query/Body/Header/Path 标记），防止参数混淆。
+3. Given 接口返回 JSON 对象，When 调用接口方法，Then 返回结果自动按照生成的响应模型进行类型校验和反序列化，确保类型安全。
+
+**伪代码示例**（生成的接口类）：
+
+```python
+# 生成的响应模型
+class UserData(BaseModel):
+    id: int
+    name: str
+    email: str
+
+# 生成的接口类
+class GetUsersEndpoint:
+    """GET /users - 列出用户"""
+    
+    def __init__(
+        self,
+        limit: int = Query(default=20, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+        token: str = Header(alias="Authorization"),
+    ):
+        """
+        参数说明：
+        - limit (Query): 返回结果数量，默认 20
+        - offset (Query): 分页偏移，默认 0
+        - token (Header): 认证令牌，来自 Authorization header
+        """
+        self.limit = limit
+        self.offset = offset
+        self.token = token
+    
+    async def call(self) -> list[UserData]:
+        """
+        执行接口调用并返回响应。
+        - 自动构造 GET /users?limit={limit}&offset={offset}
+        - 将 token 添加到 Authorization header
+        - 将响应 JSON 解析为 list[UserData]
+        """
+        # 内部实现：HTTP 请求 + 响应模型校验
+
+# 生成的创建用户接口
+class CreateUserEndpoint:
+    """POST /users - 创建用户"""
+    
+    def __init__(
+        self,
+        body: UserCreateRequest = Body(...),
+        idempotency_key: str = Header(default=None, alias="Idempotency-Key"),
+    ):
+        """
+        参数说明：
+        - body (Body): 请求体，包含 name、email 等字段
+        - idempotency_key (Header): 幂等性密钥，可选
+        """
+        self.body = body
+        self.idempotency_key = idempotency_key
+    
+    async def call(self) -> UserData:
+        """
+        执行接口调用并返回响应。
+        - 自动序列化 body 为 JSON
+        - 将可选 header 添加到请求
+        - 返回解析后的 UserData
+        """
+        # 内部实现：HTTP 请求 + 响应模型校验
+
+# 生成的获取单个用户接口
+class GetUserByIdEndpoint:
+    """GET /users/{user_id} - 获取特定用户"""
+    
+    def __init__(
+        self,
+        user_id: int = Path(...),
+        include_profile: bool = Query(default=False),
+    ):
+        """
+        参数说明：
+        - user_id (Path): 路径参数，用户 ID
+        - include_profile (Query): 是否包含用户详细信息，默认 False
+        """
+        self.user_id = user_id
+        self.include_profile = include_profile
+    
+    async def call(self) -> UserData:
+        """
+        执行接口调用并返回响应。
+        - 自动填充路径 /users/{user_id}
+        - 添加查询参数
+        - 返回解析后的 UserData
+        """
+        # 内部实现：HTTP 请求 + 响应模型校验
+```
+
+**使用示例**：
+
+```python
+# 测试脚本中的使用
+from users.endpoints import GetUsersEndpoint, CreateUserEndpoint, GetUserByIdEndpoint
+from users.models import UserCreateRequest, UserData
+
+# 1. 列出用户（使用默认参数）
+list_endpoint = GetUsersEndpoint(token="Bearer xxx")
+users = await list_endpoint.call()  # 返回 list[UserData]
+
+# 2. 创建用户
+create_endpoint = CreateUserEndpoint(
+    body=UserCreateRequest(name="Alice", email="alice@example.com"),
+    idempotency_key="unique-key-123"
+)
+new_user = await create_endpoint.call()  # 返回 UserData
+
+# 3. 获取特定用户
+get_endpoint = GetUserByIdEndpoint(user_id=1, include_profile=True)
+user_data = await get_endpoint.call()  # 返回 UserData
+```
 
 ## 需求（必填）
 
