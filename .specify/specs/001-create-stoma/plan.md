@@ -1,7 +1,7 @@
-# 实施计划：Stoma 001-generate-api
+# 实施计划：Stoma 001-create-stoma
 
-**分支**: `001-generate-api` | **日期**: 2025-12-15 | **规范**: specs/001-generate-api/spec.md
-**输入**: 功能规范来自 `/specs/001-generate-api/spec.md`
+**分支**: `001-create-stoma` | **日期**: 2025-12-15 | **规范**: .specify/specs/001-create-stoma/spec.md
+**输入**: 功能规范来自 `/.specify/specs/001-create-stoma/spec.md`
 
 **说明**: 此模板由 `/speckit.plan` 命令填充。请参阅 `.specify/templates/commands/plan.md` 了解执行工作流。
 
@@ -41,13 +41,13 @@
 ### 文档（本功能）
 
 ```text
-specs/[###-feature]/
-├── plan.md              # 本文件（/speckit.plan 命令输出）
-├── research.md          # Phase 0 输出（/speckit.plan 命令）
-├── data-model.md        # Phase 1 输出（/speckit.plan 命令）
-├── quickstart.md        # Phase 1 输出（/speckit.plan 命令）
-├── contracts/           # Phase 1 输出（/speckit.plan 命令）
-└── tasks.md             # Phase 2 输出（/speckit.tasks 命令 - 不由 /speckit.plan 创建）
+.specify/specs/001-create-stoma/
+├── plan.md              # 本文件
+├── research.md          # Phase 0 输出
+├── data-model.md        # Phase 1 输出
+├── quickstart.md        # Phase 1 输出
+├── contracts/           # Phase 1 输出
+└── tasks.md             # Phase 2 输出
 ```
 
 ### 源代码（仓库根目录）
