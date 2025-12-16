@@ -5,17 +5,7 @@
 **状态**: 草稿  
 **输入**: 用户描述: "创建一个接口自动化测试框架，借鉴 fastapi 定义接口的方式，使用 pydantic 作为类型检查和序列化，但实际并不将 fastapi 作为依赖"
 
-## Clarifications
-
-### Session 2025-12-15
-
-- Q: OpenAPI Specification 的转换是运行时动态生成还是预先代码生成? → A: 预先代码生成
-- Q: 代码生成产物的输出结构应如何组织? → A: 按 feature 归档的包结构,参考 fastapi-best-practices: 每个功能一个包,`router.py` 存放该功能所有接口,`models.py` 存放该功能所有接口相关模型,其余辅助文件同包内组织。
-- Q: 代码生成 CLI 的入口命令与最小参数集合? → A: 使用 `stoma make --spec <openapi.yaml> --out <dir> --feature <name>` 形式。
-
 ## 用户场景与测试（必填）
-
----
 
 ### 用户故事 1 - 声明式定义接口并生成用例（优先级：P1）
 
@@ -31,8 +21,6 @@
 2. Given 请求与响应模型包含必填与可选字段，When 被测系统返回缺失或类型不符，Then 测试判为失败且报告显示差异与定位信息。
 
 ## 需求（必填）
-
----
 
 ### 功能性需求
 
@@ -54,8 +42,6 @@
 
 ## 成功标准（必填）
 
----
-
 ### 可度量结果
 
 - **SC-001**: 新用户在 5 分钟内可完成从安装到将 OpenAPI Specification 定义转换为框架对接口的定义。
@@ -72,3 +58,11 @@
 - 报告形式：内置 HTML 报告文件输出（同时保留控制台摘要），以便分享与归档；HTML 报告至少包含套件统计、用例明细、失败差异对比与输入摘要。
 - 框架的作用过程可以看作 FastAPI 的反面。FastAPI 是通过模型生成 OpenAPI Specification，框架是从 OpenAPI Specification 生成模型。
 	- 决策补充：采用“预先代码生成”工作流，通过 CLI 将 OpenAPI 转换为静态 Python 模型与端点定义，提升运行性能与类型安全；运行阶段不再进行动态解析。
+
+## Clarifications
+
+### Session 2025-12-15
+
+- Q: OpenAPI Specification 的转换是运行时动态生成还是预先代码生成? → A: 预先代码生成
+- Q: 代码生成产物的输出结构应如何组织? → A: 按 feature 归档的包结构,参考 fastapi-best-practices: 每个功能一个包,`router.py` 存放该功能所有接口,`models.py` 存放该功能所有接口相关模型,其余辅助文件同包内组织。
+- Q: 代码生成 CLI 的入口命令与最小参数集合? → A: 使用 `stoma make --spec <openapi.yaml> --out <dir> --feature <name>` 形式。
