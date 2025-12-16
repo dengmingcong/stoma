@@ -24,15 +24,40 @@
 **伪代码示例**（生成的接口类）：
 
 ```python
+from typing import Generic, TypeVar
+from pydantic import BaseModel
+
+T = TypeVar('T', bound=BaseModel)
+
+# 框架提供的基类（所有生成的接口类都继承此类）
+class BaseEndpoint(Generic[T]):
+    """接口基类，通过泛型指定响应模型类型"""
+    
+    async def call(self) -> T:
+        """
+        通用 call 方法（由框架基类实现）：
+        1. 从实例属性自动收集请求参数（query/path/header/body）
+        2. 使用 Playwright 发送 HTTP 请求
+        3. 将响应 JSON 自动解析为泛型类型 T 的实例
+        """
+        # 框架内部实现：参数收集 -> HTTP 调用 -> 响应解析
+
+
+# ===== 以下是生成的代码 =====
+
 # 生成的响应模型
 class UserData(BaseModel):
     id: int
     name: str
     email: str
 
-# 生成的接口类
-class GetUsersEndpoint:
-    """GET /users - 列出用户"""
+class UserCreateRequest(BaseModel):
+    name: str
+    email: str
+
+# 生成的接口类：通过泛型参数明确响应类型
+class GetUsersEndpoint(BaseEndpoint[list[UserData]]):
+    """GET /users - 列出用户（响应类型：list[UserData]）"""
     
     def __init__(
         self,
@@ -49,19 +74,11 @@ class GetUsersEndpoint:
         self.limit = limit
         self.offset = offset
         self.token = token
-    
-    async def call(self) -> list[UserData]:
-        """
-        执行接口调用并返回响应。
-        - 自动构造 GET /users?limit={limit}&offset={offset}
-        - 将 token 添加到 Authorization header
-        - 将响应 JSON 解析为 list[UserData]
-        """
-        # 内部实现：HTTP 请求 + 响应模型校验
+    # 无需定义 call() 方法，继承自 BaseEndpoint
 
-# 生成的创建用户接口
-class CreateUserEndpoint:
-    """POST /users - 创建用户"""
+
+class CreateUserEndpoint(BaseEndpoint[UserData]):
+    """POST /users - 创建用户（响应类型：UserData）"""
     
     def __init__(
         self,
@@ -75,19 +92,10 @@ class CreateUserEndpoint:
         """
         self.body = body
         self.idempotency_key = idempotency_key
-    
-    async def call(self) -> UserData:
-        """
-        执行接口调用并返回响应。
-        - 自动序列化 body 为 JSON
-        - 将可选 header 添加到请求
-        - 返回解析后的 UserData
-        """
-        # 内部实现：HTTP 请求 + 响应模型校验
 
-# 生成的获取单个用户接口
-class GetUserByIdEndpoint:
-    """GET /users/{user_id} - 获取特定用户"""
+
+class GetUserByIdEndpoint(BaseEndpoint[UserData]):
+    """GET /users/{user_id} - 获取特定用户（响应类型：UserData）"""
     
     def __init__(
         self,
@@ -101,15 +109,6 @@ class GetUserByIdEndpoint:
         """
         self.user_id = user_id
         self.include_profile = include_profile
-    
-    async def call(self) -> UserData:
-        """
-        执行接口调用并返回响应。
-        - 自动填充路径 /users/{user_id}
-        - 添加查询参数
-        - 返回解析后的 UserData
-        """
-        # 内部实现：HTTP 请求 + 响应模型校验
 ```
 
 **使用示例**：
@@ -181,3 +180,7 @@ user_data = await get_endpoint.call()  # 返回 UserData
 - Q: OpenAPI Specification 的转换是运行时动态生成还是预先代码生成? → A: 预先代码生成
 - Q: 代码生成产物的输出结构应如何组织? → A: 按 feature 归档的包结构,参考 fastapi-best-practices: 每个功能一个包,`router.py` 存放该功能所有接口,`models.py` 存放该功能所有接口相关模型,其余辅助文件同包内组织。
 - Q: 代码生成 CLI 的入口命令与最小参数集合? → A: 使用 `stoma make --spec <openapi.yaml> --out <dir> --feature <name>` 形式。
+
+### Session 2025-12-16
+
+- Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 call() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `BaseEndpoint[T]`，通过泛型参数明确响应类型（如 `BaseEndpoint[list[UserData]]`），既保证 IDE/mypy 可正确推断 `call()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 call() 方法，完全继承基类的通用实现。
