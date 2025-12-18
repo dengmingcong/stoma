@@ -21,37 +21,7 @@
 2. Given 接口类继承 `BaseEndpoint[T]` 泛型，When 调用实例（`await endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
 3. Given 接口构造函数包含 Query/Body/Header/Path 参数标记，When 实例化接口类，Then 参数来源清晰且类型安全。
 
-### 用户故事 2 - 使用 Playwright 调用接口（优先级：P1）
-
-测试工程师希望实例化接口类后，通过调用实例自动发送 HTTP 请求并获得类型化的响应。框架内部使用 Playwright 作为 HTTP 客户端，自动从实例属性收集请求参数（query/path/header/body），构造请求，发送到目标服务器，并将响应 JSON 解析为 Pydantic 响应模型。
-
-**为何优先**: 这是框架的核心执行能力，验证接口定义可以真正调用远程服务并获得结果。
-
-**独立测试**: 启动一个简单的 HTTP 测试服务器（如 FastAPI），手动编写接口类定义，调用接口实例并验证响应数据正确解析。
-
-**验收场景**:
-
-1. Given 接口类定义了 GET 请求，When 实例化并调用 `await endpoint()`，Then Playwright 发送 HTTP GET 请求到正确的 URL（包含 query 参数、headers）。
-2. Given 接口类定义了 POST 请求，When 实例化并传入 body，Then Playwright 发送 HTTP POST 请求，body 被正确序列化为 JSON。
-3. Given 服务器返回 JSON 响应，When 调用接口，Then 响应自动解析为 Pydantic 响应模型实例，类型校验通过。
-4. Given 服务器返回的 JSON 与响应模型不匹配（缺少字段或类型错误），When 调用接口，Then 抛出 Pydantic 校验异常并提供清晰的错误信息。
-
-### 用户故事 3 - CLI 将 OpenAPI 转换为接口定义（优先级：P2）
-
-测试工程师希望通过 CLI 命令 `stoma make` 从 OpenAPI Specification 文件自动生成接口类定义代码。生成的代码包含按 feature 组织的包结构（`router.py`、`models.py`），每个接口类使用 `@router.get/post` 装饰器，构造函数参数根据 OpenAPI 定义自动生成类型注解与默认值。
-
-**为何优先**: 这是框架的生产力工具，将手动编写接口定义的工作自动化，降低接入成本。
-
-**独立测试**: 准备一个包含多个端点的 OpenAPI YAML 文件，运行 `stoma make` 命令，验证生成的代码结构正确、可导入、类型注解完整。
-
-**验收场景**:
-
-1. Given 用户提供 OpenAPI YAML 文件，When 运行 `stoma make --spec openapi.yaml --out src/api --feature users`，Then 生成 `src/api/users/router.py` 和 `src/api/users/models.py`。
-2. Given OpenAPI 定义了 GET /users 接口，When 查看生成的 `router.py`，Then 包含 `@router.get(path="/users", operation_id="list_users")` 装饰的接口类。
-3. Given OpenAPI 定义了请求参数（query、path、header、body），When 查看生成的接口类构造函数，Then 参数类型注解、默认值、Query/Body/Header/Path 标记正确。
-4. Given OpenAPI 定义了响应 schema，When 查看生成的 `models.py`，Then 包含对应的 Pydantic 响应模型类，字段类型与 OpenAPI 定义一致。
-
-**伪代码示例**（生成的接口类）：
+**伪代码示例**（接口定义格式）：
 
 ```python
 from typing import Generic, TypeVar, ClassVar, Literal, Callable, Type
@@ -206,6 +176,37 @@ new_user = await create_endpoint()  # 直接调用实例，返回 UserData
 get_endpoint = GetUserByIdEndpoint(user_id=1, include_profile=True)
 user_data = await get_endpoint()  # 直接调用实例，返回 UserData
 ```
+
+### 用户故事 2 - 使用 Playwright 调用接口（优先级：P1）
+
+测试工程师希望实例化接口类后，通过调用实例自动发送 HTTP 请求并获得类型化的响应。框架内部使用 Playwright 作为 HTTP 客户端，自动从实例属性收集请求参数（query/path/header/body），构造请求，发送到目标服务器，并将响应 JSON 解析为 Pydantic 响应模型。
+
+**为何优先**: 这是框架的核心执行能力，验证接口定义可以真正调用远程服务并获得结果。
+
+**独立测试**: 启动一个简单的 HTTP 测试服务器（如 FastAPI），手动编写接口类定义，调用接口实例并验证响应数据正确解析。
+
+**验收场景**:
+
+1. Given 接口类定义了 GET 请求，When 实例化并调用 `await endpoint()`，Then Playwright 发送 HTTP GET 请求到正确的 URL（包含 query 参数、headers）。
+2. Given 接口类定义了 POST 请求，When 实例化并传入 body，Then Playwright 发送 HTTP POST 请求，body 被正确序列化为 JSON。
+3. Given 服务器返回 JSON 响应，When 调用接口，Then 响应自动解析为 Pydantic 响应模型实例，类型校验通过。
+4. Given 服务器返回的 JSON 与响应模型不匹配（缺少字段或类型错误），When 调用接口，Then 抛出 Pydantic 校验异常并提供清晰的错误信息。
+
+### 用户故事 3 - CLI 将 OpenAPI 转换为接口定义（优先级：P2）
+
+测试工程师希望通过 CLI 命令 `stoma make` 从 OpenAPI Specification 文件自动生成接口类定义代码。生成的代码包含按 feature 组织的包结构（`router.py`、`models.py`），每个接口类使用 `@router.get/post` 装饰器，构造函数参数根据 OpenAPI 定义自动生成类型注解与默认值。
+
+**为何优先**: 这是框架的生产力工具，将手动编写接口定义的工作自动化，降低接入成本。
+
+**独立测试**: 准备一个包含多个端点的 OpenAPI YAML 文件，运行 `stoma make` 命令，验证生成的代码结构正确、可导入、类型注解完整。
+
+**验收场景**:
+
+1. Given 用户提供 OpenAPI YAML 文件，When 运行 `stoma make --spec openapi.yaml --out src/api --feature users`，Then 生成 `src/api/users/router.py` 和 `src/api/users/models.py`。
+2. Given OpenAPI 定义了 GET /users 接口，When 查看生成的 `router.py`，Then 包含 `@router.get(path="/users", operation_id="list_users")` 装饰的接口类。
+3. Given OpenAPI 定义了请求参数（query、path、header、body），When 查看生成的接口类构造函数，Then 参数类型注解、默认值、Query/Body/Header/Path 标记正确。
+4. Given OpenAPI 定义了响应 schema，When 查看生成的 `models.py`，Then 包含对应的 Pydantic 响应模型类，字段类型与 OpenAPI 定义一致。
+
 
 ## 需求（必填）
 
