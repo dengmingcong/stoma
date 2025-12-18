@@ -7,19 +7,49 @@
 
 ## 用户场景与测试（必填）
 
-### 用户故事 1 - 从 OpenAPI 生成类型化接口定义（优先级：P1）
+### 用户故事 1 - 确定类型化接口定义格式（优先级：P0）
 
-测试工程师或开发者希望从 OpenAPI Specification 预生成出类型化的接口定义。每个接口表示为一个**可调用的类**，其构造函数接收接口所需的全部参数（path 参数、查询参数、header 参数、request body），通过参数的类型注解和默认值，调用方能清晰地了解需要传入哪些参数、参数类型以及可选性。类的其他方法负责调用实际的 HTTP 接口并将响应按照生成的模型进行组装与校验。
+测试工程师或开发者需要一种清晰、类型安全的接口定义格式。每个接口表示为一个**可调用的类**，其构造函数接收接口所需的全部参数（path 参数、查询参数、header 参数、request body），通过参数的类型注解和默认值明确参数类型与可选性。接口类使用装饰器（如 `@router.get`）声明 HTTP 方法和路径，并通过泛型指定响应模型类型。
 
-**为何优先**: 这是核心价值主张，决定框架的易用性与采用成本。生成代码的质量（清晰度、类型安全、可维护性）直接影响测试脚本的编写效率。
+**为何优先**: 这是框架的基础定义，所有后续功能（代码生成、HTTP 调用）都依赖此接口格式。必须在实现任何功能前先确定接口定义的结构与约束。
 
-**独立测试**: 通过在空白项目中导入生成的接口类，仅通过类型提示和参数传递，即可完整理解接口的请求与响应结构；无需查阅 OpenAPI 文档或其他辅助信息。
+**独立测试**: 通过编写示例接口类（手动编写，不依赖生成），验证类型注解、IDE 提示、装饰器语法的可用性与一致性。
 
 **验收场景**:
 
-1. Given 用户从 OpenAPI 生成接口定义，When 在 IDE 中查看生成的接口类，Then 类的构造函数签名明确列出所有参数及其类型/可选性，使用者可直接进行代码补全与静态类型检查。
-2. Given 接口包含 path/query/header/body 参数混合，When 实例化接口类，Then 构造函数强制规范参数来源（Query/Body/Header/Path 标记），防止参数混淆。
-3. Given 接口返回 JSON 对象，When 调用接口方法，Then 返回结果自动按照生成的响应模型进行类型校验和反序列化，确保类型安全。
+1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path 和 operation_id，Then IDE 提供参数补全与类型检查。
+2. Given 接口类继承 `BaseEndpoint[T]` 泛型，When 调用实例（`await endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
+3. Given 接口构造函数包含 Query/Body/Header/Path 参数标记，When 实例化接口类，Then 参数来源清晰且类型安全。
+
+### 用户故事 2 - 使用 Playwright 调用接口（优先级：P1）
+
+测试工程师希望实例化接口类后，通过调用实例自动发送 HTTP 请求并获得类型化的响应。框架内部使用 Playwright 作为 HTTP 客户端，自动从实例属性收集请求参数（query/path/header/body），构造请求，发送到目标服务器，并将响应 JSON 解析为 Pydantic 响应模型。
+
+**为何优先**: 这是框架的核心执行能力，验证接口定义可以真正调用远程服务并获得结果。
+
+**独立测试**: 启动一个简单的 HTTP 测试服务器（如 FastAPI），手动编写接口类定义，调用接口实例并验证响应数据正确解析。
+
+**验收场景**:
+
+1. Given 接口类定义了 GET 请求，When 实例化并调用 `await endpoint()`，Then Playwright 发送 HTTP GET 请求到正确的 URL（包含 query 参数、headers）。
+2. Given 接口类定义了 POST 请求，When 实例化并传入 body，Then Playwright 发送 HTTP POST 请求，body 被正确序列化为 JSON。
+3. Given 服务器返回 JSON 响应，When 调用接口，Then 响应自动解析为 Pydantic 响应模型实例，类型校验通过。
+4. Given 服务器返回的 JSON 与响应模型不匹配（缺少字段或类型错误），When 调用接口，Then 抛出 Pydantic 校验异常并提供清晰的错误信息。
+
+### 用户故事 3 - CLI 将 OpenAPI 转换为接口定义（优先级：P2）
+
+测试工程师希望通过 CLI 命令 `stoma make` 从 OpenAPI Specification 文件自动生成接口类定义代码。生成的代码包含按 feature 组织的包结构（`router.py`、`models.py`），每个接口类使用 `@router.get/post` 装饰器，构造函数参数根据 OpenAPI 定义自动生成类型注解与默认值。
+
+**为何优先**: 这是框架的生产力工具，将手动编写接口定义的工作自动化，降低接入成本。
+
+**独立测试**: 准备一个包含多个端点的 OpenAPI YAML 文件，运行 `stoma make` 命令，验证生成的代码结构正确、可导入、类型注解完整。
+
+**验收场景**:
+
+1. Given 用户提供 OpenAPI YAML 文件，When 运行 `stoma make --spec openapi.yaml --out src/api --feature users`，Then 生成 `src/api/users/router.py` 和 `src/api/users/models.py`。
+2. Given OpenAPI 定义了 GET /users 接口，When 查看生成的 `router.py`，Then 包含 `@router.get(path="/users", operation_id="list_users")` 装饰的接口类。
+3. Given OpenAPI 定义了请求参数（query、path、header、body），When 查看生成的接口类构造函数，Then 参数类型注解、默认值、Query/Body/Header/Path 标记正确。
+4. Given OpenAPI 定义了响应 schema，When 查看生成的 `models.py`，Then 包含对应的 Pydantic 响应模型类，字段类型与 OpenAPI 定义一致。
 
 **伪代码示例**（生成的接口类）：
 
