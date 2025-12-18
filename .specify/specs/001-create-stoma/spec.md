@@ -18,7 +18,7 @@
 **验收场景**:
 
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path 和 operation_id，Then IDE 提供参数补全与类型检查。
-2. Given 接口类继承 `BaseEndpoint[T]` 泛型，When 调用实例（`await endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
+2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例（`await endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
 3. Given 接口构造函数包含 Query/Body/Header/Path 参数标记，When 实例化接口类，Then 参数来源清晰且类型安全。
 
 **伪代码示例**（接口定义格式）：
@@ -30,7 +30,7 @@ from pydantic import BaseModel
 T = TypeVar('T', bound=BaseModel)
 
 # 框架提供的基类与装饰器（所有生成的接口类都继承此类，并使用装饰器传入元数据）
-class BaseEndpoint(Generic[T]):
+class APIRoute(Generic[T]):
     """接口基类，通过泛型指定响应模型类型"""
 
     method: ClassVar[Literal["GET","POST","PUT","PATCH","DELETE"]]
@@ -52,11 +52,11 @@ def api_route(
     method: Literal["GET","POST","PUT","PATCH","DELETE"],
     path: str,
     operation_id: str,
-) -> Callable[[Type[BaseEndpoint]], Type[BaseEndpoint]]:
+) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
     """
     类装饰器：在 class 声明处传入元数据。IDE 在此位置提供参数补全与类型检查。
     """
-    def decorator(cls: Type[BaseEndpoint]) -> Type[BaseEndpoint]:
+    def decorator(cls: Type[APIRoute]) -> Type[APIRoute]:
         cls.method = method
         cls.path = path
         cls.operation_id = operation_id
@@ -65,23 +65,23 @@ def api_route(
 
 
 # 便捷路由命名空间：与 FastAPI 类似的入口 router.get/router.post 等
-class Router:
-    def get(self, *, path: str, operation_id: str) -> Callable[[Type[BaseEndpoint]], Type[BaseEndpoint]]:
+class APIRouter:
+    def get(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
         return api_route(method="GET", path=path, operation_id=operation_id)
 
-    def post(self, *, path: str, operation_id: str) -> Callable[[Type[BaseEndpoint]], Type[BaseEndpoint]]:
+    def post(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
         return api_route(method="POST", path=path, operation_id=operation_id)
 
-    def put(self, *, path: str, operation_id: str) -> Callable[[Type[BaseEndpoint]], Type[BaseEndpoint]]:
+    def put(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
         return api_route(method="PUT", path=path, operation_id=operation_id)
 
-    def patch(self, *, path: str, operation_id: str) -> Callable[[Type[BaseEndpoint]], Type[BaseEndpoint]]:
+    def patch(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
         return api_route(method="PATCH", path=path, operation_id=operation_id)
 
-    def delete(self, *, path: str, operation_id: str) -> Callable[[Type[BaseEndpoint]], Type[BaseEndpoint]]:
+    def delete(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
         return api_route(method="DELETE", path=path, operation_id=operation_id)
 
-router = Router()
+router = APIRouter()
 
 # ===== 以下是生成的代码 =====
 
@@ -97,7 +97,7 @@ class UserCreateRequest(BaseModel):
 
 # 生成的接口类：通过泛型参数明确响应类型
 @router.get(path="/users", operation_id="list_users")
-class GetUsersEndpoint(BaseEndpoint[list[UserData]]):
+class GetUsers(APIRoute[list[UserData]]):
     """GET /users - 列出用户（响应类型：list[UserData]）"""
     
     def __init__(
@@ -115,11 +115,11 @@ class GetUsersEndpoint(BaseEndpoint[list[UserData]]):
         self.limit = limit
         self.offset = offset
         self.token = token
-    # 无需定义 __call__() 方法，继承自 BaseEndpoint
+    # 无需定义 __call__() 方法，继承自 APIRoute
 
 
 @router.post(path="/users", operation_id="create_user")
-class CreateUserEndpoint(BaseEndpoint[UserData]):
+class CreateUser(APIRoute[UserData]):
     """POST /users - 创建用户（响应类型：UserData）"""
     
     def __init__(
@@ -137,7 +137,7 @@ class CreateUserEndpoint(BaseEndpoint[UserData]):
 
 
 @router.get(path="/users/{user_id}", operation_id="get_user_by_id")
-class GetUserByIdEndpoint(BaseEndpoint[UserData]):
+class GetUserById(APIRoute[UserData]):
     """GET /users/{user_id} - 获取特定用户（响应类型：UserData）"""
     
     def __init__(
@@ -158,22 +158,22 @@ class GetUserByIdEndpoint(BaseEndpoint[UserData]):
 
 ```python
 # 测试脚本中的使用
-from users.endpoints import GetUsersEndpoint, CreateUserEndpoint, GetUserByIdEndpoint
+from users.endpoints import GetUsers, CreateUser, GetUserById
 from users.models import UserCreateRequest, UserData
 
 # 1. 列出用户（使用默认参数）
-list_endpoint = GetUsersEndpoint(token="Bearer xxx")
+list_endpoint = GetUsers(token="Bearer xxx")
 users = await list_endpoint()  # 直接调用实例，返回 list[UserData]
 
 # 2. 创建用户
-create_endpoint = CreateUserEndpoint(
+create_endpoint = CreateUser(
     body=UserCreateRequest(name="Alice", email="alice@example.com"),
     idempotency_key="unique-key-123"
 )
 new_user = await create_endpoint()  # 直接调用实例，返回 UserData
 
 # 3. 获取特定用户
-get_endpoint = GetUserByIdEndpoint(user_id=1, include_profile=True)
+get_endpoint = GetUserById(user_id=1, include_profile=True)
 user_data = await get_endpoint()  # 直接调用实例，返回 UserData
 ```
 
@@ -258,5 +258,6 @@ user_data = await get_endpoint()  # 直接调用实例，返回 UserData
 ### Session 2025-12-16
 
 - Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 __call__() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `BaseEndpoint[T]`，通过泛型参数明确响应类型（如 `BaseEndpoint[list[UserData]]`），既保证 IDE/mypy 可正确推断 `__call__()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 __call__() 方法，完全继承基类的通用实现。
+- Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 __call__() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `APIRoute[T]`，通过泛型参数明确响应类型（如 `APIRoute[list[UserData]]`），既保证 IDE/mypy 可正确推断 `__call__()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 __call__() 方法，完全继承基类的通用实现。
 - Q: 元数据在子类定义时需要 IDE 自动补全与类型提示，如何实现？ → A: 采用类型签名明确的类装饰器 `api_route(method, path, operation_id)`（Router 内部通过 `router.get/post/...` 调用），在类声明处传入元数据，IDE 可提供完整参数提示与校验；装饰器仅注入到类属性，保持代码简洁并符合“预生成静态代码”的设计。
-- Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `Router` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `api_route` 入口以注入元数据；示例：`@router.get(path="/users", operation_id="list_users")`，内层装饰器函数命名为 `decorator` 以贴近 FastAPI 源码风格。
+- Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `APIRouter` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `api_route` 入口以注入元数据；示例：`@router.get(path="/users", operation_id="list_users")`，内层装饰器函数命名为 `decorator` 以贴近 FastAPI 源码风格。
