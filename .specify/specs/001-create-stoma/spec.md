@@ -19,32 +19,67 @@
 
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path 和 operation_id，Then IDE 提供参数补全与类型检查。
 2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例（`await endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
-3. Given 接口构造函数包含 Query/Body/Header/Path 参数标记，When 实例化接口类，Then 参数来源清晰且类型安全。
+3. Given 接口类继承 BaseModel 并使用 Query/Body/Header/Path 标记，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码。
+4. Given 生成的接口类使用路由元数据隔离（`__route_meta__`），When 用户字段名为 method、path、operation_id 等，Then 不产生命名冲突，框架正常工作。
 
 **伪代码示例**（接口定义格式）：
 
 ```python
-from typing import Generic, TypeVar, ClassVar, Literal, Callable, Type
-from pydantic import BaseModel
+from typing import Generic, TypeVar, ClassVar, Literal, Callable, Type, Annotated
+from pydantic import BaseModel, Field
+from dataclasses import dataclass
 
 T = TypeVar('T', bound=BaseModel)
 
-# 框架提供的基类与装饰器（所有生成的接口类都继承此类，并使用装饰器传入元数据）
-class APIRoute(Generic[T]):
-    """接口基类，通过泛型指定响应模型类型"""
+# ===== 框架核心定义 =====
 
-    method: ClassVar[Literal["GET","POST","PUT","PATCH","DELETE"]]
-    path: ClassVar[str]
-    operation_id: ClassVar[str]
+@dataclass(frozen=True)
+class RouteMetadata:
+    """路由元数据（不可变），集中存储所有路由信息，避免与用户字段冲突"""
+    method: str
+    path: str
+    operation_id: str
+    tags: list[str] | None = None
+    summary: str | None = None
 
+
+# Query、Header、Path、Body 将由代码生成器导入，框架此处仅声明类型
+# （这些类型的具体实现将在后续版本实现）
+Query: type  # 占位符，代码生成时会导入真实实现
+Header: type  # 占位符，代码生成时会导入真实实现
+Path: type  # 占位符，代码生成时会导入真实实现
+Body: type  # 占位符，代码生成时会导入真实实现
+
+
+# 框架提供的基类（继承 Pydantic BaseModel 以获得最佳 IDE 支持）
+class APIRoute(BaseModel, Generic[T]):
+    """
+    接口基类，通过泛型指定响应模型类型。
+    
+    设计特点：
+    1. 继承 BaseModel：自动 __init__ 生成，参数 → 属性，无需样板代码
+    2. 元数据隔离：所有路由信息存储在 __route_meta__，避免与用户字段冲突
+    3. IDE 支持：字段声明即完成一切，IDE 完美补全与类型检查
+    """
+    model_config = {"arbitrary_types_allowed": True}
+    
+    __route_meta__: ClassVar[RouteMetadata]
+    
+    @classmethod
+    def route_meta(cls) -> RouteMetadata:
+        """获取路由元数据"""
+        return cls.__route_meta__
+    
     async def __call__(self) -> T:
         """
         通用 __call__ 方法（由框架基类实现）：
-        1. 从实例属性自动收集请求参数（query/path/header/body）
+        1. 从实例字段自动收集请求参数（query/path/header/body）
         2. 使用 Playwright 发送 HTTP 请求
         3. 将响应 JSON 自动解析为泛型类型 T 的实例
+        
+        详细实现将在用户故事 2 中完成。
         """
-        # 框架内部实现：参数收集 -> HTTP 调用 -> 响应解析
+        pass
 
 
 def decorator(
@@ -57,9 +92,11 @@ def decorator(
     类装饰器：在 class 声明处传入元数据。IDE 在此位置提供参数补全与类型检查。
     """
     def update_api_route(cls: Type[APIRoute]) -> Type[APIRoute]:
-        cls.method = method
-        cls.path = path
-        cls.operation_id = operation_id
+        cls.__route_meta__ = RouteMetadata(
+            method=method,
+            path=path,
+            operation_id=operation_id
+        )
         return cls
     return update_api_route
 
@@ -95,63 +132,30 @@ class UserCreateRequest(BaseModel):
     name: str
     email: str
 
-# 生成的接口类：通过泛型参数明确响应类型
+# 生成的接口类：无需 __init__，继承 BaseModel 自动生成
 @router.get(path="/users", operation_id="list_users")
 class GetUsers(APIRoute[list[UserData]]):
     """GET /users - 列出用户（响应类型：list[UserData]）"""
     
-    def __init__(
-        self,
-        limit: int = Query(default=20, ge=1, le=100),
-        offset: int = Query(default=0, ge=0),
-        token: str = Header(alias="Authorization"),
-    ):
-        """
-        参数说明：
-        - limit (Query): 返回结果数量，默认 20
-        - offset (Query): 分页偏移，默认 0
-        - token (Header): 认证令牌，来自 Authorization header
-        """
-        self.limit = limit
-        self.offset = offset
-        self.token = token
-    # 无需定义 __call__() 方法，继承自 APIRoute
+    limit: Annotated[int, Query(default=20, ge=1, le=100)]
+    offset: Annotated[int, Query(default=0, ge=0)]
+    token: Annotated[str, Header(alias="Authorization")]
 
 
 @router.post(path="/users", operation_id="create_user")
 class CreateUser(APIRoute[UserData]):
     """POST /users - 创建用户（响应类型：UserData）"""
     
-    def __init__(
-        self,
-        body: UserCreateRequest = Body(...),
-        idempotency_key: str = Header(default=None, alias="Idempotency-Key"),
-    ):
-        """
-        参数说明：
-        - body (Body): 请求体，包含 name、email 等字段
-        - idempotency_key (Header): 幂等性密钥，可选
-        """
-        self.body = body
-        self.idempotency_key = idempotency_key
+    body: Annotated[UserCreateRequest, Body(...)]
+    idempotency_key: Annotated[str | None, Header(default=None, alias="Idempotency-Key")]
 
 
 @router.get(path="/users/{user_id}", operation_id="get_user_by_id")
 class GetUserById(APIRoute[UserData]):
     """GET /users/{user_id} - 获取特定用户（响应类型：UserData）"""
     
-    def __init__(
-        self,
-        user_id: int = Path(...),
-        include_profile: bool = Query(default=False),
-    ):
-        """
-        参数说明：
-        - user_id (Path): 路径参数，用户 ID
-        - include_profile (Query): 是否包含用户详细信息，默认 False
-        """
-        self.user_id = user_id
-        self.include_profile = include_profile
+    user_id: Annotated[int, Path(...)]
+    include_profile: Annotated[bool, Query(default=False)]
 ```
 
 **使用示例**：
@@ -162,19 +166,25 @@ from users.endpoints import GetUsers, CreateUser, GetUserById
 from users.models import UserCreateRequest, UserData
 
 # 1. 列出用户（使用默认参数）
-list_endpoint = GetUsers(token="Bearer xxx")
-users = await list_endpoint()  # 直接调用实例，返回 list[UserData]
+list_endpoint = GetUsers(token="Bearer xxx")  # IDE 完美补全所有字段
+users = await list_endpoint()  # 类型推断: list[UserData]
 
 # 2. 创建用户
 create_endpoint = CreateUser(
     body=UserCreateRequest(name="Alice", email="alice@example.com"),
     idempotency_key="unique-key-123"
 )
-new_user = await create_endpoint()  # 直接调用实例，返回 UserData
+new_user = await create_endpoint()  # 类型推断: UserData
 
 # 3. 获取特定用户
 get_endpoint = GetUserById(user_id=1, include_profile=True)
-user_data = await get_endpoint()  # 直接调用实例，返回 UserData
+user_data = await get_endpoint()  # 类型推断: UserData
+
+# 4. 访问路由元数据（框架内部使用）
+meta = GetUsers.route_meta()
+print(meta.method)         # "GET"
+print(meta.path)           # "/users"
+print(meta.operation_id)   # "list_users"
 ```
 
 ### 用户故事 2 - 使用 Playwright 调用接口（优先级：P1）
@@ -260,3 +270,6 @@ user_data = await get_endpoint()  # 直接调用实例，返回 UserData
 - Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 __call__() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `APIRoute[T]`，通过泛型参数明确响应类型（如 `APIRoute[list[UserData]]`），既保证 IDE/mypy 可正确推断 `__call__()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 __call__() 方法，完全继承基类的通用实现。
 - Q: 元数据在子类定义时需要 IDE 自动补全与类型提示，如何实现？ → A: 采用类型签名明确的类装饰器 `decorator(method, path, operation_id)`（APIRouter 内部通过 `router.get/post/...` 调用），在类声明处传入元数据，IDE 可提供完整参数提示与校验；装饰器仅注入到类属性，内部更新逻辑封装在 `update_api_route`，保持代码简洁并符合“预生成静态代码”的设计。
 - Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `APIRouter` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `decorator` 入口以注入元数据；示例：`@router.get(path="/users", operation_id="list_users")`，内层装饰器函数命名为 `update_api_route` 以贴近 FastAPI 源码风格。
+### Session 2025-12-19
+
+- Q: 接口类构造函数有重复代码（`self.limit = limit` 等），如何优化？并且避免框架属性名与用户字段冲突？ → A: 采用方案 2（元数据字典）。接口类继承 Pydantic BaseModel，自动生成 `__init__` 无需样板代码；所有路由元数据存储在单一的不可变 `RouteMetadata` 对象，以 `__route_meta__` ClassVar 存储，完全避免与用户字段冲突（用户可以安全地定义 method、path、operation_id 等任意名称的字段）；提供 `route_meta()` 类方法供框架内部访问元数据。优势：零样板代码、最佳 IDE 支持、命名空间安全隔离、代码生成更清晰。
