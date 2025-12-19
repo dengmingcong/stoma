@@ -47,7 +47,7 @@ class APIRoute(Generic[T]):
         # 框架内部实现：参数收集 -> HTTP 调用 -> 响应解析
 
 
-def api_route(
+def decorator(
     *,
     method: Literal["GET","POST","PUT","PATCH","DELETE"],
     path: str,
@@ -56,30 +56,30 @@ def api_route(
     """
     类装饰器：在 class 声明处传入元数据。IDE 在此位置提供参数补全与类型检查。
     """
-    def decorator(cls: Type[APIRoute]) -> Type[APIRoute]:
+    def update_api_route(cls: Type[APIRoute]) -> Type[APIRoute]:
         cls.method = method
         cls.path = path
         cls.operation_id = operation_id
         return cls
-    return decorator
+    return update_api_route
 
 
 # 便捷路由命名空间：与 FastAPI 类似的入口 router.get/router.post 等
 class APIRouter:
     def get(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return api_route(method="GET", path=path, operation_id=operation_id)
+        return decorator(method="GET", path=path, operation_id=operation_id)
 
     def post(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return api_route(method="POST", path=path, operation_id=operation_id)
+        return decorator(method="POST", path=path, operation_id=operation_id)
 
     def put(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return api_route(method="PUT", path=path, operation_id=operation_id)
+        return decorator(method="PUT", path=path, operation_id=operation_id)
 
     def patch(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return api_route(method="PATCH", path=path, operation_id=operation_id)
+        return decorator(method="PATCH", path=path, operation_id=operation_id)
 
     def delete(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return api_route(method="DELETE", path=path, operation_id=operation_id)
+        return decorator(method="DELETE", path=path, operation_id=operation_id)
 
 router = APIRouter()
 
@@ -257,7 +257,6 @@ user_data = await get_endpoint()  # 直接调用实例，返回 UserData
 
 ### Session 2025-12-16
 
-- Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 __call__() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `BaseEndpoint[T]`，通过泛型参数明确响应类型（如 `BaseEndpoint[list[UserData]]`），既保证 IDE/mypy 可正确推断 `__call__()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 __call__() 方法，完全继承基类的通用实现。
 - Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 __call__() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `APIRoute[T]`，通过泛型参数明确响应类型（如 `APIRoute[list[UserData]]`），既保证 IDE/mypy 可正确推断 `__call__()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 __call__() 方法，完全继承基类的通用实现。
-- Q: 元数据在子类定义时需要 IDE 自动补全与类型提示，如何实现？ → A: 采用类型签名明确的类装饰器 `api_route(method, path, operation_id)`（Router 内部通过 `router.get/post/...` 调用），在类声明处传入元数据，IDE 可提供完整参数提示与校验；装饰器仅注入到类属性，保持代码简洁并符合“预生成静态代码”的设计。
-- Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `APIRouter` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `api_route` 入口以注入元数据；示例：`@router.get(path="/users", operation_id="list_users")`，内层装饰器函数命名为 `decorator` 以贴近 FastAPI 源码风格。
+- Q: 元数据在子类定义时需要 IDE 自动补全与类型提示，如何实现？ → A: 采用类型签名明确的类装饰器 `decorator(method, path, operation_id)`（APIRouter 内部通过 `router.get/post/...` 调用），在类声明处传入元数据，IDE 可提供完整参数提示与校验；装饰器仅注入到类属性，内部更新逻辑封装在 `update_api_route`，保持代码简洁并符合“预生成静态代码”的设计。
+- Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `APIRouter` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `decorator` 入口以注入元数据；示例：`@router.get(path="/users", operation_id="list_users")`，内层装饰器函数命名为 `update_api_route` 以贴近 FastAPI 源码风格。
