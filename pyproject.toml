@@ -5,16 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-        # Core testing and runtime deps
+    # Core testing and runtime deps
     "playwright>=1.55.0",
     "pytest>=8.4.2",
-        # OpenAPI handling and typing
-        "openapi-schema-pydantic>=1.2.4",
-        "pydantic>=2.6.0",
-        "pyyaml>=6.0.2",
-        "click>=8.1.7",
-        # Reporting (optional)
-        "allure-pytest>=2.15.2",
+    # OpenAPI handling and typing
+    "openapi-schema-pydantic>=1.2.4",
+    "pydantic>=2.6.0",
+    "pyyaml>=6.0.2",
+    "click>=8.1.7",
+    # Reporting (optional)
+    "allure-pytest>=2.15.2",
 ]
 
 [project.optional-dependencies]
