@@ -20,7 +20,7 @@
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path 和 operation_id，Then IDE 提供参数补全与类型检查。
 2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例（`await endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
 3. Given 接口类继承 BaseModel 并使用 Query/Body/Header/Path 标记，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码。
-4. Given 生成的接口类使用路由元数据隔离（`__route_meta__`），When 用户字段名为 method、path、operation_id 等，Then 不产生命名冲突，框架正常工作。
+4. Given 生成的接口类使用路由元数据隔离（`_route_meta`），When 用户字段名为 method、path、operation_id 等，Then 不产生命名冲突，框架正常工作。
 
 **伪代码示例**（接口定义格式）：
 
@@ -32,8 +32,10 @@ T = TypeVar('T', bound=BaseModel)
 
 # ===== 框架核心定义 =====
 
-class RouteMetadata(BaseModel):
+class RouteMeta(BaseModel):
     """路由元数据（不可变），集中存储所有路由信息，避免与用户字段冲突"""
+    model_config = ConfigDict(frozen=True)
+    
     method: str
     path: str
     operation_id: str
@@ -56,17 +58,11 @@ class APIRoute(BaseModel, Generic[T]):
     
     设计特点：
     1. 继承 BaseModel：自动 __init__ 生成，参数 → 属性，无需样板代码
-    2. 元数据隔离：所有路由信息存储在 __route_meta__，避免与用户字段冲突
+    2. 元数据隔离：所有路由信息存储在 _route_meta，避免与用户字段冲突
     3. IDE 支持：字段声明即完成一切，IDE 完美补全与类型检查
     """
-    model_config = {"arbitrary_types_allowed": True}
+    _route_meta: ClassVar[RouteMeta]
     
-    __route_meta__: ClassVar[RouteMetadata]
-    
-    @classmethod
-    def route_meta(cls) -> RouteMetadata:
-        """获取路由元数据"""
-        return cls.__route_meta__
     
     async def __call__(self) -> T:
         """
@@ -90,7 +86,7 @@ def decorator(
     类装饰器：在 class 声明处传入元数据。IDE 在此位置提供参数补全与类型检查。
     """
     def update_api_route(cls: Type[APIRoute]) -> Type[APIRoute]:
-        cls.__route_meta__ = RouteMetadata(
+        cls._route_meta = RouteMeta(
             method=method,
             path=path,
             operation_id=operation_id
@@ -270,4 +266,4 @@ print(meta.operation_id)   # "list_users"
 - Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `APIRouter` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `decorator` 入口以注入元数据；示例：`@router.get(path="/users", operation_id="list_users")`，内层装饰器函数命名为 `update_api_route` 以贴近 FastAPI 源码风格。
 ### Session 2025-12-19
 
-- Q: 接口类构造函数有重复代码（`self.limit = limit` 等），如何优化？并且避免框架属性名与用户字段冲突？ → A: 采用方案 2（元数据字典）。接口类继承 Pydantic BaseModel，自动生成 `__init__` 无需样板代码；所有路由元数据存储在单一的不可变 `RouteMetadata` 对象，以 `__route_meta__` ClassVar 存储，完全避免与用户字段冲突（用户可以安全地定义 method、path、operation_id 等任意名称的字段）；提供 `route_meta()` 类方法供框架内部访问元数据。优势：零样板代码、最佳 IDE 支持、命名空间安全隔离、代码生成更清晰。
+- Q: 接口类构造函数有重复代码（`self.limit = limit` 等），如何优化？并且避免框架属性名与用户字段冲突？ → A: 采用方案 2（元数据字典）。接口类继承 Pydantic BaseModel，自动生成 `__init__` 无需样板代码；所有路由元数据存储在单一的不可变 `RouteMeta` 对象，以 `_route_meta` ClassVar 存储，完全避免与用户字段冲突（用户可以安全地定义 method、path、operation_id 等任意名称的字段）；提供 `route_meta()` 类方法供框架内部访问元数据。优势：零样板代码、最佳 IDE 支持、命名空间安全隔离、代码生成更清晰。
