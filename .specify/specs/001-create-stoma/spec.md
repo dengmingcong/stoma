@@ -26,15 +26,13 @@
 
 ```python
 from typing import Generic, TypeVar, ClassVar, Literal, Callable, Type, Annotated
-from pydantic import BaseModel, Field
-from dataclasses import dataclass
+from pydantic import BaseModel, Field, ConfigDict
 
 T = TypeVar('T', bound=BaseModel)
 
 # ===== 框架核心定义 =====
 
-@dataclass(frozen=True)
-class RouteMetadata:
+class RouteMetadata(BaseModel):
     """路由元数据（不可变），集中存储所有路由信息，避免与用户字段冲突"""
     method: str
     path: str
