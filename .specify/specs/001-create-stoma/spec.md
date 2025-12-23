@@ -76,7 +76,7 @@ class APIRoute(BaseModel, Generic[T]):
         pass
 
 
-def decorator(
+def api_route_decorator(
     *,
     method: Literal["GET","POST","PUT","PATCH","DELETE"],
     path: str,
@@ -98,19 +98,19 @@ def decorator(
 # 便捷路由命名空间：与 FastAPI 类似的入口 router.get/router.post 等
 class APIRouter:
     def get(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return decorator(method="GET", path=path, operation_id=operation_id)
+        return api_route_decorator(method="GET", path=path, operation_id=operation_id)
 
     def post(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return decorator(method="POST", path=path, operation_id=operation_id)
+        return api_route_decorator(method="POST", path=path, operation_id=operation_id)
 
     def put(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return decorator(method="PUT", path=path, operation_id=operation_id)
+        return api_route_decorator(method="PUT", path=path, operation_id=operation_id)
 
     def patch(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return decorator(method="PATCH", path=path, operation_id=operation_id)
+        return api_route_decorator(method="PATCH", path=path, operation_id=operation_id)
 
     def delete(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
-        return decorator(method="DELETE", path=path, operation_id=operation_id)
+        return api_route_decorator(method="DELETE", path=path, operation_id=operation_id)
 
 router = APIRouter()
 
