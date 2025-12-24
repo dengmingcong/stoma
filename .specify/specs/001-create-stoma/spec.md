@@ -97,20 +97,20 @@ def api_route_decorator[
 
 
 # 便捷路由命名空间：与 FastAPI 类似的入口 router.get/router.post 等
-class APIRouter[T: APIRoute]:
-    def get(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
+class APIRouter:
+    def get[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="GET", path=path, operation_id=operation_id)
 
-    def post(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
+    def post[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="POST", path=path, operation_id=operation_id)
 
-    def put(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
+    def put[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="PUT", path=path, operation_id=operation_id)
 
-    def patch(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
+    def patch[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="PATCH", path=path, operation_id=operation_id)
 
-    def delete(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
+    def delete[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="DELETE", path=path, operation_id=operation_id)
 
 router = APIRouter()
