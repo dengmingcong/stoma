@@ -25,10 +25,8 @@
 **伪代码示例**（接口定义格式）：
 
 ```python
-from typing import Generic, TypeVar, ClassVar, Literal, Callable, Type, Annotated
+from typing import ClassVar, Literal, Callable, Type, Annotated
 from pydantic import BaseModel, Field, ConfigDict
-
-T = TypeVar('T', bound=BaseModel)
 
 # ===== 框架核心定义 =====
 
@@ -52,7 +50,7 @@ Body: type  # 占位符，代码生成时会导入真实实现
 
 
 # 框架提供的基类（继承 Pydantic BaseModel 以获得最佳 IDE 支持）
-class APIRoute(BaseModel, Generic[T]):
+class APIRoute[T](BaseModel):
     """
     接口基类，通过泛型指定响应模型类型。
     
@@ -267,3 +265,7 @@ print(meta.operation_id)   # "list_users"
 ### Session 2025-12-19
 
 - Q: 接口类构造函数有重复代码（`self.limit = limit` 等），如何优化？并且避免框架属性名与用户字段冲突？ → A: 采用方案 2（元数据字典）。接口类继承 Pydantic BaseModel，自动生成 `__init__` 无需样板代码；所有路由元数据存储在单一的不可变 `RouteMeta` 对象，以 `_route_meta` ClassVar 存储，完全避免与用户字段冲突（用户可以安全地定义 method、path、operation_id 等任意名称的字段）；提供 `route_meta()` 类方法供框架内部访问元数据。优势：零样板代码、最佳 IDE 支持、命名空间安全隔离、代码生成更清晰。
+
+### Session 2025-12-24
+
+- Q: APIRoute 基类的泛型语法选择? → A: 采用 Python 3.12 PEP 695 新语法 `class APIRoute[T]: ...` 替代传统 `class APIRoute(Generic[T]): ...`。项目 Python 最低版本已设定为 3.13，支持新语法；新语法更简洁清晰，无需从 typing 导入 Generic，改进了类型检查与 IDE 支持；代码生成产物中的接口类继承方式相应更新为 `class GetUsers(APIRoute[list[UserData]]): ...`，保持代码现代化与一致性。
