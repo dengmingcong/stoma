@@ -61,7 +61,6 @@ class APIRoute[T](BaseModel):
     """
     _route_meta: ClassVar[RouteMeta]
     
-    
     async def __call__(self) -> T:
         """
         通用 __call__ 方法（由框架基类实现）：
