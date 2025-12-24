@@ -25,7 +25,7 @@
 **伪代码示例**（接口定义格式）：
 
 ```python
-from typing import ClassVar, Literal, Callable, Type, Annotated
+from typing import ClassVar, Literal, Callable, Annotated
 from pydantic import BaseModel, Field, ConfigDict
 
 # ===== 框架核心定义 =====
@@ -74,16 +74,19 @@ class APIRoute[T](BaseModel):
         pass
 
 
-def api_route_decorator(
+def api_route_decorator[
+    T: APIRoute
+](
     *,
     method: Literal["GET","POST","PUT","PATCH","DELETE"],
     path: str,
     operation_id: str,
-) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
+) -> Callable[[type[T]], type[T]]:
     """
-    类装饰器：在 class 声明处传入元数据。IDE 在此位置提供参数补全与类型检查。
+    类装饰器：在 class 声明处传入元数据。被装饰的类必须继承自 APIRoute。
+    IDE 在此位置提供参数补全与类型检查。
     """
-    def update_api_route(cls: Type[APIRoute]) -> Type[APIRoute]:
+    def update_api_route(cls: type[T]) -> type[T]:
         cls._route_meta = RouteMeta(
             method=method,
             path=path,
@@ -94,20 +97,20 @@ def api_route_decorator(
 
 
 # 便捷路由命名空间：与 FastAPI 类似的入口 router.get/router.post 等
-class APIRouter:
-    def get(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
+class APIRouter[T: APIRoute]:
+    def get(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="GET", path=path, operation_id=operation_id)
 
-    def post(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
+    def post(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="POST", path=path, operation_id=operation_id)
 
-    def put(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
+    def put(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="PUT", path=path, operation_id=operation_id)
 
-    def patch(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
+    def patch(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="PATCH", path=path, operation_id=operation_id)
 
-    def delete(self, *, path: str, operation_id: str) -> Callable[[Type[APIRoute]], Type[APIRoute]]:
+    def delete(self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="DELETE", path=path, operation_id=operation_id)
 
 router = APIRouter()
