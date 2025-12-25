@@ -219,7 +219,7 @@ print(meta.operation_id)   # "list_users"
 - **FR-001**: 框架必须支持将 OpenAPI Specification 定义的 HTTP 接口直接转换为框架对接口的定义。
 - **FR-002**: 框架必须提供声明式接口定义方式以描述请求与响应。
 - **FR-003**: 框架必须基于 Pydantic 对请求构造与响应解析进行类型校验与序列化/反序列化。
-- **FR-004**: 框架不得依赖 FastAPI，但允许"受其启发"的声明风格与注解设计。命名策略采用常见动词注解与参数标识：支持 `@get`, `@post`, `@put`, `@patch`, `@delete` 以及参数来源标记 `Query`, `Body`, `Header`, `Path`，并在文档中明确说明"本框架与 FastAPI 无依赖关系，仅保留通用语义命名"。
+- **FR-004**: 框架设计当前版本不强制依赖 FastAPI，采用"受其启发"的声明风格与注解设计，命名策略采用常见动词注解与参数标识：支持 `@get`, `@post`, `@put`, `@patch`, `@delete` 以及参数来源标记 `Query`, `Body`, `Header`, `Path`；后续版本可根据需要选择性集成 FastAPI 的部分函数以增强功能。
 - **FR-005**: 框架必须使用 Playwright 作为接口请求的客户端。
 - **FR-006**: 框架必须提供 CLI 工具,从 OpenAPI 规范文件预先生成 Python 请求/响应模型与端点定义代码,测试运行阶段仅加载生成代码而不再解析 OpenAPI 文件。
 - **FR-007**: 生成产物的目录结构必须按 feature 维度归档,每个功能一个包,至少包含 `router.py`(汇总该功能所有接口) 与 `models.py`(该功能所有接口相关模型);允许在包内扩展如 `schemas.py`, `utils.py` 等,整体参考 fastapi-best-practices 的组织方式,以提升可维护性与可发现性。
