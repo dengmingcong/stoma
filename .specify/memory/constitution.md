@@ -1,50 +1,119 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Stoma 测试框架宪法
+<!-- Stoma: 接口自动化测试框架 -->
 
-## Core Principles
+## 核心原则
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### 原则一：易用性至上
+<!-- 框架的首要目标是提供直观、易于学习的开发体验 -->
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+框架设计必须将测试工程师的使用体验放在首位。任何功能增加的复杂度都必须能够为用户带来清晰的价值。必须达成以下目标：
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+- 接口定义清晰直观，借鉴 FastAPI 的声明式设计，使用类型注解和装饰器描述接口
+- 提供声明式的接口定义方式，避免冗长的配置代码
+- 使用 Pydantic 进行统一的类型校验与序列化，减少用户的手工验证工作
+- 代码生成工具应能自动化 OpenAPI 到 Python 代码的转换，降低接入成本
+- 错误提示应清晰有效，帮助用户快速诊断问题
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### 原则二：性能次之
+<!-- 性能优化必须在易用性基础之上 -->
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+在保证易用性的前提下，框架应设计为性能高效。性能优化应体现在：
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+- 选择合适的 HTTP 客户端库，提升执行效率
+- 通过预生成代码而非运行时动态解析来提升性能
+- 避免不必要的中间层和开销
+- 不因性能优化而增加开发者的认知负担
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### 原则三：独立性与兼容性平衡
+<!-- 设计独立但保留扩展性 -->
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+框架设计当前版本不强制依赖 FastAPI，采用受其启发的声明风格，保留未来集成的灵活性。框架应：
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- 保持代码设计独立，不引入不必要的依赖
+- 通过一致的命名约定（@get/@post 等、Query/Body/Header/Path 标记）提供熟悉的开发体验
+- 后续版本可根据实际需求选择性集成 FastAPI 的部分函数
 
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+### 原则四：类型安全与 IDE 支持
+<!-- 充分利用现代 Python 特性 -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+优先使用 Python 类型注解和 IDE 自动补全能力：
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+- 接口定义类应继承 Pydantic BaseModel，自动生成构造函数，避免样板代码
+- 使用 Python 3.13+ 的泛型语法（PEP 695），保持代码现代化与清晰
+- 生成的代码应具有完整的类型注解，支持 IDE 与类型检查器
+
+### 原则五：代码生成质量
+<!-- 生成产物应开箱即用 -->
+
+代码生成工具应生成可直接导入使用的高质量 Python 代码：
+
+- 生成的接口类结构应符合用户故事定义的格式
+- 代码应遵循项目编码规范和文档字符串规范
+- 目录结构组织方式可在后续版本根据实际需求设计
+
+## 编码与设计标准
+<!-- 确保框架代码与生成代码都遵循统一的质量标准 -->
+
+### 命名与文档
+
+- 所有公共接口应包含清晰的文档字符串（按项目 docstring 规范）
+- 命名应遵循中文技术文档写作规范和常量编码规范
+- 框架文档应明确声明设计理念与版本差异
+
+### 生成产物质量
+
+- 代码生成工具应生成符合用户故事定义的接口类结构
+- 生成的 Pydantic 模型应包含完整的字段文档与校验规则
+- 支持从 OpenAPI 文件直接生成可用的 Python 代码
+
+## 治理与发展
+<!-- 版本管理和升级路线 -->
+
+### 原则优先度
+
+**易用性 > 性能 > 其他非功能需求**
+
+任何可能影响易用性的性能优化应首先评估其对开发体验的影响。复杂性增加必须带来易用性的明显提升。
+
+### 版本管理策略
+
+- **MAJOR**: 原则调整、功能需求删除或重大设计变更
+- **MINOR**: 新功能/原则增加、生成结构优化、命名约定调整
+- **PATCH**: 文档改进、样式调整、清晰度改进、bug 修复
+
+### 合规审核
+
+- 新功能设计应对标核心原则，特别是易用性原则
+- 设计评审应检查是否引入了不必要的复杂度
+- PR 审核应验证代码是否遵循编码规范与宪法要求
+
+## 治理流程
+<!-- 宪法的修订和执行规范 -->
+
+宪法为项目治理的最高准则，所有设计决策与代码审核应以此为依据。
+
+### 修订流程
+
+1. 提议修订者应在 Issues 中详细说明理由
+2. 修订应关联到具体的设计文档或规格
+3. 修订完成后应更新版本号与变更日期
+4. 重大修订应通过团队评审
+
+### 合规检查
+
+- 所有 PR 审核应验证对宪法的遵守
+- 设计文档应显式引用相关的宪法条款
+- 年度应进行一次宪法健康度检查
+
+---
+
+**版本**: 1.0.0 | **制定日期**: 2025-12-25 | **最后修改**: 2025-12-25
+
+### 变更日志
+
+**v1.0.0 (2025-12-25)** - 初版宪法
+
+- 确立易用性为第一原则，性能为第二原则
+- 定义 5 个核心原则与编码标准
+- 明确版本管理与治理流程
+- 建立合规审核机制
