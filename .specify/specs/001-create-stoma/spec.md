@@ -219,12 +219,11 @@ print(meta.operation_id)   # "list_users"
 - **FR-001**: 框架必须支持将 OpenAPI Specification 定义的 HTTP 接口直接转换为框架对接口的定义。
 - **FR-002**: 框架必须提供声明式接口定义方式以描述请求与响应。
 - **FR-003**: 框架必须基于 Pydantic 对请求构造与响应解析进行类型校验与序列化/反序列化。
-- **FR-004**: 框架必须生成可读的测试报告（含通过/失败统计、失败原因、差异对比、输入摘要）。
-- **FR-005**: 框架不得依赖 FastAPI，但允许“受其启发”的声明风格与注解设计。命名策略采用常见动词注解与参数标识：支持 `@get`, `@post`, `@put`, `@patch`, `@delete` 以及参数来源标记 `Query`, `Body`, `Header`, `Path`，并在文档中明确说明“本框架与 FastAPI 无依赖关系，仅保留通用语义命名”。
-- **FR-006**: 框架必须使用 Playwright 作为接口请求的客户端。
-- **FR-007**: 框架必须提供 CLI 工具,从 OpenAPI 规范文件预先生成 Python 请求/响应模型与端点定义代码,测试运行阶段仅加载生成代码而不再解析 OpenAPI 文件。
-- **FR-008**: 生成产物的目录结构必须按 feature 维度归档,每个功能一个包,至少包含 `router.py`(汇总该功能所有接口) 与 `models.py`(该功能所有接口相关模型);允许在包内扩展如 `schemas.py`, `utils.py` 等,整体参考 fastapi-best-practices 的组织方式,以提升可维护性与可发现性。
-- **FR-009**: 提供命令行入口 `stoma make`,最小必需参数包括 `--spec <openapi.yaml>`、`--out <dir>`、`--feature <name>`; 其中 `--feature` 用于将同一业务域的接口与模型归档到同一包(例如 `users/`),命令执行后在输出目录按 `feature` 生成包含 `router.py` 与 `models.py` 的包结构。
+- **FR-004**: 框架不得依赖 FastAPI，但允许"受其启发"的声明风格与注解设计。命名策略采用常见动词注解与参数标识：支持 `@get`, `@post`, `@put`, `@patch`, `@delete` 以及参数来源标记 `Query`, `Body`, `Header`, `Path`，并在文档中明确说明"本框架与 FastAPI 无依赖关系，仅保留通用语义命名"。
+- **FR-005**: 框架必须使用 Playwright 作为接口请求的客户端。
+- **FR-006**: 框架必须提供 CLI 工具,从 OpenAPI 规范文件预先生成 Python 请求/响应模型与端点定义代码,测试运行阶段仅加载生成代码而不再解析 OpenAPI 文件。
+- **FR-007**: 生成产物的目录结构必须按 feature 维度归档,每个功能一个包,至少包含 `router.py`(汇总该功能所有接口) 与 `models.py`(该功能所有接口相关模型);允许在包内扩展如 `schemas.py`, `utils.py` 等,整体参考 fastapi-best-practices 的组织方式,以提升可维护性与可发现性。
+- **FR-008**: 提供命令行入口 `stoma make`,最小必需参数包括 `--spec <openapi.yaml>`、`--out <dir>`、`--feature <name>`; 其中 `--feature` 用于将同一业务域的接口与模型归档到同一包(例如 `users/`),命令执行后在输出目录按 `feature` 生成包含 `router.py` 与 `models.py` 的包结构。
 
 ### 关键实体
 
@@ -242,7 +241,7 @@ print(meta.operation_id)   # "list_users"
 
 - 默认目标为 HTTP 接口测试；非 HTTP 场景可通过用户自定义适配器扩展。
 - 使用 Pydantic v2 语义进行类型定义与校验；若版本差异，需提供兼容指引。
-- 报告以文件或控制台输出为主；可选集成到外部平台不在本规范范围内。
+- 报告由 pytest 生成；框架暂时不考虑生成测试报告，可选集成到外部平台不在本规范范围内。
 
 ### 需澄清事项（最多 3 项）
 
