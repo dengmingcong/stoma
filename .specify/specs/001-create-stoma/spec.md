@@ -196,20 +196,20 @@ print(meta.operation_id)   # "list_users"
 3. Given 服务器返回 JSON 响应，When 调用接口，Then 响应自动解析为 Pydantic 响应模型实例，类型校验通过。
 4. Given 服务器返回的 JSON 与响应模型不匹配（缺少字段或类型错误），When 调用接口，Then 抛出 Pydantic 校验异常并提供清晰的错误信息。
 
-### 用户故事 3 - CLI 将 OpenAPI 转换为接口定义（优先级：P2）
+### 用户故事 3 - 从 OpenAPI 生成接口定义（优先级：P2）
 
-测试工程师希望通过 CLI 命令 `stoma make` 从 OpenAPI Specification 文件自动生成接口类定义代码。生成的代码包含按 feature 组织的包结构（`router.py`、`models.py`），每个接口类使用 `@router.get/post` 装饰器，构造函数参数根据 OpenAPI 定义自动生成类型注解与默认值。
+测试工程师希望通过工具从 OpenAPI Specification 文件自动生成符合用户故事 1 中所定义的接口类结构。生成的接口类包含正确的 HTTP 方法声明、请求参数类型注解（Query/Body/Header/Path）、响应模型类型，以及对应的 Pydantic 请求/响应模型。
 
 **为何优先**: 这是框架的生产力工具，将手动编写接口定义的工作自动化，降低接入成本。
 
-**独立测试**: 准备一个包含多个端点的 OpenAPI YAML 文件，运行 `stoma make` 命令，验证生成的代码结构正确、可导入、类型注解完整。
+**独立测试**: 准备一个包含多个端点的 OpenAPI YAML 文件，运行生成工具，验证生成的接口类符合用户故事 1 的格式、可正确导入、类型注解完整。
 
 **验收场景**:
 
-1. Given 用户提供 OpenAPI YAML 文件，When 运行 `stoma make --spec openapi.yaml --out src/api --feature users`，Then 生成 `src/api/users/router.py` 和 `src/api/users/models.py`。
-2. Given OpenAPI 定义了 GET /users 接口，When 查看生成的 `router.py`，Then 包含 `@router.get(path="/users", operation_id="list_users")` 装饰的接口类。
-3. Given OpenAPI 定义了请求参数（query、path、header、body），When 查看生成的接口类构造函数，Then 参数类型注解、默认值、Query/Body/Header/Path 标记正确。
-4. Given OpenAPI 定义了响应 schema，When 查看生成的 `models.py`，Then 包含对应的 Pydantic 响应模型类，字段类型与 OpenAPI 定义一致。
+1. Given 用户提供 OpenAPI YAML 文件，When 运行生成工具，Then 生成的接口类结构符合用户故事 1 的伪代码格式（继承 APIRoute、使用 @router 装饰器、包含正确的参数定义）。
+2. Given OpenAPI 定义了 GET /users 接口，When 查看生成的接口类，Then 包含 `@router.get(path="/users", operation_id="list_users")` 装饰的接口类定义。
+3. Given OpenAPI 定义了请求参数（query、path、header、body），When 查看生成的接口类，Then 参数类型注解、默认值、Query/Body/Header/Path 标记正确。
+4. Given OpenAPI 定义了响应 schema，When 查看生成的代码，Then 包含对应的 Pydantic 响应模型类，字段类型与 OpenAPI 定义一致。
 
 
 ## 需求（必填）
@@ -221,9 +221,9 @@ print(meta.operation_id)   # "list_users"
 - **FR-003**: 框架必须基于 Pydantic 对请求构造与响应解析进行类型校验与序列化/反序列化。
 - **FR-004**: 框架设计当前版本不强制依赖 FastAPI，采用"受其启发"的声明风格与注解设计，命名策略采用常见动词注解与参数标识：支持 `@get`, `@post`, `@put`, `@patch`, `@delete` 以及参数来源标记 `Query`, `Body`, `Header`, `Path`；后续版本可根据需要选择性集成 FastAPI 的部分函数以增强功能。
 - **FR-005**: 框架当前版本考虑使用 Playwright 作为接口请求的客户端，可根据实际情况调整为其他 HTTP 客户端库。
-- **FR-006**: 框架必须提供 CLI 工具,从 OpenAPI 规范文件预先生成 Python 请求/响应模型与端点定义代码,测试运行阶段仅加载生成代码而不再解析 OpenAPI 文件。
-- **FR-007**: 生成产物的目录结构必须按 feature 维度归档,每个功能一个包,至少包含 `router.py`(汇总该功能所有接口) 与 `models.py`(该功能所有接口相关模型);允许在包内扩展如 `schemas.py`, `utils.py` 等,整体参考 fastapi-best-practices 的组织方式,以提升可维护性与可发现性。
-- **FR-008**: 提供命令行入口 `stoma make`,最小必需参数包括 `--spec <openapi.yaml>`、`--out <dir>`、`--feature <name>`; 其中 `--feature` 用于将同一业务域的接口与模型归档到同一包(例如 `users/`),命令执行后在输出目录按 `feature` 生成包含 `router.py` 与 `models.py` 的包结构。
+- **FR-006**: 框架应提供代码生成工具，从 OpenAPI 规范文件生成符合用户故事 1 定义格式的 Python 接口类代码、Pydantic 请求/响应模型，支持测试阶段直接加载生成代码。
+- **FR-007**: 生成的接口类、请求模型、响应模型应能正确导入使用；具体的目录结构组织方式（如 router.py、models.py 的划分）可在后续版本根据实际需求设计。
+- **FR-008**: 提供代码生成的入口（具体命令名称、参数形式在后续实现时确定），至少支持指定输入的 OpenAPI 文件和输出目录。
 
 ### 关键实体
 
