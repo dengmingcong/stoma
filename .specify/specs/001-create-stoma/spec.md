@@ -18,7 +18,7 @@
 **验收场景**:
 
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path 和 operation_id，Then IDE 提供参数补全与类型检查。
-2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例（`await endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
+2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例（`endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
 3. Given 接口类继承 BaseModel 并使用 Query/Body/Header/Path 标记，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码。
 4. Given 生成的接口类使用路由元数据隔离（`_route_meta`），When 用户字段名为 method、path、operation_id 等，Then 不产生命名冲突，框架正常工作。
 
@@ -61,7 +61,7 @@ class APIRoute[T](BaseModel):
     """
     _route_meta: ClassVar[RouteMeta]
     
-    async def __call__(self) -> T:
+    def __call__(self) -> T:
         """
         通用 __call__ 方法（由框架基类实现）：
         1. 从实例字段自动收集请求参数（query/path/header/body）
@@ -69,6 +69,8 @@ class APIRoute[T](BaseModel):
         3. 将响应 JSON 自动解析为泛型类型 T 的实例
         
         详细实现将在用户故事 2 中完成。
+        
+        注意：当前版本为同步实现，异步支持将在后续版本添加。
         """
         pass
 
@@ -161,18 +163,18 @@ from users.models import UserCreateRequest, UserData
 
 # 1. 列出用户（使用默认参数）
 list_endpoint = GetUsers(token="Bearer xxx")  # IDE 完美补全所有字段
-users = await list_endpoint()  # 类型推断: list[UserData]
+users = list_endpoint()  # 类型推断: list[UserData]
 
 # 2. 创建用户
 create_endpoint = CreateUser(
     body=UserCreateRequest(name="Alice", email="alice@example.com"),
     idempotency_key="unique-key-123"
 )
-new_user = await create_endpoint()  # 类型推断: UserData
+new_user = create_endpoint()  # 类型推断: UserData
 
 # 3. 获取特定用户
 get_endpoint = GetUserById(user_id=1, include_profile=True)
-user_data = await get_endpoint()  # 类型推断: UserData
+user_data = get_endpoint()  # 类型推断: UserData
 
 # 4. 访问路由元数据（框架内部使用）
 meta = GetUsers.route_meta()
@@ -191,7 +193,7 @@ print(meta.operation_id)   # "list_users"
 
 **验收场景**:
 
-1. Given 接口类定义了 GET 请求，When 实例化并调用 `await endpoint()`，Then Playwright 发送 HTTP GET 请求到正确的 URL（包含 query 参数、headers）。
+1. Given 接口类定义了 GET 请求，When 实例化并调用 `endpoint()`，Then Playwright 发送 HTTP GET 请求到正确的 URL（包含 query 参数、headers）。
 2. Given 接口类定义了 POST 请求，When 实例化并传入 body，Then Playwright 发送 HTTP POST 请求，body 被正确序列化为 JSON。
 3. Given 服务器返回 JSON 响应，When 调用接口，Then 响应自动解析为 Pydantic 响应模型实例，类型校验通过。
 4. Given 服务器返回的 JSON 与响应模型不匹配（缺少字段或类型错误），When 调用接口，Then 抛出 Pydantic 校验异常并提供清晰的错误信息。
