@@ -1,0 +1,56 @@
+openapi: 3.1.0
+info:
+  title: Stoma Codegen CLI (modeled as service)
+  version: 0.1.0
+  description: |
+    虽然实际为本地 CLI，但以 OpenAPI 形式描述输入/输出契约，便于参数校验与文档化。
+paths:
+  /cli/stoma/make:
+    post:
+      operationId: stoma_make
+      summary: 将 OpenAPI 规范生成 Stoma 接口与模型代码
+      description: 接收 OpenAPI 规范路径、输出目录与 feature 名称，生成 FastAPI 风格分层的 Python 代码。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [spec, out, feature]
+              properties:
+                spec:
+                  type: string
+                  description: OpenAPI 文件路径（yaml/json）。
+                out:
+                  type: string
+                  description: 生成代码输出目录。
+                feature:
+                  type: string
+                  description: 生成代码所在的 feature 包名。
+                clean:
+                  type: boolean
+                  default: false
+                  description: 是否清理输出目录后再生成。
+      responses:
+        "200":
+          description: 生成成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    items:
+                      type: string
+                    description: 已生成文件的相对路径列表。
+        "400":
+          description: 输入无效（OpenAPI 校验失败或参数缺失）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: 错误信息。
