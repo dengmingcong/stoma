@@ -50,9 +50,8 @@ specs/001-create-stoma/
 .
 ├── src/
 │   ├── __init__.py
-│   ├── routing.py          # 仿 FastAPI 的装饰器与路由元数据（APIRouter、decorators、RouteMeta）
+│   ├── routing.py          # 仿 FastAPI 的装饰器、路由元数据与 APIRoute 基类（APIRouter、decorators、RouteMeta、APIRoute）
 │   ├── params.py           # Query/Path/Header/Body 标记与校验辅助
-│   ├── models.py           # APIRoute 基类、基础模型、公用类型
 │   ├── client.py           # Playwright HTTP 包装与请求构造
 │   ├── cli.py              # stoma make 命令入口与参数解析（Typer）
 │   └── codegen/            # OpenAPI 解析、模板渲染、文件生成
@@ -66,7 +65,7 @@ specs/001-create-stoma/
     └── contract/           # OpenAPI 输入与生成结果比对
 ```
 
-**Structure Decision**: 源码直接置于 `src` 根部，遵循 FastAPI 源码的模块化文件布局（routing.py/params.py/models.py 等为单文件），仅在代码生成需要时使用 `codegen/` 子目录，避免新增 `src/stoma` 之类的多层包结构；测试继续按单元/集成/契约划分。
+**Structure Decision**: 源码直接置于 `src` 根部，遵循 FastAPI 源码的模块化文件布局（routing.py/params.py 等为单文件），仅在代码生成需要时使用 `codegen/` 子目录，避免新增 `src/stoma` 之类的多层包结构；APIRoute 基类合并到 routing.py 以保持核心路由逻辑集中；测试继续按单元/集成/契约划分。
 
 ## Complexity Tracking
 
