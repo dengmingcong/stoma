@@ -3,7 +3,7 @@
 ## 核心实体
 
 ### RouteMeta
-- 字段：`method: str`、`path: str`、`operation_id: str`、`tags: list[str] | None`、`summary: str | None`。
+- 字段：`method: str`、`path: str`。
 - 关系：`APIRoute._route_meta` 为 ClassVar，生成时由装饰器注入。
 - 规则：不可变（Pydantic `ConfigDict(frozen=True)`）；与用户字段命名隔离。
 
@@ -25,7 +25,7 @@
 - 规则：APIRoute 泛型参数引用此模型，`__call__` 将 JSON 解析并校验。
 
 ### APIRouter（装饰器命名空间）
-- 方法：`get/post/put/patch/delete(path, operation_id)` → 返回类装饰器。
+- 方法：`get/post/put/patch/delete(path)` → 返回类装饰器。
 - 规则：装饰器需验证被装饰类继承 APIRoute，并写入 `_route_meta`。
 
 ### CLI 命令

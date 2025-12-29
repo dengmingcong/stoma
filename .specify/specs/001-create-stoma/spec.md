@@ -17,10 +17,10 @@
 
 **验收场景**:
 
-1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path 和 operation_id，Then IDE 提供参数补全与类型检查。
+1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，Then IDE 提供参数补全与类型检查。
 2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例（`endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
 3. Given 接口类继承 BaseModel 并使用 Query/Body/Header/Path 标记，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码。
-4. Given 生成的接口类使用路由元数据隔离（`_route_meta`），When 用户字段名为 method、path、operation_id 等，Then 不产生命名冲突，框架正常工作。
+4. Given 生成的接口类使用路由元数据隔离（`_route_meta`），When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 
 **伪代码示例**（接口定义格式）：
 
@@ -36,9 +36,6 @@ class RouteMeta(BaseModel):
     
     method: str
     path: str
-    operation_id: str
-    tags: list[str] | None = None
-    summary: str | None = None
 
 
 # Query、Header、Path、Body 将由代码生成器导入，框架此处仅声明类型
@@ -81,7 +78,6 @@ def api_route_decorator[
     *,
     method: Literal["GET","POST","PUT","PATCH","DELETE"],
     path: str,
-    operation_id: str,
 ) -> Callable[[type[T]], type[T]]:
     """
     类装饰器：在 class 声明处传入元数据。被装饰的类必须继承自 APIRoute。
@@ -90,8 +86,7 @@ def api_route_decorator[
     def update_api_route(cls: type[T]) -> type[T]:
         cls._route_meta = RouteMeta(
             method=method,
-            path=path,
-            operation_id=operation_id
+            path=path
         )
         return cls
     return update_api_route
@@ -99,20 +94,20 @@ def api_route_decorator[
 
 # 便捷路由命名空间：与 FastAPI 类似的入口 router.get/router.post 等
 class APIRouter:
-    def get[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="GET", path=path, operation_id=operation_id)
+    def get[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="GET", path=path)
 
-    def post[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="POST", path=path, operation_id=operation_id)
+    def post[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="POST", path=path)
 
-    def put[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="PUT", path=path, operation_id=operation_id)
+    def put[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="PUT", path=path)
 
-    def patch[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="PATCH", path=path, operation_id=operation_id)
+    def patch[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="PATCH", path=path)
 
-    def delete[T: APIRoute](self, *, path: str, operation_id: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="DELETE", path=path, operation_id=operation_id)
+    def delete[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="DELETE", path=path)
 
 router = APIRouter()
 
@@ -129,26 +124,26 @@ class UserCreateRequest(BaseModel):
     email: str
 
 # 生成的接口类：无需 __init__，继承 BaseModel 自动生成
-@router.get(path="/users", operation_id="list_users")
+@router.get(path="/users")
 class GetUsers(APIRoute[list[UserData]]):
-    """GET /users - 列出用户（响应类型：list[UserData]）"""
+    """获取用户列表 - 响应类型：list[UserData]。"""
     
     limit: Annotated[int, Query(default=20, ge=1, le=100)]
     offset: Annotated[int, Query(default=0, ge=0)]
     token: Annotated[str, Header(alias="Authorization")]
 
 
-@router.post(path="/users", operation_id="create_user")
+@router.post(path="/users")
 class CreateUser(APIRoute[UserData]):
-    """POST /users - 创建用户（响应类型：UserData）"""
+    """创建用户 - 响应类型：UserData。"""
     
     body: Annotated[UserCreateRequest, Body(...)]
     idempotency_key: Annotated[str | None, Header(default=None, alias="Idempotency-Key")]
 
 
-@router.get(path="/users/{user_id}", operation_id="get_user_by_id")
+@router.get(path="/users/{user_id}")
 class GetUserById(APIRoute[UserData]):
-    """GET /users/{user_id} - 获取特定用户（响应类型：UserData）"""
+    """获取特定用户 - 响应类型：UserData。"""
     
     user_id: Annotated[int, Path(...)]
     include_profile: Annotated[bool, Query(default=False)]
@@ -180,7 +175,6 @@ user_data = get_endpoint()  # 类型推断: UserData
 meta = GetUsers.route_meta()
 print(meta.method)         # "GET"
 print(meta.path)           # "/users"
-print(meta.operation_id)   # "list_users"
 ```
 
 ### 用户故事 2 - 使用 Playwright 调用接口（优先级：P1）
@@ -209,7 +203,7 @@ print(meta.operation_id)   # "list_users"
 **验收场景**:
 
 1. Given 用户提供 OpenAPI YAML 文件，When 运行生成工具，Then 生成的接口类结构符合用户故事 1 的伪代码格式（继承 APIRoute、使用 @router 装饰器、包含正确的参数定义）。
-2. Given OpenAPI 定义了 GET /users 接口，When 查看生成的接口类，Then 包含 `@router.get(path="/users", operation_id="list_users")` 装饰的接口类定义。
+2. Given OpenAPI 定义了 GET /users 接口，When 查看生成的接口类，Then 包含 `@router.get(path="/users")` 装饰的接口类定义。
 3. Given OpenAPI 定义了请求参数（query、path、header、body），When 查看生成的接口类，Then 参数类型注解、默认值、Query/Body/Header/Path 标记正确。
 4. Given OpenAPI 定义了响应 schema，When 查看生成的代码，Then 包含对应的 Pydantic 响应模型类，字段类型与 OpenAPI 定义一致。
 
@@ -263,11 +257,11 @@ print(meta.operation_id)   # "list_users"
 ### Session 2025-12-16
 
 - Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 __call__() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `APIRoute[T]`，通过泛型参数明确响应类型（如 `APIRoute[list[UserData]]`），既保证 IDE/mypy 可正确推断 `__call__()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 __call__() 方法，完全继承基类的通用实现。
-- Q: 元数据在子类定义时需要 IDE 自动补全与类型提示，如何实现？ → A: 采用类型签名明确的类装饰器 `decorator(method, path, operation_id)`（APIRouter 内部通过 `router.get/post/...` 调用），在类声明处传入元数据，IDE 可提供完整参数提示与校验；装饰器仅注入到类属性，内部更新逻辑封装在 `update_api_route`，保持代码简洁并符合“预生成静态代码”的设计。
-- Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `APIRouter` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `decorator` 入口以注入元数据；示例：`@router.get(path="/users", operation_id="list_users")`，内层装饰器函数命名为 `update_api_route` 以贴近 FastAPI 源码风格。
+- Q: 元数据在子类定义时需要 IDE 自动补全与类型提示，如何实现？ → A: 采用类型签名明确的类装饰器 `decorator(method, path)`（APIRouter 内部通过 `router.get/post/...` 调用），在类声明处传入元数据，IDE 可提供完整参数提示与校验；装饰器仅注入到类属性，内部更新逻辑封装在 `update_api_route`，保持代码简洁并符合“预生成静态代码”的设计。
+- Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `APIRouter` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `decorator` 入口以注入元数据；示例：`@router.get(path="/users")`，内层装饰器函数命名为 `update_api_route` 以贴近 FastAPI 源码风格。
 ### Session 2025-12-19
 
-- Q: 接口类构造函数有重复代码（`self.limit = limit` 等），如何优化？并且避免框架属性名与用户字段冲突？ → A: 采用方案 2（元数据字典）。接口类继承 Pydantic BaseModel，自动生成 `__init__` 无需样板代码；所有路由元数据存储在单一的不可变 `RouteMeta` 对象，以 `_route_meta` ClassVar 存储，完全避免与用户字段冲突（用户可以安全地定义 method、path、operation_id 等任意名称的字段）；提供 `route_meta()` 类方法供框架内部访问元数据。优势：零样板代码、最佳 IDE 支持、命名空间安全隔离、代码生成更清晰。
+- Q: 接口类构造函数有重复代码（`self.limit = limit` 等），如何优化？并且避免框架属性名与用户字段冲突？ → A: 采用方案 2（元数据字典）。接口类继承 Pydantic BaseModel，自动生成 `__init__` 无需样板代码；所有路由元数据存储在单一的不可变 `RouteMeta` 对象，以 `_route_meta` ClassVar 存储，完全避免与用户字段冲突（用户可以安全地定义 method、path 等任意名称的字段）；提供 `route_meta()` 类方法供框架内部访问元数据。优势：零样板代码、最佳 IDE 支持、命名空间安全隔离、代码生成更清晰。
 
 ### Session 2025-12-24
 
