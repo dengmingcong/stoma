@@ -265,4 +265,4 @@ print(meta.path)           # "/users"
 
 ### Session 2025-12-24
 
-- Q: APIRoute 基类的泛型语法选择? → A: 采用 Python 3.12 PEP 695 新语法 `class APIRoute[T]: ...` 替代传统 `class APIRoute(Generic[T]): ...`。项目 Python 最低版本已设定为 3.13，支持新语法；新语法更简洁清晰，无需从 typing 导入 Generic，改进了类型检查与 IDE 支持；代码生成产物中的接口类继承方式相应更新为 `class GetUsers(APIRoute[list[UserData]]): ...`，保持代码现代化与一致性。
+- Q: APIRoute 基类的泛型语法选择? → A: 采用 Python 3.12 PEP 695 新语法 `class APIRoute[T]: ...` 替代传统 `class APIRoute(Generic[T]): ...`。项目 Python 最低版本已设定为 3.12，支持新语法；新语法更简洁清晰，无需从 typing 导入 Generic，改进了类型检查与 IDE 支持；代码生成产物中的接口类继承方式相应更新为 `class GetUsers(APIRoute[list[UserData]]): ...`，保持代码现代化与一致性。
