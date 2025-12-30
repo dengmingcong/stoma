@@ -24,10 +24,10 @@
 
 **Purpose**: 项目初始化和基础结构
 
-- [ ] T001 根据 plan.md 创建项目目录结构（src/, tests/unit, tests/integration, tests/contract）
-- [ ] T002 初始化 Python 3.12 项目并配置 pyproject.toml（添加 Pydantic v2, Playwright, Typer, PyYAML, jsonschema 依赖）
-- [ ] T003 [P] 配置代码格式化、类型检查和 linting 工具（ruff, mypy, flake8）
-- [ ] T004 [P] 配置 pre-commit hooks（集成 ruff, mypy, flake8）
+- [X] T001 根据 plan.md 创建项目目录结构（src/, tests/unit, tests/integration, tests/contract）
+- [X] T002 初始化 Python 3.12 项目并配置 pyproject.toml（添加 Pydantic v2, Playwright, Typer, PyYAML, jsonschema 依赖）
+- [X] T003 [P] 配置代码格式化、类型检查和 linting 工具（ruff, mypy, flake8）
+- [X] T004 [P] 配置 pre-commit hooks（集成 ruff, mypy, flake8, commitizen）
 - [ ] T005 [P] 安装 Playwright 并初始化浏览器（chromium）
 
 ---
