@@ -38,9 +38,14 @@
 
 **⚠️ CRITICAL**: 此阶段完成前无法开始任何用户故事工作
 
-- [ ] T006 创建 src/__init__.py 作为包入口
-- [ ] T007 [P] 实现 RouteMeta 类（不可变，包含 method 和 path 字段）in src/routing.py
-- [ ] T008 [P] 实现参数标记类型（Query, Path, Header, Body）in src/params.py
+**实现参考**: 所有实现必须严格遵循 [spec.md](spec.md) 中的伪代码示例，特别是：
+- RouteMeta 必须继承 `pydantic.BaseModel` 并使用 `ConfigDict(frozen=True)` 实现不可变
+- APIRoute 必须继承 `BaseModel` 并使用 `ClassVar[RouteMeta]` 存储路由元数据
+- 参数标记类型（Query/Path/Header/Body）的具体实现细节见 spec.md
+
+- [X] T006 创建 src/__init__.py 作为包入口
+- [X] T007 [P] 实现 RouteMeta 类（继承 BaseModel，frozen=True，包含 method 和 path 字段）in src/routing.py，参考 spec.md 用户故事 1 的伪代码
+- [ ] T008 [P] 实现参数标记类型（Query, Path, Header, Body）in src/params.py，参考 spec.md 用户故事 1 的伪代码
 
 **Checkpoint**: 基础设施就绪 - 用户故事可以并行开始实现
 
@@ -51,6 +56,11 @@
 **Goal**: 提供清晰、类型安全的接口定义格式，支持装饰器注入元数据、泛型响应类型、零样板代码
 
 **Independent Test**: 手动编写示例接口类，验证类型注解、IDE 提示、装饰器语法的可用性
+
+**实现参考**: 严格遵循 [spec.md](spec.md) 用户故事 1 的伪代码示例，特别关注：
+- APIRoute[T] 基类设计：继承 BaseModel，使用 ClassVar[RouteMeta]，泛型响应类型
+- api_route_decorator 装饰器签名和实现逻辑
+- APIRouter 类的方法签名（get/post/put/patch/delete）
 
 ### Implementation for User Story 1
 
@@ -69,6 +79,11 @@
 **Goal**: 实现 APIRoute.__call__ 方法，使用 Playwright 自动发送 HTTP 请求并解析响应
 
 **Independent Test**: 启动测试服务器，手动编写接口类并调用，验证请求发送和响应解析
+
+**实现参考**: 参考 [spec.md](spec.md) 用户故事 2 的说明和示例，关注：
+- APIRoute.__call__ 方法的实现逻辑（参数收集、请求发送、响应解析）
+- Playwright HTTP 客户端的使用模式
+- 响应数据到 Pydantic 模型的转换流程
 
 ### Implementation for User Story 2
 
@@ -90,6 +105,12 @@
 **Goal**: 从 OpenAPI 文件自动生成符合 User Story 1 格式的接口类和 Pydantic 模型
 
 **Independent Test**: 准备 OpenAPI YAML，运行生成工具，验证生成代码符合格式且可导入
+
+**实现参考**: 参考 [spec.md](spec.md) 用户故事 3 的说明，关注：
+- 生成的代码必须完全符合 User Story 1 定义的接口格式
+- OpenAPI 各字段到 Python 类型的映射规则
+- CLI 命令的参数设计（--spec, --out, --feature）
+- 生成文件的目录结构和命名约定
 
 ### Implementation for User Story 3
 
