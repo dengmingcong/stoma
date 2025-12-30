@@ -28,7 +28,7 @@
 - [X] T002 初始化 Python 3.12 项目并配置 pyproject.toml（添加 Pydantic v2, Playwright, Typer, PyYAML, jsonschema 依赖）
 - [X] T003 [P] 配置代码格式化、类型检查和 linting 工具（ruff, mypy, flake8）
 - [X] T004 [P] 配置 pre-commit hooks（集成 ruff, mypy, flake8, commitizen）
-- [ ] T005 [P] 安装 Playwright 并初始化浏览器（chromium）
+- [X] T005 [P] 安装 Playwright 并初始化浏览器（chromium）
 
 ---
 
