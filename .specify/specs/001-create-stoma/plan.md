@@ -12,6 +12,7 @@
 ## Technical Context
 
 **Language/Version**: Python 3.12  
+**Package Manager**: uv（包管理与依赖锁定）  
 **Primary Dependencies**: Pydantic v2（类型校验/序列化）、Playwright（HTTP 客户端）、typer/argparse（CLI 外壳，最终选型在实现阶段可微调）、PyYAML + jsonschema（OpenAPI 解析/校验）  
 **Storage**: N/A（仅代码生成与 HTTP 调用，无持久化）  
 **Testing**: pytest（含示例/集成用例，验证生成代码与 Playwright 调用）  
