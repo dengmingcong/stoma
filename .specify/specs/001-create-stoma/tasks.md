@@ -39,13 +39,14 @@
 **⚠️ CRITICAL**: 此阶段完成前无法开始任何用户故事工作
 
 **实现参考**: 所有实现必须严格遵循 [spec.md](spec.md) 中的伪代码示例，特别是：
-- RouteMeta 必须继承 `pydantic.BaseModel` 并使用 `ConfigDict(frozen=True)` 实现不可变
+- RouteMeta 必须继承 `pydantic.BaseModel` 并使用 `ConfigDict(frozen=True)` 实现不可变，包含 method、path、servers 字段
 - APIRoute 必须继承 `BaseModel` 并使用 `ClassVar[RouteMeta]` 存储路由元数据
-- 参数标记类型（Query/Path/Header/Body）的具体实现细节见 spec.md
+- 参数标记类型（Query/Path/Header/Body）的实现必须参考 FastAPI 的 `fastapi.params` 模块，包括参数验证逻辑、与 Pydantic Field 的集成方式、参数元数据的存储和传递方式、默认值/别名/验证器的处理逻辑
 
 - [X] T006 创建 src/__init__.py 作为包入口
-- [X] T007 [P] 实现 RouteMeta 类（继承 BaseModel，frozen=True，包含 method 和 path 字段）in src/routing.py，参考 spec.md 用户故事 1 的伪代码
-- [ ] T008 [P] 实现参数标记类型（Query, Path, Header, Body）in src/params.py，参考 spec.md 用户故事 1 的伪代码
+- [X] T007 [P] 实现 RouteMeta 类（继承 BaseModel，frozen=True，包含 method、path 和 servers 字段）in src/routing.py，参考 spec.md 用户故事 1 的伪代码
+- [ ] T008 [P] 实现参数标记类型（Query, Path, Header, Body）in src/params.py，必须参考 FastAPI 的 `fastapi.params` 模块实现，确保参数验证逻辑、Pydantic Field 集成、元数据存储/传递、默认值/别名/验证器处理与 FastAPI 行为一致
+- [ ] T008a [P] 实现自定义异常类（ValidationError、HTTPError、ParseError 等）in src/exceptions.py，包含详细的上下文信息（请求路径、参数、错误原因等）
 
 **Checkpoint**: 基础设施就绪 - 用户故事可以并行开始实现
 
@@ -53,22 +54,23 @@
 
 ## Phase 3: User Story 1 - 确定类型化接口定义格式（Priority: P0）🎯 MVP
 
-**Goal**: 提供清晰、类型安全的接口定义格式，支持装饰器注入元数据、泛型响应类型、零样板代码
+**Goal**: 提供清晰、类型安全的接口定义格式，支持装饰器注入元数据、泛型响应类型、零样板代码、servers 配置机制
 
 **Independent Test**: 手动编写示例接口类，验证类型注解、IDE 提示、装饰器语法的可用性
 
 **实现参考**: 严格遵循 [spec.md](spec.md) 用户故事 1 的伪代码示例，特别关注：
 - APIRoute[T] 基类设计：继承 BaseModel，使用 ClassVar[RouteMeta]，泛型响应类型
-- api_route_decorator 装饰器签名和实现逻辑
-- APIRouter 类的方法签名（get/post/put/patch/delete）
+- api_route_decorator 装饰器签名和实现逻辑（支持 servers 参数）
+- APIRouter 类的方法签名（get/post/put/patch/delete）和 __init__ 支持全局 servers 配置
 
 ### Implementation for User Story 1
 
 - [ ] T009 [P] [US1] 实现 APIRoute[T] 基类（继承 Pydantic BaseModel，包含 _route_meta ClassVar）in src/routing.py
-- [ ] T010 [US1] 实现 api_route_decorator 装饰器函数（接收 method 和 path，返回类装饰器）in src/routing.py
-- [ ] T011 [US1] 实现 APIRouter 类（提供 get/post/put/patch/delete 方法）in src/routing.py
+- [ ] T010 [US1] 实现 api_route_decorator 装饰器函数（接收 method、path 和 servers 参数，返回类装饰器）in src/routing.py
+- [ ] T011 [US1] 实现 APIRouter 类（__init__ 接收全局 servers，提供 get/post/put/patch/delete 方法且支持接口级 servers 覆盖）in src/routing.py
 - [ ] T012 [US1] 验证装饰器语法与 IDE 类型提示（手动创建示例接口类测试）
 - [ ] T013 [US1] 验证命名空间隔离（测试用户字段名为 method、path 时无冲突）
+- [ ] T013a [US1] 验证 servers 配置机制（测试全局 servers 和接口级 servers 的优先级处理）
 
 **Checkpoint**: User Story 1 完成，接口定义格式已确定并可手动编写接口类
 
@@ -76,25 +78,30 @@
 
 ## Phase 4: User Story 2 - 使用 Playwright 调用接口（Priority: P1）
 
-**Goal**: 实现 APIRoute.__call__ 方法，使用 Playwright 自动发送 HTTP 请求并解析响应
+**Goal**: 实现 APIRoute.__call__ 方法，使用 Playwright 自动发送 HTTP 请求并解析响应（同步实现），支持 servers 配置和详织异常处理
 
 **Independent Test**: 启动测试服务器，手动编写接口类并调用，验证请求发送和响应解析
 
 **实现参考**: 参考 [spec.md](spec.md) 用户故事 2 的说明和示例，关注：
 - APIRoute.__call__ 方法的实现逻辑（参数收集、请求发送、响应解析）
-- Playwright HTTP 客户端的使用模式
+- Playwright HTTP 客户端的使用模式（同步实现）
 - 响应数据到 Pydantic 模型的转换流程
+- servers 配置的解析与优先级处理（接口级 > 全局级）
+- 错误处理：抛出 ValidationError、HTTPError、ParseError 等自定义异常
 
 ### Implementation for User Story 2
 
-- [ ] T014 [P] [US2] 实现 Playwright HTTP 客户端包装类（管理浏览器上下文和请求会话）in src/client.py
+- [ ] T014 [P] [US2] 实现 Playwright HTTP 客户端包装类（管理浏览器上下文和请求会话，同步实现）in src/client.py
 - [ ] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取 query/path/header/body）in src/client.py
-- [ ] T016 [US2] 实现 URL 构造逻辑（路径参数替换、查询参数拼接）in src/client.py
-- [ ] T017 [US2] 实现 HTTP 请求发送逻辑（GET/POST/PUT/PATCH/DELETE）in src/client.py
+- [ ] T015a [US2] 实现 servers 配置解析逻辑（从 RouteMeta 和 APIRouter 提取 servers，接口级优先级更高）in src/client.py
+- [ ] T016 [US2] 实现 URL 构造逻辑（基于 servers 配置 + 路径参数替换 + 查询参数拼接）in src/client.py
+- [ ] T017 [US2] 实现 HTTP 请求发送逻辑（GET/POST/PUT/PATCH/DELETE，同步调用 Playwright）in src/client.py
+- [ ] T017a [US2] 实现 HTTP 错误处理（连接失败、超时、HTTP 状态码错误时抛出 HTTPError）in src/client.py
 - [ ] T018 [US2] 实现响应 JSON 解析与 Pydantic 模型验证 in src/client.py
-- [ ] T019 [US2] 实现 APIRoute.__call__ 方法（调用 client 发送请求）in src/routing.py
-- [ ] T020 [US2] 添加 Pydantic 验证异常处理（响应数据不匹配时抛出清晰错误）in src/routing.py
-- [ ] T021 [US2] 手动测试：启动 FastAPI 测试服务器，编写接口类并调用验证
+- [ ] T018a [US2] 实现响应解析错误处理（JSON 解析失败抛出 ParseError，Pydantic 验证失败抛出 ValidationError）in src/client.py
+- [ ] T019 [US2] 实现 APIRoute.__call__ 方法（调用 client 发送请求，同步实现）in src/routing.py
+- [ ] T020 [US2] 集成异常处理到 __call__ 方法（确保所有错误都抛出清晰的自定义异常）in src/routing.py
+- [ ] T021 [US2] 手动测试：启动 FastAPI 测试服务器，编写接口类并调用验证（包括 servers 配置和异常处理）
 
 **Checkpoint**: User Story 2 完成，接口类可以真实调用 HTTP 服务并获得类型化响应
 
@@ -102,7 +109,7 @@
 
 ## Phase 5: User Story 3 - 从 OpenAPI 生成接口定义（Priority: P2）
 
-**Goal**: 从 OpenAPI 文件自动生成符合 User Story 1 格式的接口类和 Pydantic 模型
+**Goal**: 从 OpenAPI 文件自动生成符合 User Story 1 格式的接口类和 Pydantic 模型，支持严格模式和 servers 配置生成
 
 **Independent Test**: 准备 OpenAPI YAML，运行生成工具，验证生成代码符合格式且可导入
 
@@ -111,21 +118,26 @@
 - OpenAPI 各字段到 Python 类型的映射规则
 - CLI 命令的参数设计（--spec, --out, --feature）
 - 生成文件的目录结构和命名约定
+- 严格模式：遇到不支持的 OpenAPI 特性立即报错并停止生成
+- servers 配置生成：从 OpenAPI servers 字段提取并生成到 APIRouter 初始化和接口装饰器
 
 ### Implementation for User Story 3
 
 - [ ] T022 [P] [US3] 实现 OpenAPI 文件读取与解析（支持 yaml/json）in src/codegen/parser.py
 - [ ] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/codegen/parser.py
-- [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas）in src/codegen/parser.py
+- [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性立即抛出详细错误并停止生成）in src/codegen/parser.py
+- [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas, servers）in src/codegen/parser.py
 - [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body 标记）in src/codegen/parser.py
+- [ ] T025a [US3] 实现 servers 配置解析逻辑（从 OpenAPI 全局 servers 和接口级 servers 提取）in src/codegen/parser.py
 - [ ] T026 [P] [US3] 创建 Pydantic 模型生成模板 in src/codegen/templates/models.py.jinja2
-- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器和参数注解）in src/codegen/templates/routing.py.jinja2
+- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解、servers 配置）in src/codegen/templates/routing.py.jinja2
 - [ ] T028 [US3] 实现模板渲染器（Jinja2 渲染 routing 和 models）in src/codegen/renderer.py
 - [ ] T029 [US3] 实现文件输出逻辑（按 feature 组织目录：routing.py, models.py）in src/codegen/renderer.py
 - [ ] T030 [P] [US3] 实现 CLI 命令入口（stoma make --spec --out --feature）in src/cli.py
 - [ ] T031 [US3] 添加 CLI 参数解析与校验（使用 Typer）in src/cli.py
 - [ ] T032 [US3] 集成 parser, renderer, 文件输出到 CLI 工作流 in src/cli.py
-- [ ] T033 [US3] 测试：准备示例 OpenAPI yaml，运行 stoma make 验证生成代码
+- [ ] T033 [US3] 测试：准备示例 OpenAPI yaml（包含 servers 配置），运行 stoma make 验证生成代码
+- [ ] T033a [US3] 测试：验证严格模式（使用包含不支持特性的 OpenAPI 文件，验证报错并停止）
 
 **Checkpoint**: User Story 3 完成，可从 OpenAPI 自动生成完整的接口代码
 
@@ -263,14 +275,14 @@ touch src/cli.py && code src/cli.py  # T030
 
 ## Task Count Summary
 
-- **Total Tasks**: 39
+- **Total Tasks**: 46 (原 39，新增 7 个任务）
 - **Phase 1 (Setup)**: 5 tasks
-- **Phase 2 (Foundational)**: 3 tasks
-- **Phase 3 (User Story 1)**: 5 tasks  
-- **Phase 4 (User Story 2)**: 8 tasks
-- **Phase 5 (User Story 3)**: 12 tasks
+- **Phase 2 (Foundational)**: 4 tasks (新增 T008a)
+- **Phase 3 (User Story 1)**: 6 tasks (新增 T013a)
+- **Phase 4 (User Story 2)**: 11 tasks (新增 T015a, T017a, T018a, T020)
+- **Phase 5 (User Story 3)**: 14 tasks (新增 T023a, T025a, T033a)
 - **Phase 6 (Polish)**: 6 tasks
-- **Parallelizable Tasks**: 17 tasks marked with [P]
+- **Parallelizable Tasks**: 20 tasks marked with [P]
 
 ## Independent Test Criteria
 
