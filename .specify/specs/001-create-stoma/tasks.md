@@ -45,7 +45,7 @@
 
 - [X] T006 创建 src/__init__.py 作为包入口
 - [X] T007 [P] 实现 RouteMeta 类（继承 BaseModel，frozen=True，包含 method、path 和 servers 字段）in src/routing.py，参考 spec.md 用户故事 1 的伪代码
-- [ ] T008 [P] 实现参数标记类型（Query, Path, Header, Body）in src/params.py，必须参考 FastAPI 的 `fastapi.params` 模块实现，确保参数验证逻辑、Pydantic Field 集成、元数据存储/传递、默认值/别名/验证器处理与 FastAPI 行为一致
+- [X] T008 [P] 实现参数标记类型（Query, Path, Header, Body）in src/params.py，必须参考 FastAPI 的 `fastapi.params` 模块实现，确保参数验证逻辑、Pydantic Field 集成、元数据存储/传递、默认值/别名/验证器处理与 FastAPI 行为一致
 - [ ] T008a [P] 实现自定义异常类（ValidationError、HTTPError、ParseError 等）in src/exceptions.py，包含详细的上下文信息（请求路径、参数、错误原因等）
 
 **Checkpoint**: 基础设施就绪 - 用户故事可以并行开始实现
