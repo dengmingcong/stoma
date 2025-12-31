@@ -11,15 +11,21 @@
 
 ## Technical Context
 
-**Language/Version**: Python 3.12  
+**Language/Version**: Python 3.12（使用 PEP 695 泛型新语法）  
 **Package Manager**: uv（包管理与依赖锁定）  
-**Primary Dependencies**: Pydantic v2（类型校验/序列化）、Playwright（HTTP 客户端）、typer/argparse（CLI 外壳，最终选型在实现阶段可微调）、PyYAML + jsonschema（OpenAPI 解析/校验）  
+**Primary Dependencies**: Pydantic v2（类型校验/序列化）、Playwright（HTTP 客户端，同步实现）、typer/argparse（CLI 外壳，最终选型在实现阶段可微调）、PyYAML + jsonschema（OpenAPI 解析/校验）  
 **Storage**: N/A（仅代码生成与 HTTP 调用，无持久化）  
 **Testing**: pytest（含示例/集成用例，验证生成代码与 Playwright 调用）  
 **Target Platform**: 本地与 CI（macOS/Linux），纯 Python 环境  
 **Project Type**: CLI + 库（代码生成工具与运行时 SDK）  
 **Performance Goals**: 生成阶段 < 5s 处理中等规模 OpenAPI（~200 endpoints）；运行阶段单次调用开销接近 Playwright 原生，主要关注类型安全而非极致性能  
-**Constraints**: 不引入 FastAPI 运行时依赖；生成产物必须零样板、可直接导入；保持 Pydantic v2 语义；HTTP 客户端可替换但默认 Playwright
+**Constraints**: 
+- 不引入 FastAPI 运行时依赖，但 Query/Body/Header/Path 类的内部实现必须参考 FastAPI 的 `fastapi.params` 模块（包括参数验证逻辑、与 Pydantic Field 的集成方式、参数元数据的存储和传递方式、默认值/别名/验证器的处理逻辑）
+- 生成产物必须零样板、可直接导入；保持 Pydantic v2 语义
+- HTTP 客户端可替换但默认 Playwright，当前版本采用同步实现（异步支持在后续版本添加）
+- 错误处理机制：必须抛出详细的自定义异常类（ValidationError、HTTPError、ParseError 等），包含足够的上下文信息
+- 代码生成采用严格模式：遇到 OpenAPI 规范中包含框架尚未支持的特性时立即报错并停止生成
+- servers 配置：APIRouter 支持全局 servers（类似 OpenAPI servers 机制），单个接口可在 RouteMeta 中指定优先级更高的 servers
 **Scale/Scope**: 面向中小型 API 套件（10-300 endpoints），支持多 feature 包并行维护
 
 ## Constitution Check
@@ -51,19 +57,20 @@ specs/001-create-stoma/
 .
 ├── src/
 │   ├── __init__.py
-│   ├── routing.py          # 仿 FastAPI 的装饰器、路由元数据与 APIRoute 基类（APIRouter、decorators、RouteMeta、APIRoute）
-│   ├── params.py           # Query/Path/Header/Body 标记与校验辅助
-│   ├── client.py           # Playwright HTTP 包装与请求构造
+│   ├── routing.py          # 仿 FastAPI 的装饰器、路由元数据与 APIRoute 基类（APIRouter、decorators、RouteMeta、APIRoute，支持全局 servers 配置）
+│   ├── params.py           # Query/Path/Header/Body 标记与校验辅助（参考 fastapi.params 实现，包括参数验证逻辑、与 Pydantic Field 的集成、元数据存储传递、默认值/别名/验证器处理）
+│   ├── exceptions.py       # 自定义异常类（ValidationError、HTTPError、ParseError 等，包含详细上下文信息）
+│   ├── client.py           # Playwright HTTP 包装与请求构造（同步实现，支持 servers 配置解析与优先级处理）
 │   ├── cli.py              # stoma make 命令入口与参数解析（Typer）
-│   └── codegen/            # OpenAPI 解析、模板渲染、文件生成
+│   └── codegen/            # OpenAPI 解析、模板渲染、文件生成（严格模式：遇到不支持特性立即报错）
 │       ├── __init__.py
 │       ├── parser.py
 │       ├── renderer.py
 │       └── templates/
 └── tests/
-    ├── unit/               # 单元测试：路由元数据、参数标记、模板渲染
-    ├── integration/        # 集成测试：生成产物可导入、基础调用链
-    └── contract/           # OpenAPI 输入与生成结果比对
+    ├── unit/               # 单元测试：路由元数据、参数标记、模板渲染、异常类
+    ├── integration/        # 集成测试：生成产物可导入、基础调用链、servers 配置、错误处理
+    └── contract/           # OpenAPI 输入与生成结果比对、严格模式验证
 ```
 
 **Structure Decision**: 源码直接置于 `src` 根部，遵循 FastAPI 源码的模块化文件布局（routing.py/params.py 等为单文件），仅在代码生成需要时使用 `codegen/` 子目录，避免新增 `src/stoma` 之类的多层包结构；APIRoute 基类合并到 routing.py 以保持核心路由逻辑集中；测试继续按单元/集成/契约划分。
