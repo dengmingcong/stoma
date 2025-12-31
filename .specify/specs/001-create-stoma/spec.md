@@ -36,6 +36,7 @@ class RouteMeta(BaseModel):
     
     method: str
     path: str
+    servers: list[str] | None = None  # 接口级别的服务器列表，优先级高于 APIRouter 的全局 servers
 
 
 # Query、Header、Path、Body 将由代码生成器导入，框架此处仅声明类型
@@ -78,6 +79,7 @@ def api_route_decorator[
     *,
     method: Literal["GET","POST","PUT","PATCH","DELETE"],
     path: str,
+    servers: list[str] | None = None,
 ) -> Callable[[type[T]], type[T]]:
     """
     类装饰器：在 class 声明处传入元数据。被装饰的类必须继承自 APIRoute。
@@ -86,7 +88,8 @@ def api_route_decorator[
     def update_api_route(cls: type[T]) -> type[T]:
         cls._route_meta = RouteMeta(
             method=method,
-            path=path
+            path=path,
+            servers=servers
         )
         return cls
     return update_api_route
@@ -94,22 +97,29 @@ def api_route_decorator[
 
 # 便捷路由命名空间：与 FastAPI 类似的入口 router.get/router.post 等
 class APIRouter:
-    def get[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="GET", path=path)
+    """路由器，支持全局 servers 配置和接口级别的 servers 覆盖。"""
+    
+    def __init__(self, servers: list[str] | None = None):
+        """初始化路由器，可指定全局服务器列表（如 OpenAPI servers）。"""
+        self.servers = servers
+    
+    def get[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="GET", path=path, servers=servers)
 
-    def post[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="POST", path=path)
+    def post[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="POST", path=path, servers=servers)
 
-    def put[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="PUT", path=path)
+    def put[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="PUT", path=path, servers=servers)
 
-    def patch[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="PATCH", path=path)
+    def patch[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="PATCH", path=path, servers=servers)
 
-    def delete[T: APIRoute](self, *, path: str) -> Callable[[type[T]], type[T]]:
-        return api_route_decorator(method="DELETE", path=path)
+    def delete[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+        return api_route_decorator(method="DELETE", path=path, servers=servers)
 
-router = APIRouter()
+# 创建全局路由器实例，可在代码生成时配置默认 servers
+router = APIRouter(servers=["https://api.example.com"])
 
 # ===== 以下是生成的代码 =====
 
@@ -215,15 +225,21 @@ print(meta.path)           # "/users"
 - **FR-001**: 框架必须支持将 OpenAPI Specification 定义的 HTTP 接口直接转换为框架对接口的定义。
 - **FR-002**: 框架必须提供声明式接口定义方式以描述请求与响应。
 - **FR-003**: 框架必须基于 Pydantic 对请求构造与响应解析进行类型校验与序列化/反序列化。
-- **FR-004**: 框架设计当前版本不强制依赖 FastAPI，采用"受其启发"的声明风格与注解设计，命名策略采用常见动词注解与参数标识：支持 `@get`, `@post`, `@put`, `@patch`, `@delete` 以及参数来源标记 `Query`, `Body`, `Header`, `Path`；后续版本可根据需要选择性集成 FastAPI 的部分函数以增强功能。
-- **FR-005**: 框架当前版本考虑使用 Playwright 作为接口请求的客户端，可根据实际情况调整为其他 HTTP 客户端库。
-- **FR-006**: 框架应提供代码生成工具，从 OpenAPI 规范文件生成符合用户故事 1 定义格式的 Python 接口类代码、Pydantic 请求/响应模型，支持测试阶段直接加载生成代码。
+- **FR-004**: 框架设计当前版本不强制依赖 FastAPI，采用"受其启发"的声明风格与注解设计，命名策略采用常见动词注解与参数标识：支持 `@get`, `@post`, `@put`, `@patch`, `@delete` 以及参数来源标记 `Query`, `Body`, `Header`, `Path`；这些参数标记类（Query/Body/Header/Path）的内部实现代码应参考 FastAPI 的实现方式，确保行为一致性和最佳实践；后续版本可根据需要选择性集成 FastAPI 的部分函数以增强功能。
+- **FR-005**: 框架当前版本使用 Playwright 作为接口请求的客户端，采用同步实现方式（异步支持将在后续版本添加）；APIRouter 支持全局 servers 配置（类似 OpenAPI servers 机制），单个接口可在 RouteMeta 中指定优先级更高的 servers 配置，用于指定目标服务器的基础 URL；可根据实际情况调整为其他 HTTP 客户端库。
+- **FR-006**: 框架应提供代码生成工具，从 OpenAPI 规范文件生成符合用户故事 1 定义格式的 Python 接口类代码、Pydantic 请求/响应模型，支持测试阶段直接加载生成代码；代码生成采用严格模式，遇到 OpenAPI 规范中包含框架尚未支持的特性时立即报错并停止生成，要求用户修改规范后重试，确保生成代码的完整性和可用性。
 - **FR-007**: 生成的接口类、请求模型、响应模型应能正确导入使用；具体的目录结构组织方式（如 router.py、models.py 的划分）可在后续版本根据实际需求设计。
 - **FR-008**: 提供代码生成的入口（具体命令名称、参数形式在后续实现时确定），至少支持指定输入的 OpenAPI 文件和输出目录。
 
+### 非功能性需求
+
+- **NFR-001 错误处理**: 框架必须在接口调用过程中对各类错误进行清晰分类并抛出详细的自定义异常类，包括但不限于：参数验证失败（ValidationError）、HTTP 请求失败（HTTPError）、响应解析失败（ParseError）；每个异常应包含足够的上下文信息便于调试和测试断言。
+- **NFR-002 类型安全**: 框架必须充分利用 Python 类型系统，确保 IDE 和 mypy 等工具能提供完整的类型推断、自动补全和类型检查支持。
+- **NFR-003 代码质量**: 生成的代码应遵循 Python 编码规范，具有良好的可读性和可维护性。
+
 ### 关键实体
 
-- **接口定义（APIRoute）**: 名称、方法、路径、请求模型、响应模型。
+- **接口定义（APIRoute）**: 名称、方法、路径、服务器列表（servers）、请求模型、响应模型。
 - **请求模型（Request）**: 字段、必填/可选、默认值、校验规则、示例数据。
 - **响应模型（Response）**: 字段、类型、可选/严格策略、容错策略。
 
@@ -266,3 +282,11 @@ print(meta.path)           # "/users"
 ### Session 2025-12-24
 
 - Q: APIRoute 基类的泛型语法选择? → A: 采用 Python 3.12 PEP 695 新语法 `class APIRoute[T]: ...` 替代传统 `class APIRoute(Generic[T]): ...`。项目 Python 最低版本已设定为 3.12，支持新语法；新语法更简洁清晰，无需从 typing 导入 Generic，改进了类型检查与 IDE 支持；代码生成产物中的接口类继承方式相应更新为 `class GetUsers(APIRoute[list[UserData]]): ...`，保持代码现代化与一致性。
+
+### Session 2025-12-31
+
+- Q: Query/Body/Header/Path 类本身的实现代码应该参考哪个框架或库的实现方式？ → A: 参考 FastAPI 的实现方式
+- Q: 当接口调用过程中发生错误（如参数验证失败、HTTP 请求失败、响应解析失败）时，框架应该如何处理这些错误？ → A: 抛出详细的自定义异常类（ValidationError、HTTPError、ParseError 等）
+- Q: `__call__()` 方法应该使用同步还是异步实现？ → A: 同步实现
+- Q: Playwright 发送 HTTP 请求时需要知道目标服务器的基础 URL，框架应该如何获取这个配置？ → A: 在 APIRouter 中实现类似 OpenAPI servers 的机制来指定公共服务器，单个接口也可以在 RouteMeta 中指定自己的 servers（优先级更高）
+- Q: 代码生成工具从 OpenAPI 规范生成接口类时，如果遇到 OpenAPI 规范中包含框架尚未支持的特性（如特殊的认证方式、自定义扩展字段等），应该如何处理？ → A: 严格模式 - 遇到不支持的特性立即报错并停止生成，要求用户修改规范
