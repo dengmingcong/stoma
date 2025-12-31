@@ -41,6 +41,8 @@ class RouteMeta(BaseModel):
 
 # Query、Header、Path、Body 将由代码生成器导入，框架此处仅声明类型
 # （这些类型的具体实现将在后续版本实现）
+# 【实现约束】Query/Body/Header/Path 类的内部实现代码必须参考 FastAPI 的实现方式，
+# 确保行为一致性、参数验证逻辑、以及与 Pydantic 的集成方式遵循 FastAPI 的最佳实践。
 Query: type  # 占位符，代码生成时会导入真实实现
 Header: type  # 占位符，代码生成时会导入真实实现
 Path: type  # 占位符，代码生成时会导入真实实现
@@ -254,6 +256,16 @@ print(meta.path)           # "/users"
 - 默认目标为 HTTP 接口测试；非 HTTP 场景可通过用户自定义适配器扩展。
 - 使用 Pydantic v2 语义进行类型定义与校验；若版本差异，需提供兼容指引。
 - 报告由 pytest 生成；框架暂时不考虑生成测试报告，可选集成到外部平台不在本规范范围内。
+
+### 技术约束
+
+- **Python 版本**: 最低支持 Python 3.12，以使用 PEP 695 泛型新语法。
+- **参数标记类实现**: Query/Body/Header/Path 类的内部实现代码必须参考 FastAPI 的实现方式（`fastapi.params` 模块），包括但不限于：
+  - 参数验证逻辑与错误处理机制
+  - 与 Pydantic Field 的集成方式
+  - 参数元数据的存储和传递方式
+  - 默认值、别名、验证器的处理逻辑
+- **同步实现优先**: 当前版本采用同步实现，异步支持在后续版本添加。
 
 ### 需澄清事项（最多 3 项）
 
