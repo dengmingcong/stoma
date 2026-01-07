@@ -67,7 +67,7 @@
 ### Implementation for User Story 1
 
 - [X] T009 [P] [US1] 实现 APIRoute[T] 基类（继承 Pydantic BaseModel，包含 _route_meta ClassVar）in src/routing.py
-- [ ] T010 [US1] 实现 api_route_decorator 装饰器函数（接收 method、path 和 servers 参数，返回类装饰器）in src/routing.py
+- [X] T010 [US1] 实现 api_route_decorator 装饰器函数（接收 method、path 和 servers 参数，返回类装饰器）in src/routing.py
 - [ ] T011 [US1] 实现 APIRouter 类（__init__ 接收全局 servers，提供 get/post/put/patch/delete 方法且支持接口级 servers 覆盖）in src/routing.py
 - [ ] T012 [US1] 验证装饰器语法与 IDE 类型提示（手动创建示例接口类测试）
 - [ ] T013 [US1] 验证命名空间隔离（测试用户字段名为 method、path 时无冲突）
