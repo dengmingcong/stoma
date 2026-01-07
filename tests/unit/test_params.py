@@ -31,11 +31,6 @@ class TestPath:
         assert path_param.description == "用户 ID"
         assert path_param.default is PydanticUndefined
 
-    def test_path_cannot_have_default_value(self) -> None:
-        """验证路径参数不能有默认值。"""
-        with pytest.raises(ValueError, match="路径参数不能有默认值"):
-            Path(default=123)
-
     def test_path_with_validation(self) -> None:
         """测试带验证规则的 Path 参数。"""
         path_param = Path(gt=0, le=1000, description="必须在 1-1000 之间")
@@ -63,15 +58,20 @@ class TestQuery:
 
     def test_query_basic(self) -> None:
         """测试基本的 Query 参数。"""
-        query_param = Query(default=20, description="分页大小")
+        from pydantic_core import PydanticUndefined
+
+        query_param = Query(description="分页大小")
         assert query_param.in_ == ParamTypes.query
         assert query_param.description == "分页大小"
-        assert query_param.default == 20
+        # Query 不提供 default 参数，应使用函数参数默认值
+        assert query_param.default is PydanticUndefined
 
     def test_query_with_validation(self) -> None:
         """测试带验证规则的 Query 参数。"""
-        query_param = Query(default=20, ge=1, le=100)
-        assert query_param.default == 20
+        from pydantic_core import PydanticUndefined
+
+        query_param = Query(ge=1, le=100)
+        assert query_param.default is PydanticUndefined
         # 验证约束存储在 metadata 中
         assert any(constraint.ge == 1 for constraint in query_param.metadata if hasattr(constraint, "ge"))
         assert any(constraint.le == 100 for constraint in query_param.metadata if hasattr(constraint, "le"))
@@ -80,8 +80,8 @@ class TestQuery:
         """测试在 Pydantic 模型中使用 Query。"""
 
         class TestModel(BaseModel):
-            limit: Annotated[int, Query(default=20, ge=1, le=100)] = 20
-            offset: Annotated[int, Query(default=0, ge=0)] = 0
+            limit: Annotated[int, Query(ge=1, le=100)] = 20
+            offset: Annotated[int, Query(ge=0)] = 0
 
         # 使用默认值
         instance = TestModel()
@@ -118,7 +118,7 @@ class TestHeader:
 
         class TestModel(BaseModel):
             authorization: Annotated[str, Header(alias="Authorization")]
-            user_agent: Annotated[str | None, Header(default=None)] = None
+            user_agent: Annotated[str | None, Header()] = None
 
         # 创建实例
         instance = TestModel(authorization="Bearer token")
@@ -175,7 +175,7 @@ class TestParamIntegration:
 
         class TestEndpoint(BaseModel):
             post_id: Annotated[int, Path(description="文章 ID", gt=0)]
-            expand: Annotated[bool, Query(default=False, description="是否展开")]
+            expand: Annotated[bool, Query(description="是否展开")] = False
             authorization: Annotated[str, Header(alias="Authorization")]
             body: Annotated[RequestBody, Body()]
 
@@ -195,17 +195,17 @@ class TestParamIntegration:
 
     def test_param_with_examples(self) -> None:
         """测试参数的 examples 属性。"""
-        query_param = Query(default=20, examples=[10, 20, 50, 100])
+        query_param = Query(examples=[10, 20, 50, 100])
         # examples 存储在我们自定义的属性中
         assert hasattr(query_param, "examples")
         assert query_param.examples == [10, 20, 50, 100]
 
     def test_param_with_deprecated(self) -> None:
         """测试参数的 deprecated 属性。"""
-        query_param = Query(default=20, deprecated=True)
+        query_param = Query(deprecated=True)
         assert query_param.deprecated is True
 
     def test_param_with_json_schema_extra(self) -> None:
         """测试参数的 json_schema_extra 属性。"""
-        query_param = Query(default=20, json_schema_extra={"x-custom": "value"})
+        query_param = Query(json_schema_extra={"x-custom": "value"})
         assert query_param.json_schema_extra == {"x-custom": "value"}

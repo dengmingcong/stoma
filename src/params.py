@@ -164,7 +164,11 @@ class Path(Param):  # type: ignore[misc]
     """路径参数标记。
 
     用于标记接口类中的路径参数字段。路径参数必须在路径模板中定义（如 /users/{user_id}），
-    且不能有默认值。
+    且始终是必需的。
+
+    .. note::
+        路径参数不提供 ``default`` 参数，因为路径参数始终是必需的。
+        如需动态生成默认值，可使用 ``default_factory`` 参数。
 
     Example::
 
@@ -179,7 +183,6 @@ class Path(Param):  # type: ignore[misc]
 
     def __init__(
         self,
-        default: Any = ...,
         *,
         default_factory: Callable[[], Any] | None = _Unset,
         annotation: Any | None = None,
@@ -210,15 +213,11 @@ class Path(Param):  # type: ignore[misc]
     ):
         """初始化路径参数。
 
-        路径参数不能有默认值，必须在请求中提供。
+        路径参数始终是必需的，不接受 default 参数。
+        如需动态生成默认值，可使用 ``default_factory`` 参数。
         """
-        # 确保路径参数没有默认值
-        if default is not ...:
-            msg = "路径参数不能有默认值。"
-            raise ValueError(msg)
-
         super().__init__(
-            default=default,
+            default=...,
             default_factory=default_factory,
             annotation=annotation,
             alias=alias,
@@ -253,21 +252,26 @@ class Query(Param):  # type: ignore[misc]
 
     用于标记接口类中的查询参数字段。查询参数会附加在 URL 后面（如 ?limit=10&offset=0）。
 
+    .. note::
+        遵循 FastAPI 最佳实践，不提供 ``default`` 参数。
+        应使用函数参数默认值来设置静态默认值，如需动态生成默认值可使用 ``default_factory``。
+
     Example::
 
         from typing import Annotated
         from pydantic import BaseModel
 
         class GetUsers(BaseModel):
-            limit: Annotated[int, Query(default=20, ge=1, le=100)]
-            offset: Annotated[int, Query(default=0, ge=0)]
+            limit: Annotated[int, Query(ge=1, le=100)] = 20
+            offset: Annotated[int, Query(ge=0)] = 0
+            # 动态默认值示例
+            timestamp: Annotated[float, Query(default_factory=time.time)]
     """
 
     in_ = ParamTypes.query
 
     def __init__(
         self,
-        default: Any = _Unset,
         *,
         default_factory: Callable[[], Any] | None = _Unset,
         annotation: Any | None = None,
@@ -296,9 +300,13 @@ class Query(Param):  # type: ignore[misc]
         json_schema_extra: dict[str, Any] | None = None,
         **extra: Any,
     ):
-        """初始化查询参数。"""
+        """初始化查询参数。
+
+        不提供 ``default`` 参数，应使用函数参数默认值来设置默认值。
+        如需动态生成默认值，可使用 ``default_factory`` 参数。
+        """
         super().__init__(
-            default=default,
+            default=_Unset,
             default_factory=default_factory,
             annotation=annotation,
             alias=alias,
@@ -335,6 +343,10 @@ class Header(Param):  # type: ignore[misc]
 
     :param convert_underscores: 是否将字段名中的下划线转换为连字符。default: True
 
+    .. note::
+        遵循 FastAPI 最佳实践，不提供 ``default`` 参数。
+        应使用函数参数默认值来设置静态默认值，如需动态生成默认值可使用 ``default_factory``。
+
     Example::
 
         from typing import Annotated
@@ -342,14 +354,13 @@ class Header(Param):  # type: ignore[misc]
 
         class GetUsers(BaseModel):
             authorization: Annotated[str, Header(alias="Authorization")]
-            user_agent: Annotated[str | None, Header(default=None)]
+            user_agent: Annotated[str | None, Header()] = None
     """
 
     in_ = ParamTypes.header
 
     def __init__(
         self,
-        default: Any = _Unset,
         *,
         default_factory: Callable[[], Any] | None = _Unset,
         annotation: Any | None = None,
@@ -383,10 +394,13 @@ class Header(Param):  # type: ignore[misc]
 
         :param convert_underscores: 是否将字段名中的下划线转换为连字符
             （如 user_agent → User-Agent）。
+
+        不提供 ``default`` 参数，应使用函数参数默认值来设置默认值。
+        如需动态生成默认值，可使用 ``default_factory`` 参数。
         """
         self.convert_underscores = convert_underscores
         super().__init__(
-            default=default,
+            default=_Unset,
             default_factory=default_factory,
             annotation=annotation,
             alias=alias,
@@ -424,6 +438,11 @@ class Body(Param):  # type: ignore[misc]
     :param embed: 是否嵌入单个字段。default: False
     :param media_type: 媒体类型。default: "application/json"
 
+    .. note::
+        遵循 FastAPI 最佳实践，不提供 ``default`` 参数。
+        Body 参数通常是必需的，如需可选可使用函数参数默认值。
+        如需动态生成默认值，可使用 ``default_factory`` 参数。
+
     Example::
 
         from typing import Annotated
@@ -441,7 +460,6 @@ class Body(Param):  # type: ignore[misc]
 
     def __init__(
         self,
-        default: Any = _Unset,
         *,
         default_factory: Callable[[], Any] | None = _Unset,
         annotation: Any | None = None,
@@ -476,11 +494,14 @@ class Body(Param):  # type: ignore[misc]
 
         :param embed: 是否将单个 Body 字段嵌入到对象中。
         :param media_type: 请求体的媒体类型。
+
+        不提供 ``default`` 参数，应使用函数参数默认值来设置默认值。
+        如需动态生成默认值，可使用 ``default_factory`` 参数。
         """
         self.embed = embed
         self.media_type = media_type
         super().__init__(
-            default=default,
+            default=_Unset,
             default_factory=default_factory,
             annotation=annotation,
             alias=alias,
