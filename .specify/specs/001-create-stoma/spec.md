@@ -140,8 +140,8 @@ class UserCreateRequest(BaseModel):
 class GetUsers(APIRoute[list[UserData]]):
     """获取用户列表 - 响应类型：list[UserData]。"""
     
-    limit: Annotated[int, Query(default=20, ge=1, le=100)]
-    offset: Annotated[int, Query(default=0, ge=0)]
+    limit: Annotated[int, Query(ge=1, le=100)] = 20
+    offset: Annotated[int, Query(ge=0)] = 0
     token: Annotated[str, Header(alias="Authorization")]
 
 
@@ -149,16 +149,16 @@ class GetUsers(APIRoute[list[UserData]]):
 class CreateUser(APIRoute[UserData]):
     """创建用户 - 响应类型：UserData。"""
     
-    body: Annotated[UserCreateRequest, Body(...)]
-    idempotency_key: Annotated[str | None, Header(default=None, alias="Idempotency-Key")]
+    body: Annotated[UserCreateRequest, Body()]
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None
 
 
 @router.get(path="/users/{user_id}")
 class GetUserById(APIRoute[UserData]):
     """获取特定用户 - 响应类型：UserData。"""
     
-    user_id: Annotated[int, Path(...)]
-    include_profile: Annotated[bool, Query(default=False)]
+    user_id: Annotated[int, Path()]
+    include_profile: Annotated[bool, Query()] = False
 ```
 
 **使用示例**：
@@ -260,11 +260,13 @@ print(meta.path)           # "/users"
 ### 技术约束
 
 - **Python 版本**: 最低支持 Python 3.12，以使用 PEP 695 泛型新语法。
+- **泛型语法**: 所有泛型类和函数必须使用 PEP 695 定义的新语法（`class ClassName[T]: ...` 和 `def function[T](...): ...`），禁止使用传统的 `Generic[T]` 继承方式。
 - **参数标记类实现**: Query/Body/Header/Path 类的内部实现代码必须参考 FastAPI 的实现方式（`fastapi.params` 模块），包括但不限于：
   - 参数验证逻辑与错误处理机制
   - 与 Pydantic Field 的集成方式
   - 参数元数据的存储和传递方式
-  - 默认值、别名、验证器的处理逻辑
+  - 别名、验证器的处理逻辑
+  - **默认值处理**: 遵循 FastAPI 推荐的最佳实践，使用函数参数的默认值（`= value`）而非 `Query(default=value)` 等形式；Query/Body/Header/Path 不提供 `default` 参数，避免默认值声明的歧义和不一致。
 - **同步实现优先**: 当前版本采用同步实现，异步支持在后续版本添加。
 
 ### 需澄清事项（最多 3 项）
