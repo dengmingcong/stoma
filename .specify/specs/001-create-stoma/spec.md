@@ -105,19 +105,19 @@ class APIRouter:
         """初始化路由器，可指定全局服务器列表（如 OpenAPI servers）。"""
         self.servers = servers
     
-    def get[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def get[T: APIRoute](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="GET", path=path, servers=servers)
 
-    def post[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def post[T: APIRoute](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="POST", path=path, servers=servers)
 
-    def put[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def put[T: APIRoute](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="PUT", path=path, servers=servers)
 
-    def patch[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def patch[T: APIRoute](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="PATCH", path=path, servers=servers)
 
-    def delete[T: APIRoute](self, *, path: str, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def delete[T: APIRoute](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
         return api_route_decorator(method="DELETE", path=path, servers=servers)
 
 # 创建全局路由器实例，可在代码生成时配置默认 servers
@@ -136,7 +136,7 @@ class UserCreateRequest(BaseModel):
     email: str
 
 # 生成的接口类：无需 __init__，继承 BaseModel 自动生成
-@router.get(path="/users")
+@router.get("/users")
 class GetUsers(APIRoute[list[UserData]]):
     """获取用户列表 - 响应类型：list[UserData]。"""
     
@@ -145,7 +145,7 @@ class GetUsers(APIRoute[list[UserData]]):
     token: Annotated[str, Header(alias="Authorization")]
 
 
-@router.post(path="/users")
+@router.post("/users")
 class CreateUser(APIRoute[UserData]):
     """创建用户 - 响应类型：UserData。"""
     
@@ -153,7 +153,7 @@ class CreateUser(APIRoute[UserData]):
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None
 
 
-@router.get(path="/users/{user_id}")
+@router.get("/users/{user_id}")
 class GetUserById(APIRoute[UserData]):
     """获取特定用户 - 响应类型：UserData。"""
     
