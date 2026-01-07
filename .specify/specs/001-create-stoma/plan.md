@@ -20,7 +20,9 @@
 **Project Type**: CLI + 库（代码生成工具与运行时 SDK）  
 **Performance Goals**: 生成阶段 < 5s 处理中等规模 OpenAPI（~200 endpoints）；运行阶段单次调用开销接近 Playwright 原生，主要关注类型安全而非极致性能  
 **Constraints**: 
-- 不引入 FastAPI 运行时依赖，但 Query/Body/Header/Path 类的内部实现必须参考 FastAPI 的 `fastapi.params` 模块（包括参数验证逻辑、与 Pydantic Field 的集成方式、参数元数据的存储和传递方式、默认值/别名/验证器的处理逻辑）
+- 不引入 FastAPI 运行时依赖，但 Query/Body/Header/Path 类的内部实现必须参考 FastAPI 的 `fastapi.params` 模块（包括参数验证逻辑、与 Pydantic Field 的集成方式、参数元数据的存储和传递方式、别名/验证器的处理逻辑）
+- **默认值处理**：遵循 FastAPI 推荐的最佳实践，使用函数参数的默认值（`= value`）而非 `Query(default=value)` 等形式；Query/Body/Header/Path 不提供 `default` 参数，避免默认值声明的歧义和不一致
+- **泛型语法**：所有泛型类和函数必须使用 PEP 695 定义的新语法（`class ClassName[T]: ...` 和 `def function[T](...): ...`），禁止使用传统的 `Generic[T]` 继承方式
 - 生成产物必须零样板、可直接导入；保持 Pydantic v2 语义
 - HTTP 客户端可替换但默认 Playwright，当前版本采用同步实现（异步支持在后续版本添加）
 - 错误处理机制：必须抛出详细的自定义异常类（ValidationError、HTTPError、ParseError 等），包含足够的上下文信息

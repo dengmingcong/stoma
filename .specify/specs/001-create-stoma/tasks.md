@@ -40,12 +40,13 @@
 
 **实现参考**: 所有实现必须严格遵循 [spec.md](spec.md) 中的伪代码示例，特别是：
 - RouteMeta 必须继承 `pydantic.BaseModel` 并使用 `ConfigDict(frozen=True)` 实现不可变，包含 method、path、servers 字段
-- APIRoute 必须继承 `BaseModel` 并使用 `ClassVar[RouteMeta]` 存储路由元数据
-- 参数标记类型（Query/Path/Header/Body）的实现必须参考 FastAPI 的 `fastapi.params` 模块，包括参数验证逻辑、与 Pydantic Field 的集成方式、参数元数据的存储和传递方式、默认值/别名/验证器的处理逻辑
+- APIRoute 必须继承 `BaseModel` 并使用 `ClassVar[RouteMeta]` 存储路由元数据，使用 PEP 695 泛型语法 `class APIRoute[T]: ...`
+- 参数标记类型（Query/Path/Header/Body）的实现必须参考 FastAPI 的 `fastapi.params` 模块，包括参数验证逻辑、与 Pydantic Field 的集成方式、参数元数据的存储和传递方式、别名/验证器的处理逻辑
+- **默认值处理**：遵循 FastAPI 最佳实践，使用函数参数默认值（`= value`）而非 `Query(default=value)`；Query/Body/Header/Path 不提供 `default` 参数
 
 - [X] T006 创建 src/__init__.py 作为包入口
 - [X] T007 [P] 实现 RouteMeta 类（继承 BaseModel，frozen=True，包含 method、path 和 servers 字段）in src/routing.py，参考 spec.md 用户故事 1 的伪代码
-- [X] T008 [P] 实现参数标记类型（Query, Path, Header, Body）in src/params.py，必须参考 FastAPI 的 `fastapi.params` 模块实现，确保参数验证逻辑、Pydantic Field 集成、元数据存储/传递、默认值/别名/验证器处理与 FastAPI 行为一致
+- [X] T008 [P] 实现参数标记类型（Query, Path, Header, Body）in src/params.py，必须参考 FastAPI 的 `fastapi.params` 模块实现，确保参数验证逻辑、Pydantic Field 集成、元数据存储/传递、别名/验证器处理与 FastAPI 行为一致；**不提供 `default` 参数**，遵循使用函数参数默认值的最佳实践
 
 **Checkpoint**: 基础设施就绪 - 用户故事可以并行开始实现
 
@@ -58,13 +59,14 @@
 **Independent Test**: 手动编写示例接口类，验证类型注解、IDE 提示、装饰器语法的可用性
 
 **实现参考**: 严格遵循 [spec.md](spec.md) 用户故事 1 的伪代码示例，特别关注：
-- APIRoute[T] 基类设计：继承 BaseModel，使用 ClassVar[RouteMeta]，泛型响应类型
-- api_route_decorator 装饰器签名和实现逻辑（支持 servers 参数）
-- APIRouter 类的方法签名（get/post/put/patch/delete）和 __init__ 支持全局 servers 配置
+- APIRoute[T] 基类设计：继承 BaseModel，使用 ClassVar[RouteMeta]，使用 PEP 695 泛型语法 `class APIRoute[T]: ...`
+- api_route_decorator 装饰器签名和实现逻辑（支持 servers 参数），使用 PEP 695 泛型语法 `def api_route_decorator[T: APIRoute](...): ...`
+- APIRouter 类的方法签名（get/post/put/patch/delete）使用 PEP 695 泛型语法，__init__ 支持全局 servers 配置
+- 生成的接口类中，参数使用函数默认值形式（`= value`）而非 `Query(default=value)`
 
 ### Implementation for User Story 1
 
-- [ ] T009 [P] [US1] 实现 APIRoute[T] 基类（继承 Pydantic BaseModel，包含 _route_meta ClassVar）in src/routing.py
+- [X] T009 [P] [US1] 实现 APIRoute[T] 基类（继承 Pydantic BaseModel，包含 _route_meta ClassVar）in src/routing.py
 - [ ] T010 [US1] 实现 api_route_decorator 装饰器函数（接收 method、path 和 servers 参数，返回类装饰器）in src/routing.py
 - [ ] T011 [US1] 实现 APIRouter 类（__init__ 接收全局 servers，提供 get/post/put/patch/delete 方法且支持接口级 servers 覆盖）in src/routing.py
 - [ ] T012 [US1] 验证装饰器语法与 IDE 类型提示（手动创建示例接口类测试）
@@ -129,7 +131,7 @@
 - [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body 标记）in src/codegen/parser.py
 - [ ] T025a [US3] 实现 servers 配置解析逻辑（从 OpenAPI 全局 servers 和接口级 servers 提取）in src/codegen/parser.py
 - [ ] T026 [P] [US3] 创建 Pydantic 模型生成模板 in src/codegen/templates/models.py.jinja2
-- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解、servers 配置）in src/codegen/templates/routing.py.jinja2
+- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解、servers 配置，参数默认值使用 `= value` 形式而非 `Query(default=value)`）in src/codegen/templates/routing.py.jinja2
 - [ ] T028 [US3] 实现模板渲染器（Jinja2 渲染 routing 和 models）in src/codegen/renderer.py
 - [ ] T029 [US3] 实现文件输出逻辑（按 feature 组织目录：routing.py, models.py）in src/codegen/renderer.py
 - [ ] T030 [P] [US3] 实现 CLI 命令入口（stoma make --spec --out --feature）in src/cli.py
