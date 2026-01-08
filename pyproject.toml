@@ -67,6 +67,10 @@ ignore_missing_imports = true
 module = "tests.*"
 disallow_untyped_defs = false
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [project.scripts]
 stoma = "src.cli.main:app"
 
