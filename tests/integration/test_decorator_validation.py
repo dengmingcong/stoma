@@ -10,7 +10,7 @@
 **验收场景**:
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，
    Then IDE 提供参数补全与类型检查。
-2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例（`endpoint()`），
+2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.send(context)`），
    Then mypy/IDE 可正确推断返回类型为 T。
 3. Given 接口类继承 BaseModel 并使用 Query/Body/Header/Path 标记，
    When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码。
@@ -217,7 +217,7 @@ def test_decorator_validation() -> None:
     print(f"  - 路由元数据: method={get_user_endpoint._route_meta.method}, path={get_user_endpoint._route_meta.path}")
     print(f"  - 路径参数: user_id={get_user_endpoint.user_id}")
     print("  - 泛型类型 APIRoute[UserData] 验证通过 ✓")
-    print("  - mypy/IDE 应推断 get_user_endpoint() 返回类型为 UserData")
+    print("  - mypy/IDE 应推断 get_user_endpoint.send(context) 返回类型为 UserData")
 
     # 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）
     print("\n✅ 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）")

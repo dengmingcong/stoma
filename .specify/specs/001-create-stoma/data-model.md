@@ -9,7 +9,7 @@
 
 ### APIRoute[T]
 - 字段：Pydantic BaseModel 字段即请求参数；`_route_meta: RouteMeta`（ClassVar）。
-- 行为：`__call__` 方法封装 HTTP 调用，收集实例字段→构造请求→解析响应为 `T`（当前版本同步实现，异步支持后续迭代）。
+- 行为：`send` 方法封装 HTTP 调用，收集实例字段→构造请求→解析响应为 `T`（当前版本同步实现，异步支持后续迭代）。
 - 状态转移：实例创建→调用→返回响应模型或抛出校验异常。
 
 ### 参数标记（Query/Path/Header/Body）
@@ -22,7 +22,7 @@
 
 ### 响应模型（Response Models）
 - 来源：OpenAPI responses 中的 2xx schema；生成 Pydantic 模型或内联类型别名。
-- 规则：APIRoute 泛型参数引用此模型，`__call__` 将 JSON 解析并校验。
+- 规则：APIRoute 泛型参数引用此模型，`send` 将 JSON 解析并校验。
 
 ### APIRouter（装饰器命名空间）
 - 方法：`get/post/put/patch/delete(path)` → 返回类装饰器。

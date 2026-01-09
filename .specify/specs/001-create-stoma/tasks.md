@@ -79,12 +79,12 @@
 
 ## Phase 4: User Story 2 - 使用 Playwright 调用接口（Priority: P1）
 
-**Goal**: 实现 APIRoute.__call__ 方法，使用 Playwright 自动发送 HTTP 请求并解析响应（同步实现），支持 servers 配置和详织异常处理
+**Goal**: 实现 APIRoute.send 方法，使用 Playwright 自动发送 HTTP 请求并解析响应（同步实现），支持 servers 配置和详织异常处理
 
 **Independent Test**: 启动测试服务器，手动编写接口类并调用，验证请求发送和响应解析
 
 **实现参考**: 参考 [spec.md](spec.md) 用户故事 2 的说明和示例，关注：
-- APIRoute.__call__ 方法的实现逻辑（参数收集、请求发送、响应解析）
+- APIRoute.send 方法的实现逻辑（参数收集、请求发送、响应解析）
 - Playwright HTTP 客户端的使用模式（同步实现）
 - 响应数据到 Pydantic 模型的转换流程
 - servers 配置的解析与优先级处理（接口级 > 全局级）
@@ -100,8 +100,8 @@
 - [ ] T017a [US2] 实现 HTTP 错误处理（连接失败、超时、HTTP 状态码错误时抛出 HTTPError）in src/client.py
 - [ ] T018 [US2] 实现响应 JSON 解析与 Pydantic 模型验证 in src/client.py
 - [ ] T018a [US2] 实现响应解析错误处理（JSON 解析失败抛出 ParseError，Pydantic 验证失败抛出 ValidationError）in src/client.py
-- [ ] T019 [US2] 实现 APIRoute.__call__ 方法（调用 client 发送请求，同步实现）in src/routing.py
-- [ ] T020 [US2] 集成异常处理到 __call__ 方法（确保所有错误都抛出清晰的自定义异常）in src/routing.py
+- [ ] T019 [US2] 实现 APIRoute.send 方法（调用 client 发送请求，同步实现）in src/routing.py
+- [ ] T020 [US2] 集成异常处理到 send 方法（确保所有错误都抛出清晰的自定义异常）in src/routing.py
 - [ ] T021 [US2] 手动测试：启动 FastAPI 测试服务器，编写接口类并调用验证（包括 servers 配置和异常处理）
 
 **Checkpoint**: User Story 2 完成，接口类可以真实调用 HTTP 服务并获得类型化响应

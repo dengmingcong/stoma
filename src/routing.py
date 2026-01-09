@@ -11,6 +11,7 @@
 from collections.abc import Callable
 from typing import Any, ClassVar, Literal
 
+from playwright.sync_api import APIRequestContext
 from pydantic import BaseModel, ConfigDict
 
 
@@ -60,18 +61,18 @@ class APIRoute[T](BaseModel):
             limit: Annotated[int, Query(ge=1, le=100)] = 20
 
         endpoint = GetUsers(limit=10)
-        users = endpoint()  # 返回 list[UserData]
+        users = endpoint.send(context)  # 返回 list[UserData]
     """
 
     _route_meta: ClassVar[RouteMeta]
 
-    def __call__(self) -> T:
-        """通用 __call__ 方法（由框架基类实现）。
+    def send(self, context: APIRequestContext) -> T:
+        """发送 HTTP 请求并返回响应数据。
 
         功能：
 
         1. 从实例字段自动收集请求参数（query/path/header/body）。
-        2. 使用 Playwright 发送 HTTP 请求。
+        2. 使用传入的 APIRequestContext 发送 HTTP 请求。
         3. 将响应 JSON 自动解析为泛型类型 T 的实例。
 
         详细实现将在用户故事 2 中完成。
@@ -79,11 +80,13 @@ class APIRoute[T](BaseModel):
         .. note::
             当前版本为同步实现，异步支持将在后续版本添加。
 
+        :param context: Playwright 的 APIRequestContext 实例，用于发送 HTTP 请求。
+        :type context: APIRequestContext
         :return: 响应数据，类型为泛型参数 T。
         :rtype: T
         :raise NotImplementedError: 当前占位符实现，实际功能待用户故事 2 完成。
         """
-        msg = "__call__ 方法尚未实现，将在用户故事 2 中完成"
+        msg = "send 方法尚未实现，将在用户故事 2 中完成"
         raise NotImplementedError(msg)
 
 

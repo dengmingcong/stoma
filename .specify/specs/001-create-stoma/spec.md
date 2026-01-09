@@ -18,7 +18,7 @@
 **验收场景**:
 
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，Then IDE 提供参数补全与类型检查。
-2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例（`endpoint()`），Then mypy/IDE 可正确推断返回类型为 T。
+2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.send(context)`），Then mypy/IDE 可正确推断返回类型为 T。
 3. Given 接口类继承 BaseModel 并使用 Query/Body/Header/Path 标记，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码。
 4. Given 生成的接口类使用路由元数据隔离（`_route_meta`），When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 
@@ -27,6 +27,7 @@
 ```python
 from typing import ClassVar, Literal, Callable, Annotated
 from pydantic import BaseModel, Field, ConfigDict
+from playwright.sync_api import APIRequestContext
 
 # ===== 框架核心定义 =====
 
@@ -61,11 +62,11 @@ class APIRoute[T](BaseModel):
     """
     _route_meta: ClassVar[RouteMeta]
     
-    def __call__(self) -> T:
+    def send(self, context: APIRequestContext) -> T:
         """
-        通用 __call__ 方法（由框架基类实现）：
+        发送 HTTP 请求并返回响应数据（由框架基类实现）：
         1. 从实例字段自动收集请求参数（query/path/header/body）
-        2. 使用 Playwright 发送 HTTP 请求
+        2. 使用传入的 APIRequestContext 发送 HTTP 请求
         3. 将响应 JSON 自动解析为泛型类型 T 的实例
         
         详细实现将在用户故事 2 中完成。
@@ -168,20 +169,28 @@ class GetUserById(APIRoute[UserData]):
 from users.endpoints import GetUsers, CreateUser, GetUserById
 from users.models import UserCreateRequest, UserData
 
-# 1. 列出用户（使用默认参数）
-list_endpoint = GetUsers(token="Bearer xxx")  # IDE 完美补全所有字段
-users = list_endpoint()  # 类型推断: list[UserData]
+# 准备 APIRequestContext
+from playwright.sync_api import sync_playwright
 
-# 2. 创建用户
-create_endpoint = CreateUser(
-    body=UserCreateRequest(name="Alice", email="alice@example.com"),
-    idempotency_key="unique-key-123"
-)
-new_user = create_endpoint()  # 类型推断: UserData
-
-# 3. 获取特定用户
-get_endpoint = GetUserById(user_id=1, include_profile=True)
-user_data = get_endpoint()  # 类型推断: UserData
+with sync_playwright() as p:
+    context = p.request.new_context(base_url="https://api.example.com")
+    
+    # 1. 列出用户（使用默认参数）
+    list_endpoint = GetUsers(token="Bearer xxx")  # IDE 完美补全所有字段
+    users = list_endpoint.send(context)  # 类型推断: list[UserData]
+    
+    # 2. 创建用户
+    create_endpoint = CreateUser(
+        body=UserCreateRequest(name="Alice", email="alice@example.com"),
+        idempotency_key="unique-key-123"
+    )
+    new_user = create_endpoint.send(context)  # 类型推断: UserData
+    
+    # 3. 获取特定用户
+    get_endpoint = GetUserById(user_id=1, include_profile=True)
+    user_data = get_endpoint.send(context)  # 类型推断: UserData
+    
+    context.dispose()
 
 # 4. 访问路由元数据（框架内部使用）
 meta = GetUsers.route_meta()
@@ -199,8 +208,8 @@ print(meta.path)           # "/users"
 
 **验收场景**:
 
-1. Given 接口类定义了 GET 请求，When 实例化并调用 `endpoint()`，Then Playwright 发送 HTTP GET 请求到正确的 URL（包含 query 参数、headers）。
-2. Given 接口类定义了 POST 请求，When 实例化并传入 body，Then Playwright 发送 HTTP POST 请求，body 被正确序列化为 JSON。
+1. Given 接口类定义了 GET 请求，When 实例化并调用 `endpoint.send(context)`，Then Playwright 发送 HTTP GET 请求到正确的 URL（包含 query 参数、headers）。
+2. Given 接口类定义了 POST 请求，When 实例化并传入 body 后调用 `endpoint.send(context)`，Then Playwright 发送 HTTP POST 请求，body 被正确序列化为 JSON。
 3. Given 服务器返回 JSON 响应，When 调用接口，Then 响应自动解析为 Pydantic 响应模型实例，类型校验通过。
 4. Given 服务器返回的 JSON 与响应模型不匹配（缺少字段或类型错误），When 调用接口，Then 抛出 Pydantic 校验异常并提供清晰的错误信息。
 
@@ -286,7 +295,7 @@ print(meta.path)           # "/users"
 
 ### Session 2025-12-16
 
-- Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 __call__() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `APIRoute[T]`，通过泛型参数明确响应类型（如 `APIRoute[list[UserData]]`），既保证 IDE/mypy 可正确推断 `__call__()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 __call__() 方法，完全继承基类的通用实现。
+- Q: 响应模型的类型注解位置与可见性（基于类的接口设计中，如何在保持 send() 方法通用的前提下明确响应类型）? → A: 采用 Python 泛型（Generic）方案。生成的接口类继承 `APIRoute[T]`，通过泛型参数明确响应类型（如 `APIRoute[list[UserData]]`），既保证 IDE/mypy 可正确推断 `send()` 返回类型，又让响应模型在类定义处一目了然。子类无需定义 send() 方法，完全继承基类的通用实现。
 - Q: 元数据在子类定义时需要 IDE 自动补全与类型提示，如何实现？ → A: 采用类型签名明确的类装饰器 `decorator(method, path)`（APIRouter 内部通过 `router.get/post/...` 调用），在类声明处传入元数据，IDE 可提供完整参数提示与校验；装饰器仅注入到类属性，内部更新逻辑封装在 `update_api_route`，保持代码简洁并符合“预生成静态代码”的设计。
 - Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `APIRouter` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `decorator` 入口以注入元数据；示例：`@router.get(path="/users")`，内层装饰器函数命名为 `update_api_route` 以贴近 FastAPI 源码风格。
 ### Session 2025-12-19
@@ -301,6 +310,6 @@ print(meta.path)           # "/users"
 
 - Q: Query/Body/Header/Path 类本身的实现代码应该参考哪个框架或库的实现方式？ → A: 参考 FastAPI 的实现方式
 - Q: 当接口调用过程中发生错误（如参数验证失败、HTTP 请求失败、响应解析失败）时，框架应该如何处理这些错误？ → A: 抛出详细的自定义异常类（ValidationError、HTTPError、ParseError 等）
-- Q: `__call__()` 方法应该使用同步还是异步实现？ → A: 同步实现
+- Q: `send()` 方法应该使用同步还是异步实现？ → A: 同步实现
 - Q: Playwright 发送 HTTP 请求时需要知道目标服务器的基础 URL，框架应该如何获取这个配置？ → A: 在 APIRouter 中实现类似 OpenAPI servers 的机制来指定公共服务器，单个接口也可以在 RouteMeta 中指定自己的 servers（优先级更高）
 - Q: 代码生成工具从 OpenAPI 规范生成接口类时，如果遇到 OpenAPI 规范中包含框架尚未支持的特性（如特殊的认证方式、自定义扩展字段等），应该如何处理？ → A: 严格模式 - 遇到不支持的特性立即报错并停止生成，要求用户修改规范

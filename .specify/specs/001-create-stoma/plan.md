@@ -7,7 +7,7 @@
 
 ## Summary
 
-构建一个仿 FastAPI 声明式风格的接口自动化测试框架 Stoma，核心做法是：接口类继承 Pydantic BaseModel 并通过泛型 `APIRoute[T]` 声明响应类型，使用类装饰器（`router.get/post/...`）注入路由元数据 `_route_meta`，运行时由基类 `__call__` 用 Playwright 发送 HTTP 请求并将 JSON 反序列化为类型安全的响应模型；提供 CLI `stoma make --spec --out --feature` 从 OpenAPI 预生成接口类、请求/响应模型，输出目录结构参考 FastAPI 源码分层。
+构建一个仿 FastAPI 声明式风格的接口自动化测试框架 Stoma，核心做法是：接口类继承 Pydantic BaseModel 并通过泛型 `APIRoute[T]` 声明响应类型，使用类装饰器（`router.get/post/...`）注入路由元数据 `_route_meta`，运行时由基类 `send` 方法用 Playwright 发送 HTTP 请求并将 JSON 反序列化为类型安全的响应模型；提供 CLI `stoma make --spec --out --feature` 从 OpenAPI 预生成接口类、请求/响应模型，输出目录结构参考 FastAPI 源码分层。
 
 ## Technical Context
 
