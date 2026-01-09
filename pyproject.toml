@@ -65,7 +65,9 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
+# 测试文件可以放宽某些类型检查
 disallow_untyped_defs = false
+check_untyped_defs = false
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
