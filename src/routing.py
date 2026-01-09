@@ -9,10 +9,13 @@
 """
 
 from collections.abc import Callable
-from typing import Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from playwright.sync_api import APIRequestContext
 from pydantic import BaseModel, ConfigDict
+from pydantic.fields import FieldInfo
+
+from src.params import Param, ParamTypes
 
 
 class RouteMeta(BaseModel):
@@ -65,6 +68,141 @@ class APIRoute[T](BaseModel):
     """
 
     _route_meta: ClassVar[RouteMeta]
+
+    def _collect_params(
+        self,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], Any]:
+        """从实例字段收集请求参数。
+
+        遍历实例的所有字段，根据字段的 Annotated 元数据判断参数类型，
+        将字段值分类收集到对应的参数字典中。
+
+        :return: 四元组 (query_params, path_params, header_params, body_data)
+            - query_params: 查询参数字典，键为参数名（或别名），值为字段值
+            - path_params: 路径参数字典，键为参数名（或别名），值为字段值
+            - header_params: 请求头参数字典，键为参数名（或别名），值为字段值
+            - body_data: 请求体数据，可能是单个 Body 对象或 None
+        :rtype: tuple[dict[str, Any], dict[str, Any], dict[str, Any], Any]
+
+        Example::
+
+            @router.get("/users/{user_id}")
+            class GetUser(APIRoute[UserData]):
+                user_id: Annotated[int, Path()]
+                limit: Annotated[int, Query()] = 10
+                token: Annotated[str, Header(alias="Authorization")]
+
+            endpoint = GetUser(user_id=123, limit=20, token="Bearer xxx")
+            query, path, headers, body = endpoint._collect_params()
+            # query = {"limit": 20}
+            # path = {"user_id": 123}
+            # headers = {"Authorization": "Bearer xxx"}
+            # body = None
+        """
+        query_params: dict[str, Any] = {}
+        path_params: dict[str, Any] = {}
+        header_params: dict[str, Any] = {}
+        body_data: Any = None
+
+        # 遍历模型的所有字段
+        for field_name in self.__class__.model_fields.keys():
+            # 获取字段的实际值
+            field_value = getattr(self, field_name)
+
+            # 从类的原始注解中获取参数信息
+            param_info = self._get_param_info_from_annotations(field_name)
+
+            if param_info is None:
+                # 如果没有参数标记，跳过该字段
+                continue
+
+            # 获取参数的实际名称（使用别名或字段名）
+            param_name = self._get_param_name(param_info, field_name)
+
+            # 根据参数类型分类收集
+            if param_info.in_ == ParamTypes.query:
+                query_params[param_name] = field_value
+            elif param_info.in_ == ParamTypes.path:
+                path_params[param_name] = field_value
+            elif param_info.in_ == ParamTypes.header:
+                header_params[param_name] = field_value
+            elif param_info.in_ == ParamTypes.body:
+                # Body 参数直接赋值（通常只有一个）
+                body_data = field_value
+
+        return query_params, path_params, header_params, body_data
+
+    def _get_param_info_from_annotations(self, field_name: str) -> Param | None:
+        """从类的类型注解中提取参数标记信息。
+
+        直接检查类的 __annotations__，从 Annotated 类型中提取 Param 对象。
+
+        :param field_name: 字段名称。
+        :type field_name: str
+        :return: 参数标记对象，如果没有找到则返回 None。
+        :rtype: Param | None
+        """
+        # 获取类的原始注解
+        annotations = self.__class__.__annotations__
+        if field_name not in annotations:
+            return None
+
+        # 获取字段的类型注解
+        annotation = annotations[field_name]
+
+        # 检查是否是 Annotated 类型
+        origin = get_origin(annotation)
+        if origin is not Annotated:
+            return None
+
+        # 获取 Annotated 的参数
+        args = get_args(annotation)
+        if len(args) < 2:
+            return None
+
+        # args[0] 是实际类型，args[1:] 是元数据
+        for metadata in args[1:]:
+            if isinstance(metadata, Param):
+                return metadata
+
+        return None
+
+    def _get_param_info(self, field_info: FieldInfo) -> Param | None:
+        """从字段的 FieldInfo 中提取参数标记信息。
+
+        检查 FieldInfo 本身是否是 Param 类型的实例，或者检查其 metadata。
+
+        :param field_info: Pydantic 字段信息对象。
+        :type field_info: FieldInfo
+        :return: 参数标记对象，如果没有找到则返回 None。
+        :rtype: Param | None
+        """
+        # 首先检查 field_info 本身是否是 Param 的实例
+        if isinstance(field_info, Param):
+            return field_info
+
+        # 然后检查 field_info 的 metadata 列表
+        for metadata in field_info.metadata:
+            if isinstance(metadata, Param):
+                return metadata
+
+        return None
+
+    def _get_param_name(self, param_info: Param, field_name: str) -> str:
+        """获取参数的实际名称，优先使用别名。
+
+        :param param_info: 参数标记对象。
+        :type param_info: Param
+        :param field_name: 字段名称。
+        :type field_name: str
+        :return: 参数的实际名称（别名或字段名）。
+        :rtype: str
+        """
+        # 如果有 alias，使用 alias
+        if param_info.alias:
+            return param_info.alias
+        # 否则使用字段名
+        return field_name
 
     def send(self, context: APIRequestContext) -> T:
         """发送 HTTP 请求并返回响应数据。

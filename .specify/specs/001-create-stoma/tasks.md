@@ -92,7 +92,7 @@
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取 query/path/header/body）in src/routing.py
+- [X] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取 query/path/header/body）in src/routing.py
 - [ ] T015a [US2] 实现 servers 配置解析逻辑（从 RouteMeta 和 APIRouter 提取 servers，接口级优先级更高）in src/routing.py
 - [ ] T016 [US2] 实现 URL 构造逻辑（基于 servers 配置 + 路径参数替换 + 查询参数拼接）in src/routing.py
 - [ ] T017 [US2] 实现 HTTP 请求发送逻辑（GET/POST/PUT/PATCH/DELETE，使用传入的 APIRequestContext）in src/routing.py
