@@ -200,7 +200,7 @@ print(meta.path)           # "/users"
 
 ### 用户故事 2 - 使用 Playwright 调用接口（优先级：P1）
 
-测试工程师希望实例化接口类后，通过调用实例自动发送 HTTP 请求并获得类型化的响应。框架内部使用 Playwright 作为 HTTP 客户端，自动从实例属性收集请求参数（query/path/header/body），构造请求，发送到目标服务器，并将响应 JSON 解析为 Pydantic 响应模型。
+测试工程师希望实例化接口类后，通过调用实例的 `send(context)` 方法自动发送 HTTP 请求并获得类型化的响应。`send` 方法接收一个 `APIRequestContext` 参数，直接使用它发送 HTTP 请求，自动从实例属性收集请求参数（query/path/header/body），构造请求，发送到目标服务器，并将响应 JSON 解析为 Pydantic 响应模型。
 
 **为何优先**: 这是框架的核心执行能力，验证接口定义可以真正调用远程服务并获得结果。
 
@@ -208,8 +208,8 @@ print(meta.path)           # "/users"
 
 **验收场景**:
 
-1. Given 接口类定义了 GET 请求，When 实例化并调用 `endpoint.send(context)`，Then Playwright 发送 HTTP GET 请求到正确的 URL（包含 query 参数、headers）。
-2. Given 接口类定义了 POST 请求，When 实例化并传入 body 后调用 `endpoint.send(context)`，Then Playwright 发送 HTTP POST 请求，body 被正确序列化为 JSON。
+1. Given 接口类定义了 GET 请求，When 实例化并调用 `endpoint.send(context)`，Then 使用传入的 APIRequestContext 发送 HTTP GET 请求到正确的 URL（包含 query 参数、headers）。
+2. Given 接口类定义了 POST 请求，When 实例化并传入 body 后调用 `endpoint.send(context)`，Then 使用传入的 APIRequestContext 发送 HTTP POST 请求，body 被正确序列化为 JSON。
 3. Given 服务器返回 JSON 响应，When 调用接口，Then 响应自动解析为 Pydantic 响应模型实例，类型校验通过。
 4. Given 服务器返回的 JSON 与响应模型不匹配（缺少字段或类型错误），When 调用接口，Then 抛出 Pydantic 校验异常并提供清晰的错误信息。
 

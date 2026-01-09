@@ -59,10 +59,9 @@ specs/001-create-stoma/
 .
 ├── src/
 │   ├── __init__.py
-│   ├── routing.py          # 仿 FastAPI 的装饰器、路由元数据与 APIRoute 基类（APIRouter、decorators、RouteMeta、APIRoute，支持全局 servers 配置）
+│   ├── routing.py          # 仿 FastAPI 的装饰器、路由元数据与 APIRoute 基类（APIRouter、decorators、RouteMeta、APIRoute[T].send()，支持全局 servers 配置，直接使用 APIRequestContext 发送请求）
 │   ├── params.py           # Query/Path/Header/Body 标记与校验辅助（参考 fastapi.params 实现，包括参数验证逻辑、与 Pydantic Field 的集成、元数据存储传递、默认值/别名/验证器处理）
 │   ├── exceptions.py       # 自定义异常类（ValidationError、HTTPError、ParseError 等，包含详细上下文信息）
-│   ├── client.py           # Playwright HTTP 包装与请求构造（同步实现，支持 servers 配置解析与优先级处理）
 │   ├── cli.py              # stoma make 命令入口与参数解析（Typer）
 │   └── codegen/            # OpenAPI 解析、模板渲染、文件生成（严格模式：遇到不支持特性立即报错）
 │       ├── __init__.py

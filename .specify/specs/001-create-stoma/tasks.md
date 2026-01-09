@@ -85,22 +85,21 @@
 
 **实现参考**: 参考 [spec.md](spec.md) 用户故事 2 的说明和示例，关注：
 - APIRoute.send 方法的实现逻辑（参数收集、请求发送、响应解析）
-- Playwright HTTP 客户端的使用模式（同步实现）
+- 直接使用传入的 APIRequestContext 发送 HTTP 请求（同步实现）
 - 响应数据到 Pydantic 模型的转换流程
 - servers 配置的解析与优先级处理（接口级 > 全局级）
 - 错误处理：抛出 ValidationError、HTTPError、ParseError 等自定义异常
 
 ### Implementation for User Story 2
 
-- [ ] T014 [P] [US2] 实现 Playwright HTTP 客户端包装类（管理浏览器上下文和请求会话，同步实现）in src/client.py
-- [ ] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取 query/path/header/body）in src/client.py
-- [ ] T015a [US2] 实现 servers 配置解析逻辑（从 RouteMeta 和 APIRouter 提取 servers，接口级优先级更高）in src/client.py
-- [ ] T016 [US2] 实现 URL 构造逻辑（基于 servers 配置 + 路径参数替换 + 查询参数拼接）in src/client.py
-- [ ] T017 [US2] 实现 HTTP 请求发送逻辑（GET/POST/PUT/PATCH/DELETE，同步调用 Playwright）in src/client.py
-- [ ] T017a [US2] 实现 HTTP 错误处理（连接失败、超时、HTTP 状态码错误时抛出 HTTPError）in src/client.py
-- [ ] T018 [US2] 实现响应 JSON 解析与 Pydantic 模型验证 in src/client.py
-- [ ] T018a [US2] 实现响应解析错误处理（JSON 解析失败抛出 ParseError，Pydantic 验证失败抛出 ValidationError）in src/client.py
-- [ ] T019 [US2] 实现 APIRoute.send 方法（调用 client 发送请求，同步实现）in src/routing.py
+- [ ] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取 query/path/header/body）in src/routing.py
+- [ ] T015a [US2] 实现 servers 配置解析逻辑（从 RouteMeta 和 APIRouter 提取 servers，接口级优先级更高）in src/routing.py
+- [ ] T016 [US2] 实现 URL 构造逻辑（基于 servers 配置 + 路径参数替换 + 查询参数拼接）in src/routing.py
+- [ ] T017 [US2] 实现 HTTP 请求发送逻辑（GET/POST/PUT/PATCH/DELETE，使用传入的 APIRequestContext）in src/routing.py
+- [ ] T017a [US2] 实现 HTTP 错误处理（连接失败、超时、HTTP 状态码错误时抛出 HTTPError）in src/routing.py
+- [ ] T018 [US2] 实现响应 JSON 解析与 Pydantic 模型验证 in src/routing.py
+- [ ] T018a [US2] 实现响应解析错误处理（JSON 解析失败抛出 ParseError，Pydantic 验证失败抛出 ValidationError）in src/routing.py
+- [ ] T019 [US2] 实现 APIRoute.send 方法（集成上述所有逻辑，同步实现）in src/routing.py
 - [ ] T020 [US2] 集成异常处理到 send 方法（确保所有错误都抛出清晰的自定义异常）in src/routing.py
 - [ ] T021 [US2] 手动测试：启动 FastAPI 测试服务器，编写接口类并调用验证（包括 servers 配置和异常处理）
 
@@ -149,7 +148,7 @@
 **Purpose**: 跨用户故事的改进和完善
 
 - [ ] T034 [P] 添加项目 README.md（安装、快速开始、使用示例）
-- [ ] T035 [P] 添加代码文档字符串（遵循项目 docstring 规范）in src/routing.py, src/params.py, src/client.py
+- [ ] T035 [P] 添加代码文档字符串（遵循项目 docstring 规范）in src/routing.py, src/params.py
 - [ ] T036 [P] 添加 CLI 帮助文档和使用示例 in src/cli.py
 - [ ] T037 验证 quickstart.md 中的所有步骤可正常执行
 - [ ] T038 代码清理：移除调试代码、优化导入、统一命名风格

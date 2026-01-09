@@ -13,7 +13,7 @@
    ```bash
    stoma make --spec api.yaml --out ./generated --feature users
    ```
-2. 生成目录参考 FastAPI 分层：`generated/users/{routing.py,params.py,models.py,client.py}`，如需 CLI/模板可放入 `generated/users/codegen/`。
+2. 生成目录参考 FastAPI 分层：`generated/users/{routing.py,params.py,models.py}`，如需 CLI/模板可放入 `generated/users/codegen/`。
 
 ## 使用生成的接口
 1. 在测试脚本中导入生成的接口类与模型：
