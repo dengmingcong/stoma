@@ -96,9 +96,17 @@
 
 ### Implementation for User Story 2
 
-- [X] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取 query/path/header/body，根据参数位置和类型自动识别）in src/routing.py
-- [ ] T015a [US2] 实现 send() 方法中的参数自动识别逻辑（检测参数在路径中的位置、类型注解、Annotated 标记以推断参数来源）in src/routing.py
-- [ ] T015b [US2] 实现路径参数插值逻辑（将 {param} 占位符替换为实际值）in src/routing.py
+- [X] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取所有参数值，准备进行分类）in src/routing.py
+- [ ] T015a [US2] 实现参数自动识别逻辑（根据规则分类参数）：
+  - 路径参数（Path）：参数名出现在路由 path 字符串中（如 `/users/{user_id}` 中的 `user_id`）
+  - 查询参数（Query）：不在路径中且不为 BaseModel 子类的参数（默认类型）
+  - 请求体（Body）：参数类型为 Pydantic BaseModel 子类的参数
+  - 头参数（Header）：通过 `Annotated[Type, Header(...)]` 标记的参数，解析别名信息
+  in src/routing.py
+- [ ] T015b [US2] 实现路径参数插值逻辑（将 path 中的 `{param}` 占位符替换为实际参数值）in src/routing.py
+- [ ] T015c [US2] 实现查询参数序列化逻辑（将查询参数转换为 URL query string）in src/routing.py
+- [ ] T015d [US2] 实现请求体 JSON 序列化逻辑（将 BaseModel 实例转换为 JSON）in src/routing.py
+- [ ] T015e [US2] 实现头参数处理逻辑（应用别名转换，snake_case → kebab-case）in src/routing.py
 - [ ] T016 [US2] 实现 URL 构造逻辑（基于 servers 配置 + 路径参数替换 + 查询参数拼接）in src/routing.py
 - [ ] T017 [US2] 实现 HTTP 请求发送逻辑（GET/POST/PUT/PATCH/DELETE，使用传入的 APIRequestContext）in src/routing.py
 - [ ] T017a [US2] 实现 HTTP 错误处理（连接失败、超时、HTTP 状态码错误时抛出 HTTPError）in src/routing.py
@@ -191,8 +199,10 @@
 
 **User Story 2:**
 - T009 (US1 的 APIRoute) 必须先完成
-- T014-T018 可并行
-- T019-T020 依赖 T014-T018
+- T015 (参数收集) 必须先完成
+- T015a-T015e (参数处理逻辑) 可并行
+- T016-T018 可并行
+- T019-T020 依赖上述所有任务
 - T021 最后执行
 
 **User Story 3:**
@@ -215,7 +225,8 @@
 - T012, T013 可并行（验证任务）
 
 **User Story 2:**
-- T014, T015, T016, T017, T018 可并行（不同功能模块）
+- T015a, T015b, T015c, T015d, T015e 可并行（不同参数类型的处理逻辑）
+- T016, T017, T018 可并行（URL 构造、请求发送、响应解析）
 
 **User Story 3:**
 - T026, T027 可并行（不同模板）
@@ -282,12 +293,12 @@ touch src/cli.py && code src/cli.py  # T030
 
 ## Task Count Summary
 
-- **Total Tasks**: 49 (原 39，新增 10 个任务）
+- **Total Tasks**: 52（原 39，新增 13 个任务）
 - **Phase 1 (Setup)**: 5 tasks
 - **Phase 2 (Foundational)**: 4 tasks
-- **Phase 3 (User Story 1)**: 6 tasks (新增 T013a)
-- **Phase 4 (User Story 2)**: 13 tasks (新增 T015a, T015b, T017a, T018a, T020)
-- **Phase 5 (User Story 3)**: 15 tasks (新增 T025a, T025b)
+- **Phase 3 (User Story 1)**: 6 tasks
+- **Phase 4 (User Story 2)**: 16 tasks（新增 T015c, T015d, T015e）
+- **Phase 5 (User Story 3)**: 15 tasks
 - **Phase 6 (Polish)**: 6 tasks
 - **Parallelizable Tasks**: 20 tasks marked with [P]
 
