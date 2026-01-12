@@ -22,6 +22,7 @@
 **Constraints**: 
 - 不引入 FastAPI 运行时依赖，但 Query/Body/Header/Path 类的内部实现必须参考 FastAPI 的 `fastapi.params` 模块（包括参数验证逻辑、与 Pydantic Field 的集成方式、参数元数据的存储和传递方式、别名/验证器的处理逻辑）
 - **参数类型自动识别**：框架运行时根据参数在路径中的位置、类型注解、默认值等自动推断参数来源（Query/Path/Body/Header），无需显式标记；头参数必须通过生成代码中的 `Annotated[Type, Header(...)]` 显式标记，包含别名信息
+- **参数识别缓存**：参数类型识别仅在类定义时或首次调用时执行一次，识别结果缓存在类级别（ClassVar），后续所有实例调用复用缓存，避免重复计算，提升性能
 - **参数声明形式**：生成的接口类采用简化形式（如 `limit: int = 20`），框架运行时自动识别类型；支持用户手动添加 `Annotated` 标记以指定验证规则
 - **默认值处理**：遵循 FastAPI 推荐的最佳实践，使用函数参数的默认值（`= value`）而非 `Query(default=value)` 等形式；Query/Body/Header/Path 不提供 `default` 参数，避免默认值声明的歧义和不一致
 - **泛型语法**：所有泛型类和函数必须使用 PEP 695 定义的新语法（`class ClassName[T]: ...` 和 `def function[T](...): ...`），禁止使用传统的 `Generic[T]` 继承方式

@@ -279,6 +279,7 @@ print(meta.path)           # "/users"
   - **查询参数（Query）**: 不在路径中且不为 Pydantic BaseModel 子类的参数，自动识别为查询参数
   - **请求体（Body）**: 参数类型为 Pydantic BaseModel 子类的参数，自动识别为请求体
   - **头参数（Header）**: 头参数必须通过代码生成时使用 `Annotated[str, Header(...)]` 明确标记，包括 HTTP 头名称和别名信息（如 `Header(alias="Authorization")`），框架根据标记自动处理 snake_case 到 kebab-case 的转换
+  - **性能优化**: 参数类型识别仅在类定义时或首次调用时执行一次，识别结果缓存在类级别，后续所有实例调用复用缓存，避免重复计算
   - 参考实现：FastAPI 在 `fastapi.params` 模块中的参数识别逻辑
 - **默认值处理**: 使用 Python 函数参数的默认值（`= value`）语法；参数标记类（Query/Body/Header/Path）无需提供 `default` 参数，避免默认值声明的歧义
 
@@ -325,6 +326,7 @@ print(meta.path)           # "/users"
 - Q: 如何识别和转换头参数的名称？ → A: 明确的类型标记（头参数必须通过生成代码中的 Annotated 标记显式指定）
 - Q: `send()` 方法中如何处理参数映射和编码细节？ → A: 完整的自动处理（框架负责路径参数插值、查询参数序列化、Body JSON 化、Header 别名转换等）
 - Q: 代码生成工具在转换 OpenAPI 规范时，如何处理参数验证规则？ → A: 严格模式（将 OpenAPI 的 minimum/maximum/minLength 等转换为 Pydantic 约束，若无法转换则直接抛出异常）
+- Q: 参数类型识别是否每次调用都需要重新执行？ → A: 性能优化（参数识别仅执行一次并缓存在类级别，后续调用复用缓存）
 
 ## Future Iterations（后续迭代需求）
 

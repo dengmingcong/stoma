@@ -88,6 +88,7 @@
 **实现参考**: 参考 [spec.md](spec.md) 用户故事 2 的说明和澄清决策，关注：
 - APIRoute.send 方法的完整实现：自动完成参数收集、路径参数插值、查询参数序列化、Body JSON 化、Header 别名转换、URL 构造、HTTP 请求发送、响应解析等全部工作
 - 参数自动识别：根据参数在路径中的位置、类型注解、默认值自动推断参数来源（Query/Path/Body/Header）
+- **参数识别缓存**：参数类型识别仅在类定义时或首次调用时执行一次，识别结果缓存在类级别 ClassVar（如 `_param_mapping`），后续所有实例的 send() 调用直接复用缓存
 - 头参数处理：使用 Annotated[Type, Header(...)] 标记中的别名信息进行转换
 - 直接使用传入的 APIRequestContext 发送 HTTP 请求（同步实现）
 - 响应数据到 Pydantic 模型的转换流程
@@ -97,11 +98,12 @@
 ### Implementation for User Story 2
 
 - [X] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取所有参数值，准备进行分类）in src/routing.py
-- [ ] T015a [US2] 实现参数自动识别逻辑（根据规则分类参数）：
+- [ ] T015a [US2] 实现参数自动识别逻辑（根据规则分类参数，并将识别结果缓存在类级别 ClassVar）：
   - 路径参数（Path）：参数名出现在路由 path 字符串中（如 `/users/{user_id}` 中的 `user_id`）
   - 查询参数（Query）：不在路径中且不为 BaseModel 子类的参数（默认类型）
   - 请求体（Body）：参数类型为 Pydantic BaseModel 子类的参数
   - 头参数（Header）：通过 `Annotated[Type, Header(...)]` 标记的参数，解析别名信息
+  - **性能优化**：参数识别仅在类定义时或首次调用时执行一次，结果存储在类级别 ClassVar（如 `_param_mapping`），后续所有实例的 send() 调用直接复用缓存，避免重复识别
   in src/routing.py
 - [ ] T015b [US2] 实现路径参数插值逻辑（将 path 中的 `{param}` 占位符替换为实际参数值）in src/routing.py
 - [ ] T015c [US2] 实现查询参数序列化逻辑（将查询参数转换为 URL query string）in src/routing.py
