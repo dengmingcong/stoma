@@ -38,10 +38,12 @@
 
 **⚠️ CRITICAL**: 此阶段完成前无法开始任何用户故事工作
 
-**实现参考**: 所有实现必须严格遵循 [spec.md](spec.md) 中的伪代码示例，特别是：
+**实现参考**: 所有实现必须严格遵循 [spec.md](spec.md) 中的伪代码示例和澄清决策，特别是：
 - RouteMeta 必须继承 `pydantic.BaseModel` 并使用 `ConfigDict(frozen=True)` 实现不可变，包含 method、path、servers 字段
 - APIRoute 必须继承 `BaseModel` 并使用 `ClassVar[RouteMeta]` 存储路由元数据，使用 PEP 695 泛型语法 `class APIRoute[T]: ...`
 - 参数标记类型（Query/Path/Header/Body）的实现必须参考 FastAPI 的 `fastapi.params` 模块，包括参数验证逻辑、与 Pydantic Field 的集成方式、参数元数据的存储和传递方式、别名/验证器的处理逻辑
+- **参数自动识别规则**：框架运行时根据参数在路径中的位置、类型注解、默认值自动推断参数来源（Query/Path/Body/Header），无需显式标记；特别地，头参数必须通过代码生成中的 `Annotated[Type, Header(...)]` 显式标记
+- **参数声明形式**：生成的接口类采用简化形式（如 `limit: int = 20`），支持用户手动添加 `Annotated` 标记以指定验证规则
 - **默认值处理**：遵循 FastAPI 最佳实践，使用函数参数默认值（`= value`）而非 `Query(default=value)`；Query/Body/Header/Path 不提供 `default` 参数
 
 - [X] T006 创建 src/__init__.py 作为包入口
@@ -58,11 +60,11 @@
 
 **Independent Test**: 手动编写示例接口类，验证类型注解、IDE 提示、装饰器语法的可用性
 
-**实现参考**: 严格遵循 [spec.md](spec.md) 用户故事 1 的伪代码示例，特别关注：
-- APIRoute[T] 基类设计：继承 BaseModel，使用 ClassVar[RouteMeta]，使用 PEP 695 泛型语法 `class APIRoute[T]: ...`
+**实现参考**: 严格遵循 [spec.md](spec.md) 用户故事 1 的伪代码示例和澄清决策，特别关注：
+- APIRoute[T] 基类设计：继承 BaseModel，使用 ClassVar[RouteMeta]，使用 PEP 695 泛型语法 `class APIRoute[T]: ...`，提供 send 方法获取 route_meta() 类方法
 - api_route_decorator 装饰器签名和实现逻辑（支持 servers 参数），使用 PEP 695 泛型语法 `def api_route_decorator[T: APIRoute](...): ...`
 - APIRouter 类的方法签名（get/post/put/patch/delete）使用 PEP 695 泛型语法，__init__ 支持全局 servers 配置
-- 生成的接口类中，参数使用函数默认值形式（`= value`）而非 `Query(default=value)`
+- 生成的接口类中，参数使用简化形式（`= value`）而非 `Query(default=value)` 或 `Annotated` 标记；头参数在代码生成时添加 `Annotated[Type, Header(...)]` 标记
 
 ### Implementation for User Story 1
 
@@ -83,8 +85,10 @@
 
 **Independent Test**: 启动测试服务器，手动编写接口类并调用，验证请求发送和响应解析
 
-**实现参考**: 参考 [spec.md](spec.md) 用户故事 2 的说明和示例，关注：
-- APIRoute.send 方法的实现逻辑（参数收集、请求发送、响应解析）
+**实现参考**: 参考 [spec.md](spec.md) 用户故事 2 的说明和澄清决策，关注：
+- APIRoute.send 方法的完整实现：自动完成参数收集、路径参数插值、查询参数序列化、Body JSON 化、Header 别名转换、URL 构造、HTTP 请求发送、响应解析等全部工作
+- 参数自动识别：根据参数在路径中的位置、类型注解、默认值自动推断参数来源（Query/Path/Body/Header）
+- 头参数处理：使用 Annotated[Type, Header(...)] 标记中的别名信息进行转换
 - 直接使用传入的 APIRequestContext 发送 HTTP 请求（同步实现）
 - 响应数据到 Pydantic 模型的转换流程
 - servers 配置的解析与优先级处理（接口级 > 全局级）
@@ -92,8 +96,9 @@
 
 ### Implementation for User Story 2
 
-- [X] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取 query/path/header/body）in src/routing.py
-- [ ] T015a [US2] 实现 servers 配置解析逻辑（从 RouteMeta 和 APIRouter 提取 servers，接口级优先级更高）in src/routing.py
+- [X] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取 query/path/header/body，根据参数位置和类型自动识别）in src/routing.py
+- [ ] T015a [US2] 实现 send() 方法中的参数自动识别逻辑（检测参数在路径中的位置、类型注解、Annotated 标记以推断参数来源）in src/routing.py
+- [ ] T015b [US2] 实现路径参数插值逻辑（将 {param} 占位符替换为实际值）in src/routing.py
 - [ ] T016 [US2] 实现 URL 构造逻辑（基于 servers 配置 + 路径参数替换 + 查询参数拼接）in src/routing.py
 - [ ] T017 [US2] 实现 HTTP 请求发送逻辑（GET/POST/PUT/PATCH/DELETE，使用传入的 APIRequestContext）in src/routing.py
 - [ ] T017a [US2] 实现 HTTP 错误处理（连接失败、超时、HTTP 状态码错误时抛出 HTTPError）in src/routing.py
@@ -113,31 +118,33 @@
 
 **Independent Test**: 准备 OpenAPI YAML，运行生成工具，验证生成代码符合格式且可导入
 
-**实现参考**: 参考 [spec.md](spec.md) 用户故事 3 的说明，关注：
-- 生成的代码必须完全符合 User Story 1 定义的接口格式
-- OpenAPI 各字段到 Python 类型的映射规则
+**实现参考**: 参考 [spec.md](spec.md) 用户故事 3 的说明和澄清决策，关注：
+- 生成的代码必须完全符合 User Story 1 定义的接口格式，特别是参数自动识别和简化形式
+- OpenAPI 各字段到 Python 类型的映射规则，包括参数验证规则到 Pydantic 约束的转换
 - CLI 命令的参数设计（--spec, --out, --feature）
 - 生成文件的目录结构和命名约定
-- 严格模式：遇到不支持的 OpenAPI 特性立即报错并停止生成
+- **严格模式**：遇到不支持的 OpenAPI 特性（如未支持的参数类型、认证方式等）立即报错并停止生成；参数验证规则（minimum、maximum、minLength 等）无法完全转换时也直接报错
 - servers 配置生成：从 OpenAPI servers 字段提取并生成到 APIRouter 初始化和接口装饰器
+- 参数注解生成：简化形式 + 头参数使用 Annotated[Type, Header(...)]；包含验证规则时也使用 Annotated 标记
 
 ### Implementation for User Story 3
 
 - [ ] T022 [P] [US3] 实现 OpenAPI 文件读取与解析（支持 yaml/json）in src/codegen/parser.py
 - [ ] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/codegen/parser.py
-- [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性立即抛出详细错误并停止生成）in src/codegen/parser.py
+- [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性或参数验证规则无法完全转换时立即抛出详细错误并停止生成）in src/codegen/parser.py
 - [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas, servers）in src/codegen/parser.py
-- [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body 标记）in src/codegen/parser.py
-- [ ] T025a [US3] 实现 servers 配置解析逻辑（从 OpenAPI 全局 servers 和接口级 servers 提取）in src/codegen/parser.py
+- [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body，根据参数位置自动识别）in src/codegen/parser.py
+- [ ] T025a [US3] 实现参数验证规则转换（OpenAPI 的 minimum/maximum/minLength/pattern 等转换为 Pydantic Field/Annotated 约束，无法转换时报错）in src/codegen/parser.py
+- [ ] T025b [US3] 实现 servers 配置解析逻辑（从 OpenAPI 全局 servers 和接口级 servers 提取）in src/codegen/parser.py
 - [ ] T026 [P] [US3] 创建 Pydantic 模型生成模板 in src/codegen/templates/models.py.jinja2
-- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解、servers 配置，参数默认值使用 `= value` 形式而非 `Query(default=value)`）in src/codegen/templates/routing.py.jinja2
+- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解，非头参数使用简化形式 `= value`，头参数使用 `Annotated[Type, Header(...)]`，servers 配置）in src/codegen/templates/routing.py.jinja2
 - [ ] T028 [US3] 实现模板渲染器（Jinja2 渲染 routing 和 models）in src/codegen/renderer.py
 - [ ] T029 [US3] 实现文件输出逻辑（按 feature 组织目录：routing.py, models.py）in src/codegen/renderer.py
 - [ ] T030 [P] [US3] 实现 CLI 命令入口（stoma make --spec --out --feature）in src/cli.py
 - [ ] T031 [US3] 添加 CLI 参数解析与校验（使用 Typer）in src/cli.py
 - [ ] T032 [US3] 集成 parser, renderer, 文件输出到 CLI 工作流 in src/cli.py
-- [ ] T033 [US3] 测试：准备示例 OpenAPI yaml（包含 servers 配置），运行 stoma make 验证生成代码
-- [ ] T033a [US3] 测试：验证严格模式（使用包含不支持特性的 OpenAPI 文件，验证报错并停止）
+- [ ] T033 [US3] 测试：准备示例 OpenAPI yaml（包含 servers 配置和参数验证规则），运行 stoma make 验证生成代码
+- [ ] T033a [US3] 测试：验证严格模式（使用包含不支持特性或无法转换的验证规则的 OpenAPI 文件，验证报错并停止）
 
 **Checkpoint**: User Story 3 完成，可从 OpenAPI 自动生成完整的接口代码
 
@@ -235,12 +242,12 @@ touch src/routing.py && code src/routing.py  # T009-T011
 
 ```bash
 # Developer A:
-touch src/codegen/parser.py && code src/codegen/parser.py  # T022-T025
+touch src/codegen/parser.py && code src/codegen/parser.py  # T022-T025b (参数验证规则转换)
 
 # Developer B (并行):
 mkdir -p src/codegen/templates
 touch src/codegen/templates/models.py.jinja2  # T026
-touch src/codegen/templates/routing.py.jinja2  # T027
+touch src/codegen/templates/routing.py.jinja2 # T027 (简化形式 + 头参数标记)
 
 # Developer C (可并行准备 CLI 框架):
 touch src/cli.py && code src/cli.py  # T030
@@ -275,12 +282,12 @@ touch src/cli.py && code src/cli.py  # T030
 
 ## Task Count Summary
 
-- **Total Tasks**: 46 (原 39，新增 7 个任务）
+- **Total Tasks**: 49 (原 39，新增 10 个任务）
 - **Phase 1 (Setup)**: 5 tasks
-- **Phase 2 (Foundational)**: 4 tasks (新增 T008a)
+- **Phase 2 (Foundational)**: 4 tasks
 - **Phase 3 (User Story 1)**: 6 tasks (新增 T013a)
-- **Phase 4 (User Story 2)**: 11 tasks (新增 T015a, T017a, T018a, T020)
-- **Phase 5 (User Story 3)**: 14 tasks (新增 T023a, T025a, T033a)
+- **Phase 4 (User Story 2)**: 13 tasks (新增 T015a, T015b, T017a, T018a, T020)
+- **Phase 5 (User Story 3)**: 15 tasks (新增 T025a, T025b)
 - **Phase 6 (Polish)**: 6 tasks
 - **Parallelizable Tasks**: 20 tasks marked with [P]
 
@@ -289,25 +296,31 @@ touch src/cli.py && code src/cli.py  # T030
 ### User Story 1 (接口定义格式)
 - 可手动编写接口类，继承 APIRoute[T]
 - 装饰器 @router.get/post 可正常使用，IDE 提供参数补全
+- 参数声明采用简化形式（如 `limit: int = 20`），无需显式标记
+- 头参数可选择添加 Annotated[Type, Header(...)] 标记（带别名信息）
 - mypy 类型检查通过，返回类型推断正确
 - 用户字段名与框架元数据无冲突
 
 ### User Story 2 (Playwright 调用)
 - 启动测试服务器（如 FastAPI）
 - 手动编写接口类并实例化
+- send() 方法自动完成参数识别、插值、序列化、别名转换等工作
 - 调用实例发送真实 HTTP 请求
 - 响应正确解析为 Pydantic 模型
 - 响应数据不匹配时抛出 Pydantic 校验异常
+- 支持 servers 配置（全局 + 接口级），接口级优先
 
 ### User Story 3 (OpenAPI 生成)
-- 准备包含多个端点的 OpenAPI YAML
+- 准备包含参数验证规则和 servers 配置的 OpenAPI YAML
 - 运行 `stoma make --spec api.yaml --out ./gen --feature users`
-- 生成的代码符合 User Story 1 格式
+- 生成的代码符合 User Story 1 格式（参数自动识别、简化形式、头参数显式标记）
+- 参数验证规则正确转换为 Pydantic 约束
 - 生成的接口类可导入并使用
 - 类型注解完整，models.py 包含所有 schema
+- 严格模式验证：遇到不支持的特性或无法转换的验证规则时报错并停止
 
 ---
 
-**Generated**: 2025-12-29 by /speckit.tasks command
+**Generated**: 2026-01-12 by /speckit.clarify and /speckit.plan commands
 **Feature Branch**: 001-create-stoma
 **Source**: .specify/specs/001-create-stoma/
