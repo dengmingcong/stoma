@@ -19,7 +19,7 @@
 
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，Then IDE 提供参数补全与类型检查。
 2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.send(context)`），Then mypy/IDE 可正确推断返回类型为 T。
-3. Given 接口类继承 BaseModel 并使用 Query/Body/Header/Path 标记，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码。
+3. Given 接口类继承 BaseModel 并使用自动参数识别，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码；支持用户可选地使用 Annotated 标记以指定验证规则（如 ge、le、alias 等）。
 4. Given 生成的接口类使用路由元数据隔离（`_route_meta`），When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 
 **伪代码示例**（接口定义格式）：
@@ -141,8 +141,8 @@ class UserCreateRequest(BaseModel):
 class GetUsers(APIRoute[list[UserData]]):
     """获取用户列表 - 响应类型：list[UserData]。"""
     
-    limit: Annotated[int, Query(ge=1, le=100)] = 20
-    offset: Annotated[int, Query(ge=0)] = 0
+    limit: int = 20
+    offset: int = 0
     token: Annotated[str, Header(alias="Authorization")]
 
 
@@ -150,7 +150,7 @@ class GetUsers(APIRoute[list[UserData]]):
 class CreateUser(APIRoute[UserData]):
     """创建用户 - 响应类型：UserData。"""
     
-    body: Annotated[UserCreateRequest, Body()]
+    body: UserCreateRequest
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None
 
 
@@ -158,8 +158,8 @@ class CreateUser(APIRoute[UserData]):
 class GetUserById(APIRoute[UserData]):
     """获取特定用户 - 响应类型：UserData。"""
     
-    user_id: Annotated[int, Path()]
-    include_profile: Annotated[bool, Query()] = False
+    user_id: int
+    include_profile: bool = False
 ```
 
 **使用示例**：
@@ -200,7 +200,7 @@ print(meta.path)           # "/users"
 
 ### 用户故事 2 - 使用 Playwright 调用接口（优先级：P1）
 
-测试工程师希望实例化接口类后，通过调用实例的 `send(context)` 方法自动发送 HTTP 请求并获得类型化的响应。`send` 方法接收一个 `APIRequestContext` 参数，直接使用它发送 HTTP 请求，自动从实例属性收集请求参数（query/path/header/body），构造请求，发送到目标服务器，并将响应 JSON 解析为 Pydantic 响应模型。
+测试工程师希望实例化接口类后，通过调用实例的 `send(context)` 方法自动发送 HTTP 请求并获得类型化的响应。`send` 方法接收一个 `APIRequestContext` 参数，内部自动完成以下工作：（1）从实例属性按参数类型分类（query/path/header/body）；（2）对路径参数进行插值（如 `/users/{user_id}` 替换为 `/users/1`）；（3）对查询参数进行序列化；（4）对请求体（BaseModel 实例）进行 JSON 序列化；（5）对头参数进行别名转换和格式化；（6）使用传入的 APIRequestContext 发送构造好的 HTTP 请求到目标服务器；（7）将响应 JSON 自动解析为 Pydantic 响应模型实例并返回。
 
 **为何优先**: 这是框架的核心执行能力，验证接口定义可以真正调用远程服务并获得结果。
 
@@ -212,6 +212,8 @@ print(meta.path)           # "/users"
 2. Given 接口类定义了 POST 请求，When 实例化并传入 body 后调用 `endpoint.send(context)`，Then 使用传入的 APIRequestContext 发送 HTTP POST 请求，body 被正确序列化为 JSON。
 3. Given 服务器返回 JSON 响应，When 调用接口，Then 响应自动解析为 Pydantic 响应模型实例，类型校验通过。
 4. Given 服务器返回的 JSON 与响应模型不匹配（缺少字段或类型错误），When 调用接口，Then 抛出 Pydantic 校验异常并提供清晰的错误信息。
+5. Given 接口定义了路径参数（如 `/users/{user_id}`），When 实例化接口类并设置 `user_id=1` 后调用 `send(context)`，Then 框架自动将路径参数插值到 URL 中，发送到 `/users/1`。
+6. Given 接口定义了头参数，When 实例化接口类并调用 `send(context)`，Then 框架自动应用别名转换，将 Python 属性名转换为正确的 HTTP 头格式。
 
 ### 用户故事 3 - 从 OpenAPI 生成接口定义（优先级：P2）
 
@@ -225,7 +227,7 @@ print(meta.path)           # "/users"
 
 1. Given 用户提供 OpenAPI YAML 文件，When 运行生成工具，Then 生成的接口类结构符合用户故事 1 的伪代码格式（继承 APIRoute、使用 @router 装饰器、包含正确的参数定义）。
 2. Given OpenAPI 定义了 GET /users 接口，When 查看生成的接口类，Then 包含 `@router.get(path="/users")` 装饰的接口类定义。
-3. Given OpenAPI 定义了请求参数（query、path、header、body），When 查看生成的接口类，Then 参数类型注解、默认值、Query/Body/Header/Path 标记正确。
+3. Given OpenAPI 定义了请求参数（query、path、header、body），When 查看生成的接口类，Then 参数类型注解、默认值正确；其中头参数使用 `Annotated[Type, Header(...)]` 标记，包含正确的别名信息。
 4. Given OpenAPI 定义了响应 schema，When 查看生成的代码，Then 包含对应的 Pydantic 响应模型类，字段类型与 OpenAPI 定义一致。
 
 
@@ -236,11 +238,13 @@ print(meta.path)           # "/users"
 - **FR-001**: 框架必须支持将 OpenAPI Specification 定义的 HTTP 接口直接转换为框架对接口的定义。
 - **FR-002**: 框架必须提供声明式接口定义方式以描述请求与响应。
 - **FR-003**: 框架必须基于 Pydantic 对请求构造与响应解析进行类型校验与序列化/反序列化。
-- **FR-004**: 框架设计当前版本不强制依赖 FastAPI，采用"受其启发"的声明风格与注解设计，命名策略采用常见动词注解与参数标识：支持 `@get`, `@post`, `@put`, `@patch`, `@delete` 以及参数来源标记 `Query`, `Body`, `Header`, `Path`；这些参数标记类（Query/Body/Header/Path）的内部实现代码应参考 FastAPI 的实现方式，确保行为一致性和最佳实践；后续版本可根据需要选择性集成 FastAPI 的部分函数以增强功能。
+- **FR-004**: 框架设计当前版本不强制依赖 FastAPI，采用"受其启发"的声明风格与注解设计，命名策略采用常见动词注解：支持 `@get`, `@post`, `@put`, `@patch`, `@delete`；参数类型自动识别机制：根据参数在路径中的位置（路径参数 vs 查询参数）、参数类型注解、默认值等因素自动判断参数来源（Query/Path/Body/Header），无需显式标记，参考 FastAPI 的自动推断机制实现；这些参数识别逻辑的内部实现代码应参考 FastAPI 的实现方式，确保行为一致性和最佳实践；后续版本可根据需要选择性集成 FastAPI 的部分函数以增强功能。
 - **FR-005**: 框架当前版本使用 Playwright 作为接口请求的客户端，采用同步实现方式（异步支持将在后续版本添加）；APIRouter 支持全局 servers 配置（类似 OpenAPI servers 机制），单个接口可在 RouteMeta 中指定优先级更高的 servers 配置，用于指定目标服务器的基础 URL；可根据实际情况调整为其他 HTTP 客户端库。
-- **FR-006**: 框架应提供代码生成工具，从 OpenAPI 规范文件生成符合用户故事 1 定义格式的 Python 接口类代码、Pydantic 请求/响应模型，支持测试阶段直接加载生成代码；代码生成采用严格模式，遇到 OpenAPI 规范中包含框架尚未支持的特性时立即报错并停止生成，要求用户修改规范后重试，确保生成代码的完整性和可用性。
+- **FR-006**: 框架应提供代码生成工具，从 OpenAPI 规范文件生成符合用户故事 1 定义格式的 Python 接口类代码、Pydantic 请求/响应模型，支持测试阶段直接加载生成代码；代码生成采用严格模式，遇到 OpenAPI 规范中包含框架尚未支持的特性时立即报错并停止生成，要求用户修改规范后重试，确保生成代码的完整性和可用性；对于参数验证规则（如 OpenAPI 的 `minimum`、`maximum`、`minLength` 等），代码生成工具应尽力将其转换为 Pydantic 的验证约束（Field、Annotated 标记等），若某些规则无法转换则生成注释说明。
 - **FR-007**: 生成的接口类、请求模型、响应模型应能正确导入使用；具体的目录结构组织方式（如 router.py、models.py 的划分）可在后续版本根据实际需求设计。
 - **FR-008**: 提供代码生成的入口（具体命令名称、参数形式在后续实现时确定），至少支持指定输入的 OpenAPI 文件和输出目录。
+- **FR-009**: 生成的接口类参数声明采用简化形式（如 `limit: int = 20`），框架运行时根据自动识别规则推断参数类型；同时支持用户手动添加 `Annotated` 标记以指定验证规则（如 `ge`、`le`、`alias` 等），框架应正确解析并应用这些验证规则。
+- **FR-010**: 代码生成工具应将 OpenAPI 规范中的参数验证规则（如 `minimum`、`maximum`、`minLength`、`pattern` 等）转换为生成代码中的 Pydantic 验证约束（Field 或 Annotated 标记），确保生成的接口类具有完整的参数验证能力；若某些验证规则无法完全转换，代码生成器直接抛出异常。
 
 ### 非功能性需求
 
@@ -270,13 +274,13 @@ print(meta.path)           # "/users"
 
 - **Python 版本**: 最低支持 Python 3.12，以使用 PEP 695 泛型新语法。
 - **泛型语法**: 所有泛型类和函数必须使用 PEP 695 定义的新语法（`class ClassName[T]: ...` 和 `def function[T](...): ...`），禁止使用传统的 `Generic[T]` 继承方式。
-- **参数标记类实现**: Query/Body/Header/Path 类的内部实现代码必须参考 FastAPI 的实现方式（`fastapi.params` 模块），包括但不限于：
-  - 参数验证逻辑与错误处理机制
-  - 与 Pydantic Field 的集成方式
-  - 参数元数据的存储和传递方式
-  - 别名、验证器的处理逻辑
-  - **默认值处理**: 遵循 FastAPI 推荐的最佳实践，使用函数参数的默认值（`= value`）而非 `Query(default=value)` 等形式；Query/Body/Header/Path 不提供 `default` 参数，避免默认值声明的歧义和不一致。
-- **同步实现优先**: 当前版本采用同步实现，异步支持在后续版本添加。
+- **参数识别规则**: 参数类型（Query/Path/Body/Header）由框架自动识别，规则如下：
+  - **路径参数（Path）**: 参数名称出现在 `@router.get/post` 等装饰器的 `path` 字符串中（如 `/users/{user_id}` 中的 `user_id`），框架自动识别为路径参数
+  - **查询参数（Query）**: 不在路径中且不为 Pydantic BaseModel 子类的参数，自动识别为查询参数
+  - **请求体（Body）**: 参数类型为 Pydantic BaseModel 子类的参数，自动识别为请求体
+  - **头参数（Header）**: 头参数必须通过代码生成时使用 `Annotated[str, Header(...)]` 明确标记，包括 HTTP 头名称和别名信息（如 `Header(alias="Authorization")`），框架根据标记自动处理 snake_case 到 kebab-case 的转换
+  - 参考实现：FastAPI 在 `fastapi.params` 模块中的参数识别逻辑
+- **默认值处理**: 使用 Python 函数参数的默认值（`= value`）语法；参数标记类（Query/Body/Header/Path）无需提供 `default` 参数，避免默认值声明的歧义
 
 ### 需澄清事项（最多 3 项）
 
@@ -313,6 +317,14 @@ print(meta.path)           # "/users"
 - Q: `send()` 方法应该使用同步还是异步实现？ → A: 同步实现
 - Q: Playwright 发送 HTTP 请求时需要知道目标服务器的基础 URL，框架应该如何获取这个配置？ → A: 在 APIRouter 中实现类似 OpenAPI servers 的机制来指定公共服务器，单个接口也可以在 RouteMeta 中指定自己的 servers（优先级更高）
 - Q: 代码生成工具从 OpenAPI 规范生成接口类时，如果遇到 OpenAPI 规范中包含框架尚未支持的特性（如特殊的认证方式、自定义扩展字段等），应该如何处理？ → A: 严格模式 - 遇到不支持的特性立即报错并停止生成，要求用户修改规范
+
+### Session 2026-01-12
+
+- Q: 框架是否需要在接口类中显式使用 Query/Body/Header/Path 标记，还是可以根据参数位置和类型自动识别？ → A: 自动识别规则（无需显式标记）
+- Q: 生成的接口类中，参数声明应该采用哪种形式？ → A: 可选标记（生成简化形式，支持用户手动添加 Annotated 标记）
+- Q: 如何识别和转换头参数的名称？ → A: 明确的类型标记（头参数必须通过生成代码中的 Annotated 标记显式指定）
+- Q: `send()` 方法中如何处理参数映射和编码细节？ → A: 完整的自动处理（框架负责路径参数插值、查询参数序列化、Body JSON 化、Header 别名转换等）
+- Q: 代码生成工具在转换 OpenAPI 规范时，如何处理参数验证规则？ → A: 严格模式（将 OpenAPI 的 minimum/maximum/minLength 等转换为 Pydantic 约束，若无法转换则直接抛出异常）
 
 ## Future Iterations（后续迭代需求）
 
