@@ -98,7 +98,7 @@
 ### Implementation for User Story 2
 
 - [X] T015 [US2] 实现请求参数收集逻辑（从 APIRoute 实例字段提取所有参数值，准备进行分类）in src/routing.py
-- [ ] T015a [US2] 实现参数自动识别逻辑（根据规则分类参数，并将识别结果缓存在类级别 ClassVar）：
+- [X] T015a [US2] 实现参数自动识别逻辑（根据规则分类参数，并将识别结果缓存在类级别 ClassVar）：
   - 路径参数（Path）：参数名出现在路由 path 字符串中（如 `/users/{user_id}` 中的 `user_id`）
   - 查询参数（Query）：不在路径中且不为 BaseModel 子类的参数（默认类型）
   - 请求体（Body）：参数类型为 Pydantic BaseModel 子类的参数
