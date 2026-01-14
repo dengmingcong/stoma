@@ -7,7 +7,7 @@
 
 ## Summary
 
-构建一个仿 FastAPI 声明式风格的接口自动化测试框架 Stoma，核心做法是：接口类继承 Pydantic BaseModel 并通过泛型 `APIRoute[T]` 声明响应类型，使用类装饰器（`router.get/post/...`）注入路由元数据 `_route_meta`，运行时由基类 `send` 方法用 Playwright 发送 HTTP 请求并将 JSON 反序列化为类型安全的响应模型；提供 CLI `stoma make --spec --out --feature` 从 OpenAPI 预生成接口类、请求/响应模型，输出目录结构参考 FastAPI 源码分层。
+构建一个仿 FastAPI 声明式风格的接口自动化测试框架 Stoma，核心做法是：接口类继承 Pydantic BaseModel 并通过泛型 `APIRoute[T]` 声明响应类型，使用类装饰器（`router.get/post/...`）调用 `_get_dependant(method, path)` 生成并缓存路由元数据和参数依赖至 `_dependant`，运行时由基类 `send` 方法用 Playwright 发送 HTTP 请求并将 JSON 反序列化为类型安全的响应模型；提供 CLI `stoma make --spec --out --feature` 从 OpenAPI 预生成接口类、请求/响应模型，输出目录结构参考 FastAPI 源码分层。
 
 ## Technical Context
 
@@ -31,7 +31,7 @@
 - HTTP 客户端可替换但默认 Playwright，当前版本采用同步实现（异步支持在后续版本添加）
 - 错误处理机制：必须抛出详细的自定义异常类（ValidationError、HTTPError、ParseError 等），包含足够的上下文信息
 - 代码生成采用严格模式：遇到 OpenAPI 规范中包含框架尚未支持的特性或参数验证规则无法完全转换时立即报错并停止生成
-- servers 配置：APIRouter 支持全局 servers（类似 OpenAPI servers 机制），单个接口可在 RouteMeta 中指定优先级更高的 servers
+- 装饰器与元数据：api_route_decorator 工厂函数返回类装饰器，调用 `_get_dependant(method, path)` 生成并缓存路由元数据和参数依赖
 **Scale/Scope**: 面向中小型 API 套件（10-300 endpoints），支持多 feature 包并行维护
 
 ## Constitution Check
@@ -63,7 +63,11 @@ specs/001-create-stoma/
 .
 ├── src/
 │   ├── __init__.py
-│   ├── routing.py          # 仿 FastAPI 的装饰器、路由元数据与 APIRoute 基类（APIRouter、decorators、RouteMeta、APIRoute[T].send()，支持全局 servers 配置，直接使用 APIRequestContext 发送请求）
+│   ├── routing.py          # 仿 FastAPI 的装饰器、路由元数据与 APIRoute 基类（APIRouter、decorators、APIRoute[T].send()、_get_dependant()，直接使用 APIRequestContext 发送请求）
+│   ├── dependencies/       # 参数依赖系统
+│   │   ├── __init__.py
+│   │   ├── models.py      # Dependant 和 ModelField 数据模型
+│   │   └── utils.py       # 参数提取工具函数
 │   ├── params.py           # Query/Path/Header/Body 标记与校验辅助（参考 fastapi.params 实现，包括参数验证逻辑、与 Pydantic Field 的集成、元数据存储传递、默认值/别名/验证器处理）
 │   ├── exceptions.py       # 自定义异常类（ValidationError、HTTPError、ParseError 等，包含详细上下文信息）
 │   ├── cli.py              # stoma make 命令入口与参数解析（Typer）

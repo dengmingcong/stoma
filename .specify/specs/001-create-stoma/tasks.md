@@ -39,15 +39,15 @@
 **⚠️ CRITICAL**: 此阶段完成前无法开始任何用户故事工作
 
 **实现参考**: 所有实现必须严格遵循 [spec.md](spec.md) 中的伪代码示例和澄清决策，特别是：
-- RouteMeta 必须继承 `pydantic.BaseModel` 并使用 `ConfigDict(frozen=True)` 实现不可变，包含 method、path、servers 字段
-- APIRoute 必须继承 `BaseModel` 并使用 `ClassVar[RouteMeta]` 存储路由元数据，使用 PEP 695 泛型语法 `class APIRoute[T]: ...`
+- Dependant 必须使用 `@dataclass(frozen=True)` 实现不可变，包含 method、path 和参数字段列表
+- APIRoute 必须继承 `BaseModel` 并使用 `ClassVar[Dependant | None]` 存储路由元数据和参数依赖，使用 PEP 695 泛型语法 `class APIRoute[T]: ...`
 - 参数标记类型（Query/Path/Header/Body）的实现必须参考 FastAPI 的 `fastapi.params` 模块，包括参数验证逻辑、与 Pydantic Field 的集成方式、参数元数据的存储和传递方式、别名/验证器的处理逻辑
 - **参数自动识别规则**：框架运行时根据参数在路径中的位置、类型注解、默认值自动推断参数来源（Query/Path/Body/Header），无需显式标记；特别地，头参数必须通过代码生成中的 `Annotated[Type, Header(...)]` 显式标记
 - **参数声明形式**：生成的接口类采用简化形式（如 `limit: int = 20`），支持用户手动添加 `Annotated` 标记以指定验证规则
 - **默认值处理**：遵循 FastAPI 最佳实践，使用函数参数默认值（`= value`）而非 `Query(default=value)`；Query/Body/Header/Path 不提供 `default` 参数
 
 - [X] T006 创建 src/__init__.py 作为包入口
-- [X] T007 [P] 实现 RouteMeta 类（继承 BaseModel，frozen=True，包含 method、path 和 servers 字段）in src/routing.py，参考 spec.md 用户故事 1 的伪代码
+- [X] T007 [P] 实现 Dependant 类（使用 @dataclass(frozen=True)，包含 method、path 和参数字段列表）in src/dependencies/models.py，参考 spec.md 用户故事 1 的伪代码
 - [X] T008 [P] 实现参数标记类型（Query, Path, Header, Body）in src/params.py，必须参考 FastAPI 的 `fastapi.params` 模块实现，确保参数验证逻辑、Pydantic Field 集成、元数据存储/传递、别名/验证器处理与 FastAPI 行为一致；**不提供 `default` 参数**，遵循使用函数参数默认值的最佳实践
 
 **Checkpoint**: 基础设施就绪 - 用户故事可以并行开始实现
@@ -61,14 +61,14 @@
 **Independent Test**: 手动编写示例接口类，验证类型注解、IDE 提示、装饰器语法的可用性
 
 **实现参考**: 严格遵循 [spec.md](spec.md) 用户故事 1 的伪代码示例和澄清决策，特别关注：
-- APIRoute[T] 基类设计：继承 BaseModel，使用 ClassVar[RouteMeta]，使用 PEP 695 泛型语法 `class APIRoute[T]: ...`，提供 send 方法获取 route_meta() 类方法
+- APIRoute[T] 基类设计：继承 BaseModel，使用 ClassVar[Dependant | None]，使用 PEP 695 泛型语法 `class APIRoute[T]: ...`，提供 send 方法和 _get_dependant() 类方法
 - api_route_decorator 装饰器签名和实现逻辑（支持 servers 参数），使用 PEP 695 泛型语法 `def api_route_decorator[T: APIRoute](...): ...`
 - APIRouter 类的方法签名（get/post/put/patch/delete）使用 PEP 695 泛型语法，__init__ 支持全局 servers 配置
 - 生成的接口类中，参数使用简化形式（`= value`）而非 `Query(default=value)` 或 `Annotated` 标记；头参数在代码生成时添加 `Annotated[Type, Header(...)]` 标记
 
 ### Implementation for User Story 1
 
-- [X] T009 [P] [US1] 实现 APIRoute[T] 基类（继承 Pydantic BaseModel，包含 _route_meta ClassVar）in src/routing.py
+- [X] T009 [P] [US1] 实现 APIRoute[T] 基类（继承 Pydantic BaseModel，包含 _dependant ClassVar）in src/routing.py
 - [X] T010 [US1] 实现 api_route_decorator 装饰器函数（接收 method、path 和 servers 参数，返回类装饰器）in src/routing.py
 - [X] T011 [US1] 实现 APIRouter 类（__init__ 接收全局 servers，提供 get/post/put/patch/delete 方法且支持接口级 servers 覆盖）in src/routing.py
 - [X] T012 [US1] 验证装饰器语法与 IDE 类型提示（手动创建示例接口类测试）
@@ -285,7 +285,7 @@ touch src/cli.py && code src/cli.py  # T030
 
 ### Validation at Each Phase
 - **After Setup**: 项目结构正确，依赖安装成功
-- **After Foundational**: RouteMeta 和参数标记类可导入使用
+- **After Foundational**: Dependant 和参数标记类可导入使用
 - **After US1**: 手动编写的示例接口类类型检查通过，IDE 提示正确
 - **After US2**: 示例接口类可成功调用测试服务器并获得响应
 - **After US3**: 从示例 OpenAPI 生成的代码可导入并成功调用

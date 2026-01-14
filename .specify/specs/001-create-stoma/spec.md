@@ -20,7 +20,7 @@
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，Then IDE 提供参数补全与类型检查。
 2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.send(context)`），Then mypy/IDE 可正确推断返回类型为 T。
 3. Given 接口类继承 BaseModel 并使用自动参数识别，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码；支持用户可选地使用 Annotated 标记以指定验证规则（如 ge、le、alias 等）。
-4. Given 生成的接口类使用路由元数据隔离（`_route_meta`），When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
+4. Given 生成的接口类使用路由元数据隔离（`_dependant`），When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 
 **伪代码示例**（接口定义格式）：
 
@@ -31,12 +31,8 @@ from playwright.sync_api import APIRequestContext
 
 # ===== 框架核心定义 =====
 
-class RouteMeta(BaseModel):
-    """路由元数据（不可变），集中存储所有路由信息，避免与用户字段冲突"""
-    model_config = ConfigDict(frozen=True)
-    
-    method: str
-    path: str
+# Dependant 将由框架内部使用，代码生成时无需导入
+# （这个类型的具体实现在 src/dependencies/models.py 中）
 
 
 # Query、Header、Path、Body 将由代码生成器导入，框架此处仅声明类型
@@ -56,10 +52,10 @@ class APIRoute[T](BaseModel):
     
     设计特点：
     1. 继承 BaseModel：自动 __init__ 生成，参数 → 属性，无需样板代码
-    2. 元数据隔离：所有路由信息存储在 _route_meta，避免与用户字段冲突
+    2. 元数据缓存：所有路由信息和参数依赖存储在 _dependant，避免与用户字段冲突
     3. IDE 支持：字段声明即完成一切，IDE 完美补全与类型检查
     """
-    _route_meta: ClassVar[RouteMeta]
+    _dependant: ClassVar[Dependant | None] = None
     
     def send(self, context: APIRequestContext) -> T:
         """
@@ -87,7 +83,8 @@ def api_route_decorator[
     IDE 在此位置提供参数补全与类型检查。
     """
     def update_api_route(cls: type[T]) -> type[T]:
-        cls._route_meta = RouteMeta(
+        # 调用 _get_dependant 生成并缓存路由元数据和参数依赖
+        cls._get_dependant(
             method=method,
             path=path
         )
@@ -298,7 +295,7 @@ print(meta.path)           # "/users"
 - Q: 如何提供类似 FastAPI 的统一入口（如 router.get/router.post）？ → A: 提供 `APIRouter` 命名空间，内部方法（`get/post/put/patch/delete`）均调用同一个 `decorator` 入口以注入元数据；示例：`@router.get(path="/users")`，内层装饰器函数命名为 `update_api_route` 以贴近 FastAPI 源码风格。
 ### Session 2025-12-19
 
-- Q: 接口类构造函数有重复代码（`self.limit = limit` 等），如何优化？并且避免框架属性名与用户字段冲突？ → A: 采用方案 2（元数据字典）。接口类继承 Pydantic BaseModel，自动生成 `__init__` 无需样板代码；所有路由元数据存储在单一的不可变 `RouteMeta` 对象，以 `_route_meta` ClassVar 存储，完全避免与用户字段冲突（用户可以安全地定义 method、path 等任意名称的字段）；提供 `route_meta()` 类方法供框架内部访问元数据。优势：零样板代码、最佳 IDE 支持、命名空间安全隔离、代码生成更清晰。
+- Q: 接口类构造函数有重复代码（`self.limit = limit` 等），如何优化？并且避免框架属性名与用户字段冲突？ → A: 采用方案 2（元数据字典）。接口类继承 Pydantic BaseModel，自动生成 `__init__` 无需样板代码；所有路由元数据和参数依赖存储在单一的 `Dependant` 对象，以 `_dependant` ClassVar 存储，完全避免与用户字段冲突（用户可以安全地定义 method、path 等任意名称的字段）；通过 `_get_dependant()` 类方法供框架内部访问元数据。优势：零样板代码、最佳 IDE 支持、命名空间安全隔离、代码生成更清晰。
 
 ### Session 2025-12-24
 
@@ -309,7 +306,7 @@ print(meta.path)           # "/users"
 - Q: Query/Body/Header/Path 类本身的实现代码应该参考哪个框架或库的实现方式？ → A: 参考 FastAPI 的实现方式
 - Q: 当接口调用过程中发生错误（如参数验证失败、HTTP 请求失败、响应解析失败）时，框架应该如何处理这些错误？ → A: 抛出详细的自定义异常类（ValidationError、HTTPError、ParseError 等）
 - Q: `send()` 方法应该使用同步还是异步实现？ → A: 同步实现
-- Q: Playwright 发送 HTTP 请求时需要知道目标服务器的基础 URL，框架应该如何获取这个配置？ → A: 在 APIRouter 中实现类似 OpenAPI servers 的机制来指定公共服务器，单个接口也可以在 RouteMeta 中指定自己的 servers（优先级更高）
+- Q: Playwright 发送 HTTP 请求时需要知道目标服务器的基础 URL，框架应该如何获取这个配置？ → A: 当前版本通过 Playwright 的 APIRequestContext 直接管理，base_url 在创建 context 时指定；未来版本可在 Dependant 中添加 servers 字段支持多环境配置
 - Q: 代码生成工具从 OpenAPI 规范生成接口类时，如果遇到 OpenAPI 规范中包含框架尚未支持的特性（如特殊的认证方式、自定义扩展字段等），应该如何处理？ → A: 严格模式 - 遇到不支持的特性立即报错并停止生成，要求用户修改规范
 
 ### Session 2026-01-12
