@@ -12,7 +12,7 @@ from typing import Annotated
 
 from pydantic import BaseModel
 
-from src.params import Header, ParamTypes
+from src.params import Header
 from src.routing import APIRoute, APIRouter
 
 # 创建测试用的路由器
@@ -44,12 +44,16 @@ def test_auto_recognize_path_params() -> None:
         user_id: int  # 无需显式标记，在 path 中找到，自动识别为路径参数
         limit: int = 10
 
-    # 获取参数映射
-    mapping = GetUser._get_param_mapping()
+    # 获取参数依赖定义
+    dependant = GetUser._get_dependant()
 
     # 验证自动识别结果
-    assert mapping["user_id"] == ParamTypes.path
-    assert mapping["limit"] == ParamTypes.query
+    assert len(dependant.path_params) == 1
+    assert dependant.path_params[0].name == "user_id"
+    assert dependant.path_params[0].alias == "user_id"
+    assert len(dependant.query_params) == 1
+    assert dependant.query_params[0].name == "limit"
+    assert dependant.query_params[0].alias == "limit"
 
     # 验证参数收集
     endpoint = GetUser(user_id=123, limit=20)
@@ -66,11 +70,13 @@ def test_auto_recognize_body_params() -> None:
         user_data: UserCreateRequest  # 无需显式标记，是 BaseModel，自动识别为请求体
         token: str
 
-    mapping = CreateUser._get_param_mapping()
+    dependant = CreateUser._get_dependant()
 
-    # 验证自动识别结果
-    assert mapping["user_data"] == ParamTypes.body
-    assert mapping["token"] == ParamTypes.query
+    # 验证自动识别结果：BaseModel 子类应该在 body_params 中
+    assert len(dependant.body_params) == 1
+    assert dependant.body_params[0].name == "user_data"
+    assert len(dependant.query_params) == 1
+    assert dependant.query_params[0].name == "token"
 
     # 验证参数收集
     user_req = UserCreateRequest(name="Alice", email="alice@example.com")
@@ -89,12 +95,14 @@ def test_auto_recognize_query_params() -> None:
         offset: int = 0
         keyword: str | None = None
 
-    mapping = GetUsers._get_param_mapping()
+    dependant = GetUsers._get_dependant()
 
     # 所有字段都应该被识别为查询参数（默认）
-    assert mapping["limit"] == ParamTypes.query
-    assert mapping["offset"] == ParamTypes.query
-    assert mapping["keyword"] == ParamTypes.query
+    assert len(dependant.query_params) == 3
+    field_names = [f.name for f in dependant.query_params]
+    assert "limit" in field_names
+    assert "offset" in field_names
+    assert "keyword" in field_names
 
     # 验证参数收集
     endpoint = GetUsers(limit=50, offset=10, keyword="test")
@@ -112,12 +120,15 @@ def test_explicit_header_params() -> None:
         x_request_id: Annotated[str, Header(alias="X-Request-ID")]  # 显式标记为头参数
         limit: int = 20  # 自动识别为查询参数
 
-    mapping = GetUsers._get_param_mapping()
+    dependant = GetUsers._get_dependant()
 
     # 验证识别结果
-    assert mapping["authorization"] == ParamTypes.header
-    assert mapping["x_request_id"] == ParamTypes.header
-    assert mapping["limit"] == ParamTypes.query
+    assert len(dependant.header_params) == 2
+    header_names = {f.name: f.alias for f in dependant.header_params}
+    assert header_names["authorization"] == "Authorization"
+    assert header_names["x_request_id"] == "X-Request-ID"
+    assert len(dependant.query_params) == 1
+    assert dependant.query_params[0].name == "limit"
 
     # 验证参数收集
     endpoint = GetUsers(authorization="Bearer token", x_request_id="req-001")
@@ -135,16 +146,18 @@ def test_caching_mechanism() -> None:
         user_id: int
         limit: int = 10
 
-    # 首次调用 _get_param_mapping：构建映射
-    assert GetUser._param_mapping is None  # 初始状态为 None
-    mapping1 = GetUser._get_param_mapping()
-    assert GetUser._param_mapping is not None  # 缓存已建立
-    assert mapping1["user_id"] == ParamTypes.path
-    assert mapping1["limit"] == ParamTypes.query
+    # 首次调用 _get_dependant：构建依赖定义
+    assert GetUser._dependant is None  # 初始状态为 None
+    dependant1 = GetUser._get_dependant()
+    assert GetUser._dependant is not None  # 缓存已建立
+    assert len(dependant1.path_params) == 1
+    assert dependant1.path_params[0].name == "user_id"
+    assert len(dependant1.query_params) == 1
+    assert dependant1.query_params[0].name == "limit"
 
-    # 第二次调用 _get_param_mapping：直接返回缓存
-    mapping2 = GetUser._get_param_mapping()
-    assert mapping2 is mapping1  # 返回同一个对象（缓存复用）
+    # 第二次调用 _get_dependant：直接返回缓存
+    dependant2 = GetUser._get_dependant()
+    assert dependant2 is dependant1  # 返回同一个对象（缓存复用）
 
     # 多个实例共享同一个缓存
     endpoint1 = GetUser(user_id=1, limit=20)
@@ -171,14 +184,19 @@ def test_complex_mixed_params() -> None:
         token: Annotated[str, Header(alias="Authorization")]  # 头参数
         data: UserCreateRequest  # 请求体
 
-    mapping = UpdateUserPost._get_param_mapping()
+    dependant = UpdateUserPost._get_dependant()
 
     # 验证所有参数类型都被正确识别
-    assert mapping["user_id"] == ParamTypes.path
-    assert mapping["post_id"] == ParamTypes.path
-    assert mapping["published"] == ParamTypes.query
-    assert mapping["token"] == ParamTypes.header
-    assert mapping["data"] == ParamTypes.body
+    assert len(dependant.path_params) == 2
+    path_names = [f.name for f in dependant.path_params]
+    assert "user_id" in path_names
+    assert "post_id" in path_names
+    assert len(dependant.query_params) == 1
+    assert dependant.query_params[0].name == "published"
+    assert len(dependant.header_params) == 1
+    assert dependant.header_params[0].name == "token"
+    assert len(dependant.body_params) == 1
+    assert dependant.body_params[0].name == "data"
 
     # 验证参数收集
     user_data = UserCreateRequest(name="Bob", email="bob@example.com")
@@ -207,13 +225,16 @@ def test_path_param_extraction() -> None:
         member_id: int
         include_profile: bool = False
 
-    mapping = GetTeamMember._get_param_mapping()
+    dependant = GetTeamMember._get_dependant()
 
     # 所有在路径中的参数都应被识别
-    assert mapping["org_id"] == ParamTypes.path
-    assert mapping["team_id"] == ParamTypes.path
-    assert mapping["member_id"] == ParamTypes.path
-    assert mapping["include_profile"] == ParamTypes.query
+    assert len(dependant.path_params) == 3
+    path_names = [f.name for f in dependant.path_params]
+    assert "org_id" in path_names
+    assert "team_id" in path_names
+    assert "member_id" in path_names
+    assert len(dependant.query_params) == 1
+    assert dependant.query_params[0].name == "include_profile"
 
     # 验证参数收集
     endpoint = GetTeamMember(org_id=1, team_id=2, member_id=3, include_profile=True)
@@ -237,15 +258,16 @@ def test_param_recognition_across_routes() -> None:
         content: str
 
     # 两个不同的路由应该各自维护自己的缓存
-    mapping1 = GetUser._get_param_mapping()
-    mapping2 = UpdatePost._get_param_mapping()
+    dependant1 = GetUser._get_dependant()
+    dependant2 = UpdatePost._get_dependant()
 
     # 缓存相互独立
-    assert mapping1 is not mapping2
-    assert "user_id" in mapping1
-    assert "post_id" in mapping2
-    assert "content" in mapping2
-    assert "limit" in mapping1
+    assert dependant1 is not dependant2
+    # 验证各自的参数
+    assert any(f.name == "user_id" for f in dependant1.path_params)
+    assert any(f.name == "post_id" for f in dependant2.path_params)
+    assert any(f.name == "content" for f in dependant2.query_params)
+    assert any(f.name == "limit" for f in dependant1.query_params)
 
 
 def test_basemodel_subclass_recognition() -> None:
@@ -269,12 +291,15 @@ def test_basemodel_subclass_recognition() -> None:
         request2: NestedRequest  # BaseModel 子类
         query_param: str = "default"  # 不是 BaseModel
 
-    mapping = PostData._get_param_mapping()
+    dependant = PostData._get_dependant()
 
     # BaseModel 子类应该被识别为请求体
-    assert mapping["request1"] == ParamTypes.body
-    assert mapping["request2"] == ParamTypes.body
-    assert mapping["query_param"] == ParamTypes.query
+    assert len(dependant.body_params) == 2
+    body_names = [f.name for f in dependant.body_params]
+    assert "request1" in body_names
+    assert "request2" in body_names
+    assert len(dependant.query_params) == 1
+    assert dependant.query_params[0].name == "query_param"
 
     # 验证参数收集
     custom_req = CustomRequest(field1="test", field2=42)
