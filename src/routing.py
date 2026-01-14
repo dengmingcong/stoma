@@ -4,7 +4,7 @@
 
 - APIRoute：接口基类。
 - api_route_decorator：类装饰器工厂函数。
-- APIRouter：路由装饰器提供者，支持全局和接口级 servers 配置。
+- APIRouter：路由装饰器提供者。
 """
 
 import re
@@ -49,7 +49,6 @@ class APIRoute[T](BaseModel):
         cls,
         method: str | None = None,
         path: str | None = None,
-        servers: list[str] | None = None,
     ) -> Dependant:
         """获取参数依赖定义缓存（懒加载）。
 
@@ -66,8 +65,6 @@ class APIRoute[T](BaseModel):
         :type method: str | None
         :param path: 路由路径，首次调用时必须提供。
         :type path: str | None
-        :param servers: 服务器列表，可选。
-        :type servers: list[str] | None
         :return: 参数依赖定义对象。
         :rtype: Dependant
         """
@@ -139,7 +136,6 @@ class APIRoute[T](BaseModel):
             cls._dependant = Dependant(
                 method=method,
                 path=path,
-                servers=servers,
                 path_params=path_params_list,
                 query_params=query_params_list,
                 header_params=header_params_list,
@@ -306,19 +302,16 @@ def api_route_decorator[T: APIRoute[Any]](
     *,
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"],
     path: str,
-    servers: list[str] | None = None,
 ) -> Callable[[type[T]], type[T]]:
     """类装饰器工厂函数，用于注入路由元数据到接口类。
 
-    在类定义处通过装饰器语法传入 HTTP 方法、路径和服务器列表。
+    在类定义处通过装饰器语法传入 HTTP 方法和路径。
     被装饰的类必须继承自 APIRoute。
 
     :param method: HTTP 方法，必须是 GET、POST、PUT、PATCH、DELETE 之一。
     :type method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
     :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
     :type path: str
-    :param servers: 接口级别的服务器列表，优先级高于 APIRouter 的全局 servers。
-    :type servers: list[str] | None
     :return: 类装饰器函数，接收并返回 APIRoute 子类。
     :rtype: Callable[[type[T]], type[T]]
 
@@ -343,54 +336,39 @@ def api_route_decorator[T: APIRoute[Any]](
         :rtype: type[T]
         """
         # 调用 _get_dependant 生成并缓存元数据
-        cls._get_dependant(method=method, path=path, servers=servers)
+        cls._get_dependant(method=method, path=path)
         return cls
 
     return update_api_route
 
 
 class APIRouter:
-    """路由器，支持全局 servers 配置和接口级别的 servers 覆盖。
+    """路由器，提供便捷的路由装饰器方法。
 
     提供类似 FastAPI 风格的路由装饰器方法（get/post/put/patch/delete），
-    简化接口定义语法。支持全局 servers 配置和接口级别的 servers 覆盖。
-
-    :var servers: 全局服务器列表，可被接口级 servers 参数覆盖。
-    :vartype servers: list[str] | None
+    简化接口定义语法。
 
     Example::
 
-        # 创建路由器并配置全局 servers
-        router = APIRouter(servers=["https://api.example.com"])
+        # 创建路由器
+        router = APIRouter()
 
-        # 使用全局 servers
+        # 使用装饰器定义接口
         @router.get("/users")
         class GetUsers(APIRoute[list[UserData]]):
             limit: int = 20
 
-        # 覆盖全局 servers
-        @router.post("/users", servers=["https://api-staging.example.com"])
+        @router.post("/users")
         class CreateUser(APIRoute[UserData]):
             name: str
             email: str
     """
 
-    def __init__(self, servers: list[str] | None = None) -> None:
-        """初始化路由器，可指定全局服务器列表。
-
-        :param servers: 全局服务器列表（如 OpenAPI servers），
-            可在各个路由方法中通过 servers 参数覆盖。
-        :type servers: list[str] | None
-        """
-        self.servers = servers
-
-    def get[T: APIRoute[Any]](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def get[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
         """GET 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
-        :param servers: 接口级服务器列表，如果提供则覆盖全局 servers。
-        :type servers: list[str] | None
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -400,15 +378,13 @@ class APIRouter:
             class GetUsers(APIRoute[list[UserData]]):
                 limit: int = 20
         """
-        return api_route_decorator(method="GET", path=path, servers=servers or self.servers)
+        return api_route_decorator(method="GET", path=path)
 
-    def post[T: APIRoute[Any]](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def post[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
         """POST 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
-        :param servers: 接口级服务器列表，如果提供则覆盖全局 servers。
-        :type servers: list[str] | None
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -419,15 +395,13 @@ class APIRouter:
                 name: str
                 email: str
         """
-        return api_route_decorator(method="POST", path=path, servers=servers or self.servers)
+        return api_route_decorator(method="POST", path=path)
 
-    def put[T: APIRoute[Any]](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def put[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
         """PUT 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
-        :param servers: 接口级服务器列表，如果提供则覆盖全局 servers。
-        :type servers: list[str] | None
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -438,15 +412,13 @@ class APIRouter:
                 user_id: Annotated[int, Path()]
                 name: str
         """
-        return api_route_decorator(method="PUT", path=path, servers=servers or self.servers)
+        return api_route_decorator(method="PUT", path=path)
 
-    def patch[T: APIRoute[Any]](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def patch[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
         """PATCH 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
-        :param servers: 接口级服务器列表，如果提供则覆盖全局 servers。
-        :type servers: list[str] | None
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -457,15 +429,13 @@ class APIRouter:
                 user_id: Annotated[int, Path()]
                 email: str | None = None
         """
-        return api_route_decorator(method="PATCH", path=path, servers=servers or self.servers)
+        return api_route_decorator(method="PATCH", path=path)
 
-    def delete[T: APIRoute[Any]](self, path: str, *, servers: list[str] | None = None) -> Callable[[type[T]], type[T]]:
+    def delete[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
         """DELETE 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
-        :param servers: 接口级服务器列表，如果提供则覆盖全局 servers。
-        :type servers: list[str] | None
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -475,4 +445,4 @@ class APIRouter:
             class DeleteUser(APIRoute[None]):
                 user_id: Annotated[int, Path()]
         """
-        return api_route_decorator(method="DELETE", path=path, servers=servers or self.servers)
+        return api_route_decorator(method="DELETE", path=path)

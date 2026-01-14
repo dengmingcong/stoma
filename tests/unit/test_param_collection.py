@@ -19,7 +19,7 @@ from src.params import Body, Header, Path, Query
 from src.routing import APIRoute, APIRouter
 
 # 创建测试用的路由器
-router = APIRouter(servers=["https://api.example.com"])
+router = APIRouter()
 
 
 # 测试用的响应模型

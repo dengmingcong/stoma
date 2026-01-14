@@ -40,8 +40,6 @@ class Dependant:
     :vartype method: str
     :var path: 路由路径，如 /users/{user_id}。
     :vartype path: str
-    :var servers: 接口级别的服务器列表。
-    :vartype servers: list[str] | None
     :var path_params: 路径参数字段列表。
     :vartype path_params: list[ModelField]
     :var query_params: 查询参数字段列表。
@@ -54,7 +52,6 @@ class Dependant:
 
     method: str
     path: str
-    servers: list[str] | None
     path_params: list[ModelField]
     query_params: list[ModelField]
     header_params: list[ModelField]
