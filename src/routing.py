@@ -16,6 +16,7 @@ from playwright.sync_api import APIRequestContext
 from pydantic import BaseModel, ConfigDict
 from pydantic.fields import FieldInfo
 
+from src.dependencies import Dependant, ModelField, get_param_info
 from src.params import Param, ParamTypes
 
 
@@ -54,15 +55,12 @@ class APIRoute[T](BaseModel):
     1. 继承 BaseModel：自动 __init__ 生成，参数 → 属性，无需样板代码。
     2. 元数据隔离：所有路由信息存储在 _route_meta，避免与用户字段冲突。
     3. IDE 支持：字段声明即完成一切，IDE 完美补全与类型检查。
-    4. 参数识别缓存：参数类型识别结果缓存在 _param_mapping，提升性能。
-    5. 别名缓存：参数名称别名映射缓存在 _param_aliases，避免重复查询。
+    4. 参数依赖缓存：字段参数类型和名称的分析结果缓存在 _dependant，提升性能。
 
     :var _route_meta: 路由元数据，通过装饰器在类定义时注入。
     :vartype _route_meta: ClassVar[RouteMeta]
-    :var _param_mapping: 参数类型映射缓存，键为字段名，值为 ParamTypes。
-    :vartype _param_mapping: ClassVar[dict[str, ParamTypes] | None]
-    :var _param_aliases: 参数别名映射缓存，键为字段名，值为别名或字段名本身。
-    :vartype _param_aliases: ClassVar[dict[str, str] | None]
+    :var _dependant: 参数依赖定义缓存，包含字段参数类型和名称的映射。
+    :vartype _dependant: ClassVar[Dependant | None]
 
     Example::
 
@@ -75,126 +73,100 @@ class APIRoute[T](BaseModel):
     """
 
     _route_meta: ClassVar[RouteMeta]
-    _param_mapping: ClassVar[dict[str, ParamTypes] | None] = None
-    _param_aliases: ClassVar[dict[str, str] | None] = None
+    _dependant: ClassVar[Dependant | None] = None
 
     @classmethod
-    def _build_param_mapping(cls) -> tuple[dict[str, ParamTypes], dict[str, str]]:
-        """构建参数类型映射和别名映射缓存。
+    def _get_dependant(cls) -> Dependant:
+        """获取参数依赖定义缓存（懒加载）。
+
+        首次调用时分析字段参数依赖并缓存在类级别 _dependant，
+        后续调用直接返回缓存结果。
 
         根据规则自动识别每个字段的参数类型：
-
         - 路径参数（Path）：字段名出现在路由 path 中
         - 请求体（Body）：字段类型为 BaseModel 子类
         - 头参数（Header）：通过 Annotated[Type, Header(...)] 显式标记
         - 查询参数（Query）：默认类型（不满足上述条件）
 
-        同时识别参数名称别名，用于 HTTP 请求中的实际参数名。
-
-        识别结果缓存在类级别 _param_mapping 和 _param_aliases，后续调用直接复用。
-
-        :return: 元组 (param_mapping, param_aliases)
-
-            - param_mapping: 字段名 → 参数类型的映射字典
-            - param_aliases: 字段名 → 实际参数名（别名或字段名本身）的映射字典
-
-        :rtype: tuple[dict[str, ParamTypes], dict[str, str]]
-
-        Example::
-
-            @router.get("/users/{user_id}")
-            class GetUser(APIRoute[UserData]):
-                user_id: int
-                page_size: Annotated[int, Query(alias="pageSize")] = 10
-                token: Annotated[str, Header(alias="Authorization")]
-
-            mapping, aliases = GetUser._build_param_mapping()
-            # mapping = {
-            #     "user_id": ParamTypes.path,
-            #     "page_size": ParamTypes.query,
-            #     "token": ParamTypes.header
-            # }
-            # aliases = {
-            #     "user_id": "user_id",
-            #     "page_size": "pageSize",
-            #     "token": "Authorization"
-            # }
+        :return: 参数依赖定义对象。
+        :rtype: Dependant
         """
-        param_mapping: dict[str, ParamTypes] = {}
-        param_aliases: dict[str, str] = {}
+        if cls._dependant is None:
+            path_params: list[ModelField] = []
+            query_params: list[ModelField] = []
+            header_params: list[ModelField] = []
+            body_params: list[ModelField] = []
+            path = ""
 
-        # 获取路径中的参数名（如 /users/{user_id} 中的 user_id）
-        path_param_names = set()
-        if hasattr(cls, "_route_meta"):
-            path = cls._route_meta.path
-            # 使用正则表达式提取路径参数 {param_name}
-            path_param_names = set(re.findall(r"\{(\w+)\}", path))
+            # 获取路由路径
+            if hasattr(cls, "_route_meta"):
+                path = cls._route_meta.path
+                # 使用正则表达式提取路径参数名
+                path_param_names = set(re.findall(r"\{(\w+)\}", path))
+            else:
+                path_param_names = set()
 
-        # 遍历所有字段，自动识别参数类型和别名
-        for field_name, field_info in cls.model_fields.items():
-            # 1. 检查是否有显式的 Param 标记（Header 必须显式标记）
-            param_info = cls._get_param_info_from_field(field_name, field_info)
-            if param_info is not None:
-                # 如果有显式标记，直接使用标记的类型和别名
-                param_mapping[field_name] = param_info.in_
-                param_aliases[field_name] = param_info.alias if param_info.alias else field_name
-                continue
+            # 遍历所有字段，自动识别参数类型
+            for field_name, field_info in cls.model_fields.items():
+                # 1. 检查是否有显式的 Param 标记
+                param_info = cls._get_param_info_from_field(field_name, field_info)
+                alias = param_info.alias if param_info and param_info.alias else field_name
 
-            # 2. 检查是否是路径参数（字段名出现在路径中）
-            if field_name in path_param_names:
-                param_mapping[field_name] = ParamTypes.path
-                param_aliases[field_name] = field_name
-                continue
+                model_field = ModelField(
+                    name=field_name,
+                    alias=alias,
+                    field_info=field_info,
+                    param=param_info,
+                )
 
-            # 3. 检查是否是请求体（类型为 BaseModel 子类）
-            field_type = field_info.annotation
-            # 处理 Annotated 类型，获取实际类型
-            if get_origin(field_type) is Annotated:
-                field_type = get_args(field_type)[0]
-
-            # 检查是否是 BaseModel 子类（排除 BaseModel 本身）
-            try:
-                if isinstance(field_type, type) and issubclass(field_type, BaseModel) and field_type is not BaseModel:
-                    param_mapping[field_name] = ParamTypes.body
-                    param_aliases[field_name] = field_name
+                if param_info is not None:
+                    # 如果有显式标记，直接使用标记的类型
+                    if param_info.in_ == ParamTypes.path:
+                        path_params.append(model_field)
+                    elif param_info.in_ == ParamTypes.query:
+                        query_params.append(model_field)
+                    elif param_info.in_ == ParamTypes.header:
+                        header_params.append(model_field)
+                    elif param_info.in_ == ParamTypes.body:
+                        body_params.append(model_field)
                     continue
-            except TypeError:
-                # 某些类型（如泛型）无法使用 issubclass 检查
-                pass
 
-            # 4. 默认为查询参数
-            param_mapping[field_name] = ParamTypes.query
-            param_aliases[field_name] = field_name
+                # 2. 检查是否是路径参数（字段名出现在路径中）
+                if field_name in path_param_names:
+                    path_params.append(model_field)
+                    continue
 
-        return param_mapping, param_aliases
+                # 3. 检查是否是请求体（类型为 BaseModel 子类）
+                field_type = field_info.annotation
+                # 处理 Annotated 类型，获取实际类型
+                if get_origin(field_type) is Annotated:
+                    field_type = get_args(field_type)[0]
 
-    @classmethod
-    def _get_param_mapping(cls) -> dict[str, ParamTypes]:
-        """获取参数类型映射缓存（懒加载）。
+                # 检查是否是 BaseModel 子类（排除 BaseModel 本身）
+                try:
+                    if (
+                        isinstance(field_type, type)
+                        and issubclass(field_type, BaseModel)
+                        and field_type is not BaseModel
+                    ):
+                        body_params.append(model_field)
+                        continue
+                except TypeError:
+                    # 某些类型（如泛型）无法使用 issubclass 检查
+                    pass
 
-        首次调用时构建映射并缓存在类级别 _param_mapping，
-        后续调用直接返回缓存结果。
+                # 4. 默认为查询参数
+                query_params.append(model_field)
 
-        :return: 字段名 → 参数类型的映射字典。
-        :rtype: dict[str, ParamTypes]
-        """
-        if cls._param_mapping is None:
-            cls._param_mapping, cls._param_aliases = cls._build_param_mapping()
-        return cls._param_mapping
+            cls._dependant = Dependant(
+                path=path,
+                path_params=path_params,
+                query_params=query_params,
+                header_params=header_params,
+                body_params=body_params,
+            )
 
-    @classmethod
-    def _get_param_aliases(cls) -> dict[str, str]:
-        """获取参数别名映射缓存（懒加载）。
-
-        首次调用时构建映射并缓存在类级别 _param_aliases，
-        后续调用直接返回缓存结果。
-
-        :return: 字段名 → 参数实际名称的映射字典。
-        :rtype: dict[str, str]
-        """
-        if cls._param_aliases is None:
-            cls._param_mapping, cls._param_aliases = cls._build_param_mapping()
-        return cls._param_aliases
+        return cls._dependant
 
     @classmethod
     def _get_param_info_from_field(cls, field_name: str, field_info: FieldInfo) -> Param | None:
@@ -210,13 +182,13 @@ class APIRoute[T](BaseModel):
         :return: 参数标记对象，如果没有找到则返回 None。
         :rtype: Param | None
         """
-        # 首先从 __annotations__ 中检查
+        # 优先从 __annotations__ 中检查
         param_from_annotations = cls._get_param_info_from_annotations(field_name)
         if param_from_annotations is not None:
             return param_from_annotations
 
         # 然后从 FieldInfo 中检查
-        return cls._get_param_info(field_info)
+        return get_param_info(field_info)
 
     @classmethod
     def _get_param_info_from_annotations(cls, field_name: str) -> Param | None:
@@ -252,28 +224,6 @@ class APIRoute[T](BaseModel):
 
         # args[0] 是实际类型，args[1:] 是元数据
         for metadata in args[1:]:
-            if isinstance(metadata, Param):
-                return metadata
-
-        return None
-
-    @staticmethod
-    def _get_param_info(field_info: FieldInfo) -> Param | None:
-        """从字段的 FieldInfo 中提取参数标记信息。
-
-        检查 FieldInfo 本身是否是 Param 类型的实例，或者检查其 metadata。
-
-        :param field_info: Pydantic 字段信息对象。
-        :type field_info: FieldInfo
-        :return: 参数标记对象，如果没有找到则返回 None。
-        :rtype: Param | None
-        """
-        # 首先检查 field_info 本身是否是 Param 的实例
-        if isinstance(field_info, Param):
-            return field_info
-
-        # 然后检查 field_info 的 metadata 列表
-        for metadata in field_info.metadata:
             if isinstance(metadata, Param):
                 return metadata
 
@@ -318,34 +268,28 @@ class APIRoute[T](BaseModel):
         header_params: dict[str, Any] = {}
         body_data: Any = None
 
-        # 获取缓存的参数类型映射和别名映射
-        param_mapping = self._get_param_mapping()
-        param_aliases = self._get_param_aliases()
+        # 获取缓存的参数依赖定义
+        dependant = self._get_dependant()
 
-        # 遍历模型的所有字段
-        for field_name in self.__class__.model_fields.keys():
-            # 获取字段的实际值
-            field_value = getattr(self, field_name)
+        # 收集路径参数
+        for model_field in dependant.path_params:
+            field_value = getattr(self, model_field.name)
+            path_params[model_field.alias] = field_value
 
-            # 从缓存的映射中获取参数类型
-            param_type = param_mapping.get(field_name)
-            if param_type is None:
-                # 如果没有映射信息，跳过该字段
-                continue
+        # 收集查询参数
+        for model_field in dependant.query_params:
+            field_value = getattr(self, model_field.name)
+            query_params[model_field.alias] = field_value
 
-            # 从缓存的别名映射中获取参数的实际名称
-            param_name = param_aliases.get(field_name, field_name)
+        # 收集头参数
+        for model_field in dependant.header_params:
+            field_value = getattr(self, model_field.name)
+            header_params[model_field.alias] = field_value
 
-            # 根据参数类型分类收集
-            if param_type == ParamTypes.query:
-                query_params[param_name] = field_value
-            elif param_type == ParamTypes.path:
-                path_params[param_name] = field_value
-            elif param_type == ParamTypes.header:
-                header_params[param_name] = field_value
-            elif param_type == ParamTypes.body:
-                # Body 参数直接赋值（通常只有一个）
-                body_data = field_value
+        # 收集请求体参数（通常只有一个）
+        for model_field in dependant.body_params:
+            field_value = getattr(self, model_field.name)
+            body_data = field_value  # 后面的会覆盖前面的
 
         return {
             "query": query_params,
