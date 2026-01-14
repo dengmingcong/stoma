@@ -33,11 +33,15 @@ class ModelField:
 class Dependant:
     """路由端点参数依赖定义。
 
-    表示一个路由端点的参数依赖分析结果，包含各类参数字段列表。
+    表示一个路由端点的完整元数据，包含路由信息和参数依赖分析结果。
     `frozen=True` 确保对象不可变，线程安全。
 
+    :var method: HTTP 方法（GET、POST、PUT、PATCH、DELETE 等）。
+    :vartype method: str
     :var path: 路由路径，如 /users/{user_id}。
     :vartype path: str
+    :var servers: 接口级别的服务器列表。
+    :vartype servers: list[str] | None
     :var path_params: 路径参数字段列表。
     :vartype path_params: list[ModelField]
     :var query_params: 查询参数字段列表。
@@ -48,7 +52,9 @@ class Dependant:
     :vartype body_params: list[ModelField]
     """
 
+    method: str
     path: str
+    servers: list[str] | None
     path_params: list[ModelField]
     query_params: list[ModelField]
     header_params: list[ModelField]

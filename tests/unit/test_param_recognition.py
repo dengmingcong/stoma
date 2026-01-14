@@ -139,17 +139,16 @@ def test_explicit_header_params() -> None:
 
 
 def test_caching_mechanism() -> None:
-    """测试缓存机制：参数识别仅执行一次，后续复用缓存。"""
+    """测试缓存机制：装饰器在类定义时自动创建缓存，后续调用复用。"""
 
     @router.get("/users/{user_id}")
     class GetUser(APIRoute[UserData]):
         user_id: int
         limit: int = 10
 
-    # 首次调用 _get_dependant：构建依赖定义
-    assert GetUser._dependant is None  # 初始状态为 None
+    # 装饰器已自动调用 _get_dependant 建立缓存
+    assert GetUser._dependant is not None  # 缓存已存在
     dependant1 = GetUser._get_dependant()
-    assert GetUser._dependant is not None  # 缓存已建立
     assert len(dependant1.path_params) == 1
     assert dependant1.path_params[0].name == "user_id"
     assert len(dependant1.query_params) == 1

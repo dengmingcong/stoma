@@ -2,7 +2,6 @@
 
 此模块提供了类似 FastAPI 风格的路由定义能力，包括：
 
-- RouteMeta：不可变的路由元数据类。
 - APIRoute：接口基类。
 - api_route_decorator：类装饰器工厂函数。
 - APIRouter：路由装饰器提供者，支持全局和接口级 servers 配置。
@@ -13,38 +12,11 @@ from collections.abc import Callable
 from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from playwright.sync_api import APIRequestContext
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from src.dependencies import Dependant, ModelField, get_param_info
 from src.params import Param, ParamTypes
-
-
-class RouteMeta(BaseModel):
-    """路由元数据，不可变。
-
-    用于存储接口的 HTTP 方法、路径信息和服务器列表，通过装饰器注入到接口类中。
-
-    :var method: HTTP 方法（GET、POST、PUT、PATCH、DELETE 等）。
-    :vartype method: str
-    :var path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
-    :vartype path: str
-    :var servers: 接口级别的服务器列表，优先级高于 APIRouter 的全局 servers。
-    :vartype servers: list[str] | None
-
-    Example::
-
-        meta = RouteMeta(method="GET", path="/users/{user_id}")
-        print(meta.method)  # GET
-        print(meta.path)    # /users/{user_id}
-        print(meta.servers) # None 或 ["https://api.example.com"]
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    method: str
-    path: str
-    servers: list[str] | None = None
 
 
 class APIRoute[T](BaseModel):
@@ -53,13 +25,11 @@ class APIRoute[T](BaseModel):
     设计特点：
 
     1. 继承 BaseModel：自动 __init__ 生成，参数 → 属性，无需样板代码。
-    2. 元数据隔离：所有路由信息存储在 _route_meta，避免与用户字段冲突。
+    2. 元数据缓存：所有路由信息和参数依赖存储在 _dependant，避免与用户字段冲突。
     3. IDE 支持：字段声明即完成一切，IDE 完美补全与类型检查。
-    4. 参数依赖缓存：字段参数类型和名称的分析结果缓存在 _dependant，提升性能。
+    4. 懒加载优化：参数依赖分析结果缓存在类级别，提升性能。
 
-    :var _route_meta: 路由元数据，通过装饰器在类定义时注入。
-    :vartype _route_meta: ClassVar[RouteMeta]
-    :var _dependant: 参数依赖定义缓存，包含字段参数类型和名称的映射。
+    :var _dependant: 路由元数据和参数依赖定义缓存。
     :vartype _dependant: ClassVar[Dependant | None]
 
     Example::
@@ -72,11 +42,15 @@ class APIRoute[T](BaseModel):
         users = endpoint.send(context)  # 返回 list[UserData]
     """
 
-    _route_meta: ClassVar[RouteMeta]
     _dependant: ClassVar[Dependant | None] = None
 
     @classmethod
-    def _get_dependant(cls) -> Dependant:
+    def _get_dependant(
+        cls,
+        method: str | None = None,
+        path: str | None = None,
+        servers: list[str] | None = None,
+    ) -> Dependant:
         """获取参数依赖定义缓存（懒加载）。
 
         首次调用时分析字段参数依赖并缓存在类级别 _dependant，
@@ -88,23 +62,27 @@ class APIRoute[T](BaseModel):
         - 头参数（Header）：通过 Annotated[Type, Header(...)] 显式标记
         - 查询参数（Query）：默认类型（不满足上述条件）
 
+        :param method: HTTP 方法，首次调用时必须提供。
+        :type method: str | None
+        :param path: 路由路径，首次调用时必须提供。
+        :type path: str | None
+        :param servers: 服务器列表，可选。
+        :type servers: list[str] | None
         :return: 参数依赖定义对象。
         :rtype: Dependant
         """
         if cls._dependant is None:
-            path_params: list[ModelField] = []
-            query_params: list[ModelField] = []
-            header_params: list[ModelField] = []
-            body_params: list[ModelField] = []
-            path = ""
+            if method is None or path is None:
+                msg = "首次调用 _get_dependant 必须提供 method 和 path 参数"
+                raise ValueError(msg)
 
-            # 获取路由路径
-            if hasattr(cls, "_route_meta"):
-                path = cls._route_meta.path
-                # 使用正则表达式提取路径参数名
-                path_param_names = set(re.findall(r"\{(\w+)\}", path))
-            else:
-                path_param_names = set()
+            path_params_list: list[ModelField] = []
+            query_params_list: list[ModelField] = []
+            header_params_list: list[ModelField] = []
+            body_params_list: list[ModelField] = []
+
+            # 使用正则表达式提取路径参数名
+            path_param_names = set(re.findall(r"\{(\w+)\}", path))
 
             # 遍历所有字段，自动识别参数类型
             for field_name, field_info in cls.model_fields.items():
@@ -122,18 +100,18 @@ class APIRoute[T](BaseModel):
                 if param_info is not None:
                     # 如果有显式标记，直接使用标记的类型
                     if param_info.in_ == ParamTypes.path:
-                        path_params.append(model_field)
+                        path_params_list.append(model_field)
                     elif param_info.in_ == ParamTypes.query:
-                        query_params.append(model_field)
+                        query_params_list.append(model_field)
                     elif param_info.in_ == ParamTypes.header:
-                        header_params.append(model_field)
+                        header_params_list.append(model_field)
                     elif param_info.in_ == ParamTypes.body:
-                        body_params.append(model_field)
+                        body_params_list.append(model_field)
                     continue
 
                 # 2. 检查是否是路径参数（字段名出现在路径中）
                 if field_name in path_param_names:
-                    path_params.append(model_field)
+                    path_params_list.append(model_field)
                     continue
 
                 # 3. 检查是否是请求体（类型为 BaseModel 子类）
@@ -149,21 +127,23 @@ class APIRoute[T](BaseModel):
                         and issubclass(field_type, BaseModel)
                         and field_type is not BaseModel
                     ):
-                        body_params.append(model_field)
+                        body_params_list.append(model_field)
                         continue
                 except TypeError:
                     # 某些类型（如泛型）无法使用 issubclass 检查
                     pass
 
                 # 4. 默认为查询参数
-                query_params.append(model_field)
+                query_params_list.append(model_field)
 
             cls._dependant = Dependant(
+                method=method,
                 path=path,
-                path_params=path_params,
-                query_params=query_params,
-                header_params=header_params,
-                body_params=body_params,
+                servers=servers,
+                path_params=path_params_list,
+                query_params=query_params_list,
+                header_params=header_params_list,
+                body_params=body_params_list,
             )
 
         return cls._dependant
@@ -349,23 +329,21 @@ def api_route_decorator[T: APIRoute[Any]](
             user_id: Annotated[int, Path()]
 
         # 验证元数据已注入
-        assert GetUserById._route_meta.method == "GET"
-        assert GetUserById._route_meta.path == "/users/{user_id}"
+        dependant = GetUserById._get_dependant()
+        assert dependant.method == "GET"
+        assert dependant.path == "/users/{user_id}"
     """
 
     def update_api_route(cls: type[T]) -> type[T]:
-        """内部装饰器函数，将路由元数据注入到类中。
+        """内部装饰器函数，调用 _get_dependant 生成并缓存路由元数据。
 
         :param cls: 要装饰的 APIRoute 子类。
         :type cls: type[T]
         :return: 注入元数据后的类（原地修改，无新类生成）。
         :rtype: type[T]
         """
-        cls._route_meta = RouteMeta(
-            method=method,
-            path=path,
-            servers=servers,
-        )
+        # 调用 _get_dependant 生成并缓存元数据
+        cls._get_dependant(method=method, path=path, servers=servers)
         return cls
 
     return update_api_route
