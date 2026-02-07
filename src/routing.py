@@ -109,10 +109,8 @@ class APIRoute[T](BaseModel):
                     continue
 
                 # 3. 检查是否是请求体（类型为 BaseModel 子类）
+                # field_info.annotation 已经是 Pydantic 展开后的基础类型
                 field_type = field_info.annotation
-                # 处理 Annotated 类型，获取实际类型
-                if get_origin(field_type) is Annotated:
-                    field_type = get_args(field_type)[0]
 
                 # 检查是否是 BaseModel 子类（排除 BaseModel 本身）
                 try:
