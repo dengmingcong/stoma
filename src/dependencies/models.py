@@ -4,29 +4,37 @@ from dataclasses import dataclass
 
 from pydantic.fields import FieldInfo
 
-from src.params import Param
-
 
 @dataclass(frozen=True)
 class ModelField:
     """模型字段定义。
 
-    表示一个字段的完整信息，包括名称、别名、类型和 Param 标记。
+    表示一个字段的完整信息，包括名称、别名和类型。
 
     :var name: 字段名称。
     :vartype name: str
-    :var alias: 字段别名，用于序列化/请求参数名称。
-    :vartype alias: str
     :var field_info: Pydantic 字段信息。
     :vartype field_info: FieldInfo
-    :var param: 参数标记（Query、Path、Header、Body 等），可选。
-    :vartype param: Param | None
     """
 
     name: str
-    alias: str
     field_info: FieldInfo
-    param: Param | None = None
+
+    @property
+    def alias(self) -> str:
+        """获取字段别名。
+
+        优先级：field_info.alias > name
+
+        :return: 字段别名，用于序列化和请求参数名称。
+        :rtype: str
+        """
+        # 使用 field_info 中的 alias
+        if self.field_info.alias:
+            return self.field_info.alias
+
+        # 最后使用字段名称
+        return self.name
 
 
 @dataclass(frozen=True)

@@ -85,13 +85,10 @@ class APIRoute[T](BaseModel):
             for field_name, field_info in cls.model_fields.items():
                 # 1. 检查是否有显式的 Param 标记
                 param_info = cls._get_param_info_from_field(field_name, field_info)
-                alias = param_info.alias if param_info and param_info.alias else field_name
 
                 model_field = ModelField(
                     name=field_name,
-                    alias=alias,
                     field_info=field_info,
-                    param=param_info,
                 )
 
                 if param_info is not None:
