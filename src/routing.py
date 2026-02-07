@@ -183,6 +183,33 @@ class APIRoute[T](BaseModel):
 
         return None
 
+    def _interpolate_path_params(self) -> str:
+        """插值路径参数（将路径中的 {param} 占位符替换为实际值）。
+
+        根据 Dependant 中的路径参数定义，从实例中获取参数值，
+        替换路径字符串中的 `{param}` 占位符。
+
+        例如：
+        - 原始路径: "/users/{user_id}/posts/{post_id}"
+        - 参数: user_id=123, post_id=456
+        - 结果: "/users/123/posts/456"
+
+        :return: 插值后的路径字符串。
+        :rtype: str
+        """
+        dependant = self._get_dependant()
+        interpolated_path = dependant.path
+
+        # 遍历路径参数，将占位符替换为实际值
+        for model_field in dependant.path_params:
+            # 获取参数值
+            param_value = getattr(self, model_field.name)
+            # 使用字段名（而非别名）替换占位符
+            placeholder = f"{{{model_field.name}}}"
+            interpolated_path = interpolated_path.replace(placeholder, str(param_value))
+
+        return interpolated_path
+
     def send(self, context: APIRequestContext) -> T:
         """发送 HTTP 请求并返回响应数据。
 
