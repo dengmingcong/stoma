@@ -15,7 +15,7 @@ from playwright.sync_api import APIRequestContext
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
-from src.dependencies import Dependant, ModelField, get_param_info
+from src.dependencies import Dependant, ModelField
 from src.params import Param, ParamTypes
 
 
@@ -143,32 +143,15 @@ class APIRoute[T](BaseModel):
     def _get_param_info_from_field(cls, field_name: str, field_info: FieldInfo) -> Param | None:
         """从字段中提取显式的 Param 标记信息。
 
-        优先从类的 __annotations__ 中检查 Annotated 类型，
-        然后检查 FieldInfo 的 metadata。
+        从类的 __annotations__ 中检查 Annotated 类型，提取 Param 对象。
+
+        注意：FieldInfo.metadata 不会保存 Param 对象（已被 Pydantic 消费并转换为约束），
+        因此必须从原始类型注解 __annotations__ 中获取。
 
         :param field_name: 字段名称。
         :type field_name: str
-        :param field_info: Pydantic 字段信息对象。
+        :param field_info: Pydantic 字段信息对象（未使用，保留用于接口一致性）。
         :type field_info: FieldInfo
-        :return: 参数标记对象，如果没有找到则返回 None。
-        :rtype: Param | None
-        """
-        # 优先从 __annotations__ 中检查
-        param_from_annotations = cls._get_param_info_from_annotations(field_name)
-        if param_from_annotations is not None:
-            return param_from_annotations
-
-        # 然后从 FieldInfo 中检查
-        return get_param_info(field_info)
-
-    @classmethod
-    def _get_param_info_from_annotations(cls, field_name: str) -> Param | None:
-        """从类的类型注解中提取参数标记信息。
-
-        直接检查类的 __annotations__，从 Annotated 类型中提取 Param 对象。
-
-        :param field_name: 字段名称。
-        :type field_name: str
         :return: 参数标记对象，如果没有找到则返回 None。
         :rtype: Param | None
         """

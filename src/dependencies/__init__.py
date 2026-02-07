@@ -4,10 +4,8 @@
 """
 
 from src.dependencies.models import Dependant, ModelField
-from src.dependencies.utils import get_param_info
 
 __all__ = [
     "Dependant",
     "ModelField",
-    "get_param_info",
 ]
