@@ -73,10 +73,10 @@ class APIRoute[T](BaseModel):
                 msg = "首次调用 _get_dependant 必须提供 method 和 path 参数"
                 raise ValueError(msg)
 
-            path_params_list: list[ModelField] = []
-            query_params_list: list[ModelField] = []
-            header_params_list: list[ModelField] = []
-            body_params_list: list[ModelField] = []
+            path_params: list[ModelField] = []
+            query_params: list[ModelField] = []
+            header_params: list[ModelField] = []
+            body_params: list[ModelField] = []
 
             # 使用正则表达式提取路径参数名
             path_param_names = set(re.findall(r"\{(\w+)\}", path))
@@ -97,18 +97,18 @@ class APIRoute[T](BaseModel):
                 if param_info is not None:
                     # 如果有显式标记，直接使用标记的类型
                     if param_info.in_ == ParamTypes.path:
-                        path_params_list.append(model_field)
+                        path_params.append(model_field)
                     elif param_info.in_ == ParamTypes.query:
-                        query_params_list.append(model_field)
+                        query_params.append(model_field)
                     elif param_info.in_ == ParamTypes.header:
-                        header_params_list.append(model_field)
+                        header_params.append(model_field)
                     elif param_info.in_ == ParamTypes.body:
-                        body_params_list.append(model_field)
+                        body_params.append(model_field)
                     continue
 
                 # 2. 检查是否是路径参数（字段名出现在路径中）
                 if field_name in path_param_names:
-                    path_params_list.append(model_field)
+                    path_params.append(model_field)
                     continue
 
                 # 3. 检查是否是请求体（类型为 BaseModel 子类）
@@ -124,22 +124,22 @@ class APIRoute[T](BaseModel):
                         and issubclass(field_type, BaseModel)
                         and field_type is not BaseModel
                     ):
-                        body_params_list.append(model_field)
+                        body_params.append(model_field)
                         continue
                 except TypeError:
                     # 某些类型（如泛型）无法使用 issubclass 检查
                     pass
 
                 # 4. 默认为查询参数
-                query_params_list.append(model_field)
+                query_params.append(model_field)
 
             cls._dependant = Dependant(
                 method=method,
                 path=path,
-                path_params=path_params_list,
-                query_params=query_params_list,
-                header_params=header_params_list,
-                body_params=body_params_list,
+                path_params=path_params,
+                query_params=query_params,
+                header_params=header_params,
+                body_params=body_params,
             )
 
         return cls._dependant
