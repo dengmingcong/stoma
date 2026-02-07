@@ -106,7 +106,7 @@
   - **性能优化**：参数识别仅在类定义时或首次调用时执行一次，结果存储在类级别 ClassVar（如 `_param_mapping`），后续所有实例的 send() 调用直接复用缓存，避免重复识别
   in src/routing.py
 - [X] T015b [US2] 实现路径参数插值逻辑（将 path 中的 `{param}` 占位符替换为实际参数值）in src/routing.py
-- [ ] T015c [US2] 实现查询参数序列化逻辑（将查询参数转换为 URL query string）in src/routing.py
+- [X] T015c [US2] 实现查询参数序列化逻辑（将查询参数转换为 URL query string）in src/routing.py
 - [ ] T015d [US2] 实现请求体 JSON 序列化逻辑（将 BaseModel 实例转换为 JSON）in src/routing.py
 - [ ] T015e [US2] 实现头参数处理逻辑（应用别名转换，snake_case → kebab-case）in src/routing.py
 - [ ] T016 [US2] 实现 URL 构造逻辑（基于 servers 配置 + 路径参数替换 + 查询参数拼接）in src/routing.py

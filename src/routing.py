@@ -210,6 +210,48 @@ class APIRoute[T](BaseModel):
 
         return interpolated_path
 
+    def _serialize_query_params(self) -> dict[str, str]:
+        """序列化查询参数为字典（用于 URL query string）。
+
+        从 Dependant 中的查询参数定义获取参数列表，
+        从实例中提取参数值，转换为字典形式。
+
+        查询参数的值转换规则：
+        - None 值：跳过（不包含在结果中）
+        - 布尔值：转换为 'true'/'false'
+        - 列表/数组：重复的键值对
+        - 其他：转换为字符串
+
+        例如：
+        - 输入参数: limit=20, offset=0, keyword=None
+        - 结果: {'limit': '20', 'offset': '0'} (keyword 被过滤)
+
+        :return: 查询参数字典（key → str value）。
+        :rtype: dict[str, str]
+        """
+        dependant = self._get_dependant()
+        query_params: dict[str, str] = {}
+
+        # 遍历查询参数
+        for model_field in dependant.query_params:
+            # 获取参数值
+            param_value = getattr(self, model_field.name)
+
+            # 跳过 None 值
+            if param_value is None:
+                continue
+
+            # 处理布尔值
+            if isinstance(param_value, bool):
+                param_value = "true" if param_value else "false"
+            else:
+                param_value = str(param_value)
+
+            # 使用别名作为 query string 中的键
+            query_params[model_field.alias] = param_value
+
+        return query_params
+
     def send(self, context: APIRequestContext) -> T:
         """发送 HTTP 请求并返回响应数据。
 
