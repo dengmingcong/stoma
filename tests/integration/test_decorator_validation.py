@@ -53,12 +53,11 @@ class UserUpdateRequest(BaseModel):
 
 
 # ===== 创建路由器实例 =====
-# 测试全局 servers 配置
-router = APIRouter(servers=["https://api.example.com", "https://api-staging.example.com"])
+router = APIRouter()
 
 
 # ===== 验收场景 1: 装饰器语法与参数补全 =====
-# IDE 应该在 @router.get() 处提供参数补全（path, servers）
+# IDE 应该在 @router.get() 处提供参数补全（path）
 @router.get("/users")
 class GetUsers(APIRoute[list[UserData]]):
     """获取用户列表 - 响应类型：list[UserData]。
@@ -125,19 +124,7 @@ class DebugEndpoint(APIRoute[dict[str, str]]):
     servers: Annotated[list[str] | None, Query(description="用户自定义的 servers 字段")] = None
 
 
-# ===== 测试接口级 servers 覆盖全局 servers =====
-@router.get("/staging-only", servers=["https://api-staging.example.com"])
-class StagingOnlyEndpoint(APIRoute[dict[str, str]]):
-    """仅在 staging 环境可用的接口。
-
-    验证：
-    - 接口级 servers 参数覆盖全局 servers
-    """
-
-    key: Annotated[str, Query(description="测试键")] = "default_value"
-
-
-# ===== 测试 PUT 和 PATCH 方法 =====
+# ===== 测试 PUT 方法 =====
 @router.put("/users/{user_id}")
 class UpdateUser(APIRoute[UserData]):
     """完全更新用户（PUT）。"""
@@ -146,6 +133,7 @@ class UpdateUser(APIRoute[UserData]):
     body: Annotated[UserCreateRequest, Body()]
 
 
+# ===== 测试 PATCH 方法 =====
 @router.patch("/users/{user_id}")
 class PartialUpdateUser(APIRoute[UserData]):
     """部分更新用户（PATCH）。"""
@@ -198,23 +186,24 @@ def test_decorator_validation() -> None:
     # 验收场景 1: 装饰器语法与参数补全
     print("\n✅ 验收场景 1: 装饰器语法与参数补全")
     get_users_endpoint = GetUsers(limit=10, offset=0, token="Bearer test-token")
-    assert get_users_endpoint._route_meta.method == "GET"
-    assert get_users_endpoint._route_meta.path == "/users"
-    assert get_users_endpoint._route_meta.servers == ["https://api.example.com", "https://api-staging.example.com"]
+    get_users_meta = get_users_endpoint._get_dependant()
+    assert get_users_meta.method == "GET"
+    assert get_users_meta.path == "/users"
     assert get_users_endpoint.limit == 10
     assert get_users_endpoint.offset == 0
     assert get_users_endpoint.token == "Bearer test-token"
-    print(f"  - 路由元数据: method={get_users_endpoint._route_meta.method}, path={get_users_endpoint._route_meta.path}")
+    print(f"  - 路由元数据: method={get_users_meta.method}, path={get_users_meta.path}")
     print(f"  - 实例字段: limit={get_users_endpoint.limit}, offset={get_users_endpoint.offset}")
     print("  - 装饰器语法验证通过 ✓")
 
     # 验收场景 2: 泛型响应类型推断
     print("\n✅ 验收场景 2: 泛型响应类型推断")
     get_user_endpoint = GetUserById(user_id=123)
-    assert get_user_endpoint._route_meta.method == "GET"
-    assert get_user_endpoint._route_meta.path == "/users/{user_id}"
+    get_user_meta = get_user_endpoint._get_dependant()
+    assert get_user_meta.method == "GET"
+    assert get_user_meta.path == "/users/{user_id}"
     assert get_user_endpoint.user_id == 123
-    print(f"  - 路由元数据: method={get_user_endpoint._route_meta.method}, path={get_user_endpoint._route_meta.path}")
+    print(f"  - 路由元数据: method={get_user_meta.method}, path={get_user_meta.path}")
     print(f"  - 路径参数: user_id={get_user_endpoint.user_id}")
     print("  - 泛型类型 APIRoute[UserData] 验证通过 ✓")
     print("  - mypy/IDE 应推断 get_user_endpoint.send(context) 返回类型为 UserData")
@@ -222,56 +211,49 @@ def test_decorator_validation() -> None:
     # 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）
     print("\n✅ 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）")
     create_user_endpoint = CreateUser(body=UserCreateRequest(name="Alice", email="alice@example.com", age=30))
-    assert create_user_endpoint._route_meta.method == "POST"
-    assert create_user_endpoint._route_meta.path == "/users"
+    create_user_meta = create_user_endpoint._get_dependant()
+    assert create_user_meta.method == "POST"
+    assert create_user_meta.path == "/users"
     assert create_user_endpoint.body.name == "Alice"
     assert create_user_endpoint.body.email == "alice@example.com"
-    print(
-        f"  - 路由元数据: method={create_user_endpoint._route_meta.method}, "
-        f"path={create_user_endpoint._route_meta.path}"
-    )
+    print(f"  - 路由元数据: method={create_user_meta.method}, path={create_user_meta.path}")
     print(f"  - Body 参数: name={create_user_endpoint.body.name}, email={create_user_endpoint.body.email}")
     print("  - 无需手动编写 __init__，Pydantic 自动生成 ✓")
 
     # 验收场景 4: 命名空间隔离（用户字段名为 method、path 等）
     print("\n✅ 验收场景 4: 命名空间隔离（用户字段名为 method、path 等）")
     debug_endpoint = DebugEndpoint(method="custom_method", path="/custom/path", servers=["https://custom.com"])
+    debug_meta = debug_endpoint._get_dependant()
     # 验证路由元数据（来自装饰器）
-    assert debug_endpoint._route_meta.method == "POST"
-    assert debug_endpoint._route_meta.path == "/debug"
+    assert debug_meta.method == "POST"
+    assert debug_meta.path == "/debug"
     # 验证用户字段（来自实例）
     assert debug_endpoint.method == "custom_method"
     assert debug_endpoint.path == "/custom/path"
     assert debug_endpoint.servers == ["https://custom.com"]
-    print(
-        f"  - 路由元数据（装饰器）: method={debug_endpoint._route_meta.method}, path={debug_endpoint._route_meta.path}"
-    )
+    print(f"  - 路由元数据（装饰器）: method={debug_meta.method}, path={debug_meta.path}")
     print(
         f"  - 用户字段（实例）: method={debug_endpoint.method}, path={debug_endpoint.path}, "
         f"servers={debug_endpoint.servers}"
     )
     print("  - 命名空间隔离验证通过，无冲突 ✓")
 
-    # 测试接口级 servers 覆盖
-    print("\n✅ 测试接口级 servers 覆盖全局 servers")
-    staging_endpoint = StagingOnlyEndpoint(key="test_key")
-    assert staging_endpoint._route_meta.servers == ["https://api-staging.example.com"]
-    print(f"  - 接口级 servers: {staging_endpoint._route_meta.servers}")
-    print("  - 接口级 servers 覆盖全局 servers 验证通过 ✓")
-
     # 测试其他 HTTP 方法
     print("\n✅ 测试其他 HTTP 方法（PUT、PATCH、DELETE）")
     update_endpoint = UpdateUser(user_id=123, body=UserCreateRequest(name="Bob", email="bob@example.com"))
-    assert update_endpoint._route_meta.method == "PUT"
-    print(f"  - PUT 方法: {update_endpoint._route_meta.method} {update_endpoint._route_meta.path}")
+    update_meta = update_endpoint._get_dependant()
+    assert update_meta.method == "PUT"
+    print(f"  - PUT 方法: {update_meta.method} {update_meta.path}")
 
     patch_endpoint = PartialUpdateUser(user_id=123, body=UserUpdateRequest(name="Charlie"))
-    assert patch_endpoint._route_meta.method == "PATCH"
-    print(f"  - PATCH 方法: {patch_endpoint._route_meta.method} {patch_endpoint._route_meta.path}")
+    patch_meta = patch_endpoint._get_dependant()
+    assert patch_meta.method == "PATCH"
+    print(f"  - PATCH 方法: {patch_meta.method} {patch_meta.path}")
 
     delete_endpoint = DeleteUser(user_id=123, token="Bearer admin-token")
-    assert delete_endpoint._route_meta.method == "DELETE"
-    print(f"  - DELETE 方法: {delete_endpoint._route_meta.method} {delete_endpoint._route_meta.path}")
+    delete_meta = delete_endpoint._get_dependant()
+    assert delete_meta.method == "DELETE"
+    print(f"  - DELETE 方法: {delete_meta.method} {delete_meta.path}")
     print("  - 所有 HTTP 方法装饰器验证通过 ✓")
 
     # 测试多个查询参数和复杂验证
@@ -302,7 +284,6 @@ def test_decorator_validation() -> None:
     print("2. ✓ 泛型响应类型 APIRoute[T] 工作正常，IDE 类型提示准确")
     print("3. ✓ 继承 BaseModel 自动生成 __init__，零样板代码")
     print("4. ✓ 路由元数据隔离机制工作正常，无命名冲突")
-    print("5. ✓ 接口级 servers 参数可覆盖全局 servers")
-    print("6. ✓ Query/Path/Header/Body 参数标记全部正常工作")
-    print("7. ✓ 参数默认值使用函数默认值形式（= value）")
+    print("5. ✓ Query/Path/Header/Body 参数标记全部正常工作")
+    print("6. ✓ 参数默认值使用函数默认值形式（= value）")
     print("\n🎉 User Story 1 的接口定义格式已验证完毕！")
