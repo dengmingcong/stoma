@@ -1,6 +1,6 @@
 """T015 + T015a: 测试参数收集和自动识别逻辑。
 
-验证 APIRoute._collect_params() 方法能够正确从实例字段中提取：
+验证从 APIRoute 实例中能够正确提取参数信息：
 - Query 参数（自动识别或显式标记）
 - Path 参数（参数名出现在路由 path 中）
 - Header 参数（必须显式标记）
@@ -11,7 +11,7 @@
 - 缓存机制确保性能
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel
 
@@ -39,6 +39,33 @@ class UserCreateRequest(BaseModel):
     age: int | None = None
 
 
+def collect_params(endpoint: APIRoute[Any]) -> dict[str, dict[str, Any] | Any]:
+    """辅助函数：从 endpoint 收集参数。
+
+    直接使用 Dependant 来收集参数值。
+
+    :param endpoint: APIRoute 实例。
+    :return: 包含 query, path, header, body 的字典。
+    """
+    dependant = endpoint._get_dependant()
+
+    query_params = {field.alias: getattr(endpoint, field.name) for field in dependant.query_params}
+    path_params = {field.alias: getattr(endpoint, field.name) for field in dependant.path_params}
+    header_params = {field.alias: getattr(endpoint, field.name) for field in dependant.header_params}
+
+    body_data = None
+    if dependant.body_params:
+        # 通常只有一个 body，取最后一个
+        body_data = getattr(endpoint, dependant.body_params[-1].name)
+
+    return {
+        "query": query_params,
+        "path": path_params,
+        "header": header_params,
+        "body": body_data,
+    }
+
+
 def test_collect_query_params() -> None:
     """测试收集查询参数。"""
 
@@ -50,7 +77,7 @@ def test_collect_query_params() -> None:
 
     # 测试默认值
     endpoint1 = GetUsers()
-    params1 = endpoint1._collect_params()
+    params1 = collect_params(endpoint1)
     assert params1["query"] == {"limit": 20, "offset": 0, "keyword": None}
     assert params1["path"] == {}
     assert params1["header"] == {}
@@ -58,7 +85,7 @@ def test_collect_query_params() -> None:
 
     # 测试自定义值
     endpoint2 = GetUsers(limit=50, offset=10, keyword="test")
-    params2 = endpoint2._collect_params()
+    params2 = collect_params(endpoint2)
     assert params2["query"] == {"limit": 50, "offset": 10, "keyword": "test"}
     assert params2["path"] == {}
     assert params2["header"] == {}
@@ -74,7 +101,7 @@ def test_collect_path_params() -> None:
         post_id: Annotated[int, Path()]
 
     endpoint = GetUserPost(user_id=123, post_id=456)
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     assert params["query"] == {}
     assert params["path"] == {"user_id": 123, "post_id": 456}
     assert params["header"] == {}
@@ -95,7 +122,7 @@ def test_collect_header_params() -> None:
         x_request_id="req-001",
         accept="application/json",
     )
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     assert params["query"] == {}
     assert params["path"] == {}
     assert params["header"] == {
@@ -115,7 +142,7 @@ def test_collect_body_data() -> None:
 
     user_data = UserCreateRequest(name="Alice", email="alice@example.com", age=30)
     endpoint = CreateUser(body=user_data)
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     assert params["query"] == {}
     assert params["path"] == {}
     assert params["header"] == {}
@@ -142,7 +169,7 @@ def test_collect_mixed_params() -> None:
         authorization="Bearer token",
         body=post_data,
     )
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     assert params["query"] == {"published": True}
     assert params["path"] == {"user_id": 123}
     assert params["header"] == {"Authorization": "Bearer token"}
@@ -165,7 +192,7 @@ def test_collect_params_with_no_annotations() -> None:
         internal_flag: bool = True
 
     endpoint = GetUsers(limit=10, internal_flag=False)
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     # internal_flag 被自动识别为查询参数
     assert params["query"] == {"limit": 10, "internal_flag": False}
     assert params["path"] == {}
@@ -183,7 +210,7 @@ def test_param_alias() -> None:
         page_num: Annotated[int, Query(alias="pageNum")] = 1
 
     endpoint = GetUsers(page_size=50, page_num=2)
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     # 应该使用别名作为键
     assert params["query"] == {"pageSize": 50, "pageNum": 2}
     assert params["path"] == {}
@@ -204,6 +231,6 @@ def test_multiple_body_params() -> None:
         data2: Annotated[dict[str, int], Body()]
 
     endpoint = PostData(data1={"a": 1}, data2={"b": 2})
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     # 最后一个 Body 参数生效
     assert params["body"] == {"b": 2}

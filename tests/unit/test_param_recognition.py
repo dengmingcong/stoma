@@ -8,7 +8,7 @@
 - 缓存机制正确工作（仅首次识别，后续复用）
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel
 
@@ -36,6 +36,33 @@ class UserCreateRequest(BaseModel):
     age: int | None = None
 
 
+def collect_params(endpoint: APIRoute[Any]) -> dict[str, dict[str, Any] | Any]:
+    """辅助函数：从 endpoint 收集参数。
+
+    直接使用 Dependant 来收集参数值。
+
+    :param endpoint: APIRoute 实例。
+    :return: 包含 query, path, header, body 的字典。
+    """
+    dependant = endpoint._get_dependant()
+
+    query_params = {field.alias: getattr(endpoint, field.name) for field in dependant.query_params}
+    path_params = {field.alias: getattr(endpoint, field.name) for field in dependant.path_params}
+    header_params = {field.alias: getattr(endpoint, field.name) for field in dependant.header_params}
+
+    body_data = None
+    if dependant.body_params:
+        # 通常只有一个 body，取最后一个
+        body_data = getattr(endpoint, dependant.body_params[-1].name)
+
+    return {
+        "query": query_params,
+        "path": path_params,
+        "header": header_params,
+        "body": body_data,
+    }
+
+
 def test_auto_recognize_path_params() -> None:
     """测试自动识别路径参数（参数名出现在路由 path 中）。"""
 
@@ -57,7 +84,7 @@ def test_auto_recognize_path_params() -> None:
 
     # 验证参数收集
     endpoint = GetUser(user_id=123, limit=20)
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     assert params["path"] == {"user_id": 123}
     assert params["query"] == {"limit": 20}
 
@@ -81,7 +108,7 @@ def test_auto_recognize_body_params() -> None:
     # 验证参数收集
     user_req = UserCreateRequest(name="Alice", email="alice@example.com")
     endpoint = CreateUser(user_data=user_req, token="bearer xyz")
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     assert params["body"] == user_req
     assert params["query"] == {"token": "bearer xyz"}
 
@@ -106,7 +133,7 @@ def test_auto_recognize_query_params() -> None:
 
     # 验证参数收集
     endpoint = GetUsers(limit=50, offset=10, keyword="test")
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     assert params["query"] == {"limit": 50, "offset": 10, "keyword": "test"}
     assert params["path"] == {}
 
@@ -132,7 +159,7 @@ def test_explicit_header_params() -> None:
 
     # 验证参数收集
     endpoint = GetUsers(authorization="Bearer token", x_request_id="req-001")
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
     # 头参数应该使用别名作为键
     assert params["header"] == {"Authorization": "Bearer token", "X-Request-ID": "req-001"}
     assert params["query"] == {"limit": 20}
@@ -163,8 +190,8 @@ def test_caching_mechanism() -> None:
     endpoint2 = GetUser(user_id=2, limit=30)
 
     # 两个实例的参数收集都使用同一个缓存
-    params1 = endpoint1._collect_params()
-    params2 = endpoint2._collect_params()
+    params1 = collect_params(endpoint1)
+    params2 = collect_params(endpoint2)
 
     assert params1["path"] == {"user_id": 1}
     assert params2["path"] == {"user_id": 2}
@@ -206,7 +233,7 @@ def test_complex_mixed_params() -> None:
         token="Bearer token123",
         data=user_data,
     )
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
 
     assert params["path"] == {"user_id": 123, "post_id": 456}
     assert params["query"] == {"published": True}
@@ -237,7 +264,7 @@ def test_path_param_extraction() -> None:
 
     # 验证参数收集
     endpoint = GetTeamMember(org_id=1, team_id=2, member_id=3, include_profile=True)
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
 
     assert params["path"] == {"org_id": 1, "team_id": 2, "member_id": 3}
     assert params["query"] == {"include_profile": True}
@@ -304,7 +331,7 @@ def test_basemodel_subclass_recognition() -> None:
     custom_req = CustomRequest(field1="test", field2=42)
     nested_req = NestedRequest(custom=custom_req, extra="data")
     endpoint = PostData(request1=custom_req, request2=nested_req)
-    params = endpoint._collect_params()
+    params = collect_params(endpoint)
 
     # 注意：Body 参数会被后面的覆盖
     assert params["body"] == nested_req  # 最后一个 Body 参数生效
