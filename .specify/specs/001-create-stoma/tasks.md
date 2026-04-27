@@ -107,16 +107,16 @@
   in src/routing.py
 - [X] T015b [US2] 实现路径参数插值逻辑（将 path 中的 `{param}` 占位符替换为实际参数值）in src/routing.py
 - [X] T015c [US2] 实现查询参数序列化逻辑（将查询参数转换为 URL query string）in src/routing.py
-- [ ] T015d [US2] 实现请求体 JSON 序列化逻辑（将 BaseModel 实例转换为 JSON）in src/routing.py
-- [ ] T015e [US2] 实现头参数处理逻辑（应用别名转换，snake_case → kebab-case）in src/routing.py
-- [ ] T016 [US2] 实现 URL 构造逻辑（基于 servers 配置 + 路径参数替换 + 查询参数拼接）in src/routing.py
-- [ ] T017 [US2] 实现 HTTP 请求发送逻辑（GET/POST/PUT/PATCH/DELETE，使用传入的 APIRequestContext）in src/routing.py
-- [ ] T017a [US2] 实现 HTTP 错误处理（连接失败、超时、HTTP 状态码错误时抛出 HTTPError）in src/routing.py
-- [ ] T018 [US2] 实现响应 JSON 解析与 Pydantic 模型验证 in src/routing.py
-- [ ] T018a [US2] 实现响应解析错误处理（JSON 解析失败抛出 ParseError，Pydantic 验证失败抛出 ValidationError）in src/routing.py
-- [ ] T019 [US2] 实现 APIRoute.send 方法（集成上述所有逻辑，同步实现）in src/routing.py
-- [ ] T020 [US2] 集成异常处理到 send 方法（确保所有错误都抛出清晰的自定义异常）in src/routing.py
-- [ ] T021 [US2] 手动测试：启动 FastAPI 测试服务器，编写接口类并调用验证（包括 servers 配置和异常处理）
+- [X] T015d [US2] 实现请求体 JSON 序列化逻辑（将 BaseModel 实例转换为 JSON）in src/routing.py
+- [X] T015e [US2] 实现头参数处理逻辑（应用别名转换，snake_case → kebab-case）in src/routing.py
+- [X] T016 [US2] 实现 URL 构造逻辑（基于 servers 配置 + 路径参数替换 + 查询参数拼接）in src/routing.py
+- [X] T017 [US2] 实现 HTTP 请求发送逻辑（GET/POST/PUT/PATCH/DELETE，使用传入的 APIRequestContext）in src/routing.py
+- [X] T017a [US2] 实现 HTTP 错误处理（连接失败、超时、HTTP 状态码错误时抛出 HTTPError）in src/routing.py
+- [X] T018 [US2] 实现响应 JSON 解析与 Pydantic 模型验证 in src/routing.py
+- [X] T018a [US2] 实现响应解析错误处理（JSON 解析失败抛出 ParseError，Pydantic 验证失败抛出 ValidationError）in src/routing.py
+- [X] T019 [US2] 实现 APIRoute.send 方法（集成上述所有逻辑，同步实现）in src/routing.py
+- [X] T020 [US2] 集成异常处理到 send 方法（确保所有错误都抛出清晰的自定义异常）in src/routing.py
+- [X] T021 [US2] 手动测试：启动 FastAPI 测试服务器，编写接口类并调用验证（包括 servers 配置和异常处理）
 
 **Checkpoint**: User Story 2 完成，接口类可以真实调用 HTTP 服务并获得类型化响应
 

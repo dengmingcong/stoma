@@ -12,10 +12,11 @@ from collections.abc import Callable
 from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from playwright.sync_api import APIRequestContext
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
 from src.dependencies import Dependant, ModelField
+from src.exceptions import HTTPError, ParseError, ValidationError
 from src.params import Param, ParamTypes
 
 
@@ -128,6 +129,25 @@ class APIRoute[T](BaseModel):
                 # 4. 默认为查询参数
                 query_params.append(model_field)
 
+            # 提取响应类型
+            response_type: type | None = None
+            for c in cls.mro():
+                name = c.__name__
+                if name.startswith("APIRoute["):
+                    metadata = getattr(c, "__pydantic_generic_metadata__", {})
+                    if args := metadata.get("args"):
+                        response_type = args[0]
+                    break
+
+            if response_type is None:
+                msg = f"无法从 {cls.__name__} 获取响应类型，请确保继承自 APIRoute[ResponseType]"
+                raise ValueError(msg)
+
+            # 创建响应类型验证器
+            response_type_adapter: TypeAdapter[Any] | None = None
+            if response_type is not type(None):
+                response_type_adapter = TypeAdapter(response_type)
+
             cls._dependant = Dependant(
                 method=method,
                 path=path,
@@ -135,6 +155,8 @@ class APIRoute[T](BaseModel):
                 query_params=query_params,
                 header_params=header_params,
                 body_params=body_params,
+                response_type=response_type,
+                response_type_adapter=response_type_adapter,
             )
 
         return cls._dependant
@@ -252,6 +274,226 @@ class APIRoute[T](BaseModel):
 
         return query_params
 
+    def _serialize_body_params(self) -> str | None:
+        """序列化请求体参数为 JSON 字符串。
+
+        从 Dependant 中的请求体参数定义获取参数列表，
+        从实例中提取参数值，转换为 JSON 字符串。
+
+        支持多种请求体格式：
+        - 单个 BaseModel 实例：直接序列化为 JSON
+        - 多个参数：合并为字典后序列化为 JSON
+        - 无请求体：返回 None
+
+        :return: JSON 字符串，如果无请求体则返回 None。
+        :rtype: str | None
+        """
+        dependant = self._get_dependant()
+
+        if not dependant.body_params:
+            return None
+
+        # 收集请求体数据
+        body_data: dict[str, Any] = {}
+
+        for model_field in dependant.body_params:
+            param_value = getattr(self, model_field.name)
+
+            # 跳过 None 值
+            if param_value is None:
+                continue
+
+            # 如果是 Pydantic BaseModel 实例，展开其字段
+            if isinstance(param_value, BaseModel):
+                # 使用 model_dump 获取字典（排除 None 值）
+                body_data.update(param_value.model_dump(exclude_none=True))
+            else:
+                body_data[model_field.alias] = param_value
+
+        # 如果没有数据，返回 None
+        if not body_data:
+            return None
+
+        # 序列化为 JSON 字符串
+        import json
+
+        return json.dumps(body_data, ensure_ascii=False)
+
+    def _serialize_header_params(self) -> dict[str, str]:
+        """序列化请求头参数为字典。
+
+        从 Dependant 中的请求头参数定义获取参数列表，
+        从实例中提取参数值，转换为字典形式。
+        应用别名转换（snake_case → kebab-case）。
+
+        :return: 请求头参数字典（key → str value）。
+        :rtype: dict[str, str]
+        """
+        dependant = self._get_dependant()
+        header_params: dict[str, str] = {}
+
+        # 遍历请求头参数
+        for model_field in dependant.header_params:
+            # 获取参数值
+            param_value = getattr(self, model_field.name)
+
+            # 跳过 None 值
+            if param_value is None:
+                continue
+
+            # 处理布尔值
+            if isinstance(param_value, bool):
+                param_value = "true" if param_value else "false"
+            else:
+                param_value = str(param_value)
+
+            # 应用别名转换：如果字段名是 snake_case，转换为 kebab-case
+            # 如果已有别名（来自 Header(...)），使用别名
+            alias = model_field.alias
+
+            # 如果别名与字段名不同（说明是通过 Annotated[Type, Header(...)] 设置的）
+            # 直接使用别名；否则将 snake_case 转换为 kebab-case
+            if alias == model_field.name:
+                # 将 snake_case 转换为 kebab-case
+                alias = alias.replace("_", "-")
+
+            header_params[alias] = param_value
+
+        return header_params
+
+    def _build_url(self, servers: list[str] | None = None) -> str:
+        """构建完整的请求 URL。
+
+        基于 servers 配置、路径参数插值和查询参数拼接构建完整 URL。
+
+        :param servers: 服务器地址列表，如果为 None 则使用全局配置。
+        :type servers: list[str] | None
+        :return: 完整的请求 URL。
+        :rtype: str
+        """
+        # 1. 确定 base URL
+        base_url = ""
+        if servers:
+            base_url = servers[0]
+        elif hasattr(self, "_servers") and self._servers:
+            base_url = self._servers[0]
+
+        # 确保 base_url 有协议前缀（默认使用 http）
+        if base_url and not base_url.startswith(("http://", "https://")):
+            base_url = f"http://{base_url}"
+
+        # 2. 插值路径参数
+        interpolated_path = self._interpolate_path_params()
+
+        # 3. 序列化查询参数
+        query_dict = self._serialize_query_params()
+
+        # 4. 构建完整 URL
+        url = base_url + interpolated_path
+
+        if query_dict:
+            # 将查询参数字典转换为 query string
+            query_parts = [f"{k}={v}" for k, v in query_dict.items()]
+            url = url + "?" + "&".join(query_parts)
+
+        return url
+
+    def _send_request(self, context: APIRequestContext) -> Any:
+        """使用 Playwright 发送 HTTP 请求并获取原始响应。
+
+        :param context: Playwright 的 APIRequestContext 实例。
+        :type context: APIRequestContext
+        :return: Playwright 响应对象。
+        :rtype: Any
+        :raise HTTPError: 当请求失败、超时或服务器返回错误状态码。
+        """
+        dependant = self._get_dependant()
+
+        # 获取 servers 配置
+        servers: list[str] | None = getattr(self, "_servers", None)
+
+        # 构建 URL
+        url = self._build_url(servers=servers)
+
+        # 准备请求头
+        headers = self._serialize_header_params()
+
+        # 准备请求体
+        body = self._serialize_body_params()
+
+        # 方法映射
+        method_map = {
+            "GET": context.get,
+            "POST": context.post,
+            "PUT": context.put,
+            "PATCH": context.patch,
+            "DELETE": context.delete,
+        }
+
+        request_method = method_map.get(dependant.method)
+        if request_method is None:
+            msg = f"不支持的 HTTP 方法: {dependant.method}"
+            raise HTTPError(msg)
+
+        try:
+            # 发送请求
+            response = request_method(
+                url,
+                headers=headers if headers else None,
+                data=body,
+            )
+            return response
+        except Exception as e:
+            msg = f"HTTP 请求失败: {e}"
+            raise HTTPError(msg) from e
+
+    def _parse_response(self, response: Any) -> T:
+        """解析 HTTP 响应并验证数据类型。
+
+        将 Playwright 响应解析为泛型类型 T 的实例。
+
+        :param response: Playwright 响应对象。
+        :type response: Any
+        :return: 类型为泛型参数 T 的响应数据。
+        :rtype: T
+        :raise HTTPError: 当 HTTP 状态码表示错误。
+        :raise ParseError: 当响应无法解析为 JSON。
+        :raise ValidationError: 当 JSON 数据无法通过 Pydantic 模型验证。
+        """
+        # 检查 HTTP 状态码
+        if response.status >= 400:
+            msg = f"HTTP 错误: 状态码 {response.status}"
+            raise HTTPError(
+                msg,
+                status_code=response.status,
+                response_text=response.text if hasattr(response, "text") else None,
+            )
+
+        # 获取响应类型（由 _get_dependant 缓存）
+        dependant = self._get_dependant()
+
+        # 如果响应类型是 NoneType，直接返回
+        if dependant.response_type is type(None):
+            return None  # type: ignore
+
+        # 解析 JSON
+        try:
+            response_data = response.json()
+        except Exception as e:
+            msg = f"响应 JSON 解析失败: {e}"
+            raise ParseError(msg, response_text=response.text) from e
+
+        # 使用缓存的 TypeAdapter 验证响应数据
+        assert dependant.response_type_adapter is not None
+        try:
+            return dependant.response_type_adapter.validate_python(response_data)  # type: ignore[no-any-return]
+        except Exception as e:
+            msg = f"响应数据验证失败: {e}"
+            errors: list[dict[str, Any]] = []
+            if hasattr(e, "errors"):
+                errors = list(e.errors())
+            raise ValidationError(msg, errors=errors) from e
+
     def send(self, context: APIRequestContext) -> T:
         """发送 HTTP 请求并返回响应数据。
 
@@ -261,19 +503,31 @@ class APIRoute[T](BaseModel):
         2. 使用传入的 APIRequestContext 发送 HTTP 请求。
         3. 将响应 JSON 自动解析为泛型类型 T 的实例。
 
-        详细实现将在用户故事 2 中完成。
-
-        .. note::
-            当前版本为同步实现，异步支持将在后续版本添加。
-
         :param context: Playwright 的 APIRequestContext 实例，用于发送 HTTP 请求。
         :type context: APIRequestContext
         :return: 响应数据，类型为泛型参数 T。
         :rtype: T
-        :raise NotImplementedError: 当前占位符实现，实际功能待用户故事 2 完成。
+        :raise HTTPError: 当请求失败、超时或服务器返回错误状态码。
+        :raise ParseError: 当响应无法解析为 JSON。
+        :raise ValidationError: 当响应数据无法通过 Pydantic 模型验证。
         """
-        msg = "send 方法尚未实现，将在用户故事 2 中完成"
-        raise NotImplementedError(msg)
+        try:
+            # 1. 发送请求
+            response = self._send_request(context)
+
+            # 2. 解析响应
+            return self._parse_response(response)
+        except HTTPError:
+            # HTTPError 已经包含足够的信息，直接重新抛出
+            raise
+        except ParseError:
+            raise
+        except ValidationError:
+            raise
+        except Exception as e:
+            # 包装其他异常
+            msg = f"请求发送失败: {e}"
+            raise HTTPError(msg) from e
 
 
 def api_route_decorator[T: APIRoute[Any]](

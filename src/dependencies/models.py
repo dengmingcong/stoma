@@ -1,7 +1,9 @@
 """参数依赖模型定义。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
+from pydantic import TypeAdapter
 from pydantic.fields import FieldInfo
 
 
@@ -56,11 +58,17 @@ class Dependant:
     :vartype header_params: list[ModelField]
     :var body_params: 请求体参数字段列表。
     :vartype body_params: list[ModelField]
+    :var response_type: 响应数据类型。
+    :vartype response_type: type | None
+    :var response_type_adapter: 响应类型验证器缓存。
+    :vartype response_type_adapter: TypeAdapter | None
     """
 
     method: str
     path: str
-    path_params: list[ModelField]
-    query_params: list[ModelField]
-    header_params: list[ModelField]
-    body_params: list[ModelField]
+    path_params: list[ModelField] = field(default_factory=list)
+    query_params: list[ModelField] = field(default_factory=list)
+    header_params: list[ModelField] = field(default_factory=list)
+    body_params: list[ModelField] = field(default_factory=list)
+    response_type: type | None = None
+    response_type_adapter: TypeAdapter[Any] | None = None
