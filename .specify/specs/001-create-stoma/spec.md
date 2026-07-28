@@ -18,7 +18,7 @@
 **验收场景**:
 
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，Then IDE 提供参数补全与类型检查。
-2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.send(context)`），Then mypy/IDE 可正确推断返回类型为 `Response[T]`，且 `response.model` 的类型为 T。`response.raw` 是 Playwright 原始 `APIResponse` 对象，提供完整 HTTP 协议层访问（`status` / `headers` / `text()` / `body()` / `json()`）。
+2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.send()`），Then mypy/IDE 可正确推断返回类型为 `Response[T]`，且 `response.model` 的类型为 T。`response.raw` 是 Playwright 原始 `APIResponse` 对象，提供完整 HTTP 协议层访问（`status` / `headers` / `text()` / `body()` / `json()`）。
 3. Given 接口类继承 BaseModel 并使用自动参数识别，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码；支持用户可选地使用 Annotated 标记以指定验证规则（如 ge、le、alias 等）。
 4. Given 生成的接口类使用路由元数据隔离（`_dependant`），When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 
@@ -175,8 +175,8 @@ with sync_playwright() as p:
     context = p.request.new_context(base_url="https://api.example.com")
     
     # 1. 列出用户（使用默认参数）
-    list_endpoint = GetUsers(token="Bearer xxx")  # IDE 完美补全所有字段
-    response = list_endpoint.send(context)  # 类型推断: Response[list[UserData]]
+    list_endpoint = GetUsers(token="Bearer xxx").with_context(context)
+    response = list_endpoint.send()  # 类型推断: Response[list[UserData]]
     if response.raw.status == 200:
         users = response.model  # 类型推断: list[UserData] | None
 
@@ -184,14 +184,14 @@ with sync_playwright() as p:
     create_endpoint = CreateUser(
         body=UserCreateRequest(name="Alice", email="alice@example.com"),
         idempotency_key="unique-key-123"
-    )
-    response = create_endpoint.send(context)  # 类型推断: Response[UserData]
+    ).with_context(context)
+    response = create_endpoint.send()  # 类型推断: Response[UserData]
     if response.raw.status == 201:
         new_user = response.model  # 类型推断: UserData | None
 
     # 3. 获取特定用户
-    get_endpoint = GetUserById(user_id=1, include_profile=True)
-    response = get_endpoint.send(context)  # 类型推断: Response[UserData]
+    get_endpoint = GetUserById(user_id=1, include_profile=True).with_context(context)
+    response = get_endpoint.send()  # 类型推断: Response[UserData]
     if response.raw.status == 200:
         user_data = response.model  # 类型推断: UserData | None
     
