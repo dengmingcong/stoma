@@ -278,23 +278,28 @@ class APIRoute[T](BaseModel):
         return query_params
 
     def _serialize_body_params(self) -> str | None:
-        """序列化请求体参数为 JSON 字符串。
+        """根据 FastAPI Body Multiple Parameters 规则序列化请求体为 JSON 字符串。
 
-        从 Dependant 中的请求体参数定义获取参数列表，
-        从实例中提取参数值，转换为 JSON 字符串。
+        规则（参考 https://fastapi.tiangolo.com/tutorial/body-multiple-params/ ）：
 
-        支持多种请求体格式：
-        - 单个 BaseModel 实例：直接序列化为 JSON
-        - 多个参数：合并为字典后序列化为 JSON
-        - 无请求体：返回 None
+        - **单个 Pydantic 模型（自动识别）**：平展，模型字段作为顶层 key。
+        - **多个 body 参数**：每个独立嵌入到顶层 key（避免字段冲突）。
+        - **Body(embed=True) 显式 Pydantic 模型**：嵌入到参数名下。
+        - **Body(embed=False) 显式 Pydantic 模型**：平展。
+        - **标量 Body()**：嵌入（标量无法平展，必须用参数名）。
 
         :return: JSON 字符串，如果无请求体则返回 None。
         :rtype: str | None
         """
+        from src.params import Body
+
         dependant = self._get_dependant()
 
         if not dependant.body_params:
             return None
+
+        # 多个 body 参数时，所有字段都嵌入到独立 key
+        has_multiple = len(dependant.body_params) > 1
 
         # 收集请求体数据
         body_data: dict[str, Any] = {}
@@ -306,12 +311,39 @@ class APIRoute[T](BaseModel):
             if param_value is None:
                 continue
 
-            # 如果是 Pydantic BaseModel 实例，展开其字段
-            if isinstance(param_value, BaseModel):
-                # 使用 model_dump 获取字典（排除 None 值）
-                body_data.update(param_value.model_dump(exclude_none=True))
+            # 检查是否有显式 Body 标记
+            param_info = self._get_param_info_from_field(model_field.name, model_field.field_info)
+            is_explicit_body = isinstance(param_info, Body)
+            explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
+            is_pydantic_model = isinstance(param_value, BaseModel)
+
+            # 决定该字段是否嵌入到独立 key
+            # 多 body 参数：全部嵌入
+            # Body(embed=True) 显式：嵌入
+            # 标量 Body()（非 Pydantic 模型）：嵌入
+            # 其他情况（单个 Pydantic 模型自动识别 / Body(embed=False)）：平展
+            should_embed = (
+                has_multiple
+                or (is_explicit_body and explicit_embed)
+                or (is_explicit_body and not is_pydantic_model)
+            )
+
+            # 转换 Pydantic 模型为 dict
+            if is_pydantic_model:
+                value = param_value.model_dump(exclude_none=True)
             else:
-                body_data[model_field.alias] = param_value
+                value = param_value
+
+            if should_embed:
+                # 嵌入：使用参数名（alias）作为顶层 key
+                body_data[model_field.alias] = value
+            else:
+                # 平展：模型字段直接合并到顶层
+                if is_pydantic_model:
+                    body_data.update(value)
+                else:
+                    # 防御：理论上不会到这里
+                    body_data[model_field.alias] = value
 
         # 如果没有数据，返回 None
         if not body_data:
