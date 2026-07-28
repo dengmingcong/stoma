@@ -356,7 +356,7 @@ class TestAPIRouteSend:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert isinstance(response.model, list)
         assert len(response.model) == 20  # 默认 limit=20
         assert all(isinstance(u, UserData) for u in response.model)
@@ -371,7 +371,7 @@ class TestAPIRouteSend:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert isinstance(response.model, list)
         assert len(response.model) == 5
         assert response.model[0].id == 10
@@ -386,7 +386,7 @@ class TestAPIRouteSend:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert isinstance(response.model, UserData)
         assert response.model.id == 42
         assert response.model.name == "User 42"
@@ -402,7 +402,7 @@ class TestAPIRouteSend:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 201
+        assert response.raw.status == 201
         assert isinstance(response.model, UserData)
         assert response.model.id == 999
         assert response.model.name == "John Doe"
@@ -418,7 +418,7 @@ class TestAPIRouteSend:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert isinstance(response.model, list)
         assert len(response.model) == 5
 
@@ -440,7 +440,7 @@ class TestServersConfiguration:
 
             response = endpoint.send(context)
 
-            assert response.raw.status_code == 200
+            assert response.raw.status == 200
             assert isinstance(response.model, list)
             assert len(response.model) == 20
         finally:
@@ -470,7 +470,7 @@ class TestExceptionHandling:
             # 4xx/5xx 不再抛错，而是返回 Response
             response = endpoint.send(context)
 
-            assert response.raw.status_code == 404
+            assert response.raw.status == 404
             # T 是 dict[str, Any]，body 是 JSON，被解析为 dict
             assert response.model == {"error": "Not found"}
         finally:
@@ -505,7 +505,7 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert isinstance(response.model, UserData)
         assert response.model.id == 1
 
@@ -519,7 +519,7 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 500
+        assert response.raw.status == 500
         # body 是 JSON，T 是 dict[str, Any]，会被验证为 dict
         assert response.model == {"error": "internal error"}
 
@@ -533,9 +533,9 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert response.model is None  # 非 JSON，model 不填充
-        assert response.raw.content == b"hello world"
+        assert response.raw.body() == b"hello world"
 
     def test_binary_octet_stream(self, api_context: dict[str, Any], test_server: TestServer) -> None:
         """二进制：status 200, application/octet-stream → model = None, raw.content 是字节。"""
@@ -547,9 +547,9 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert response.model is None
-        assert response.raw.content == b"\x00\x01\x02\x03"
+        assert response.raw.body() == b"\x00\x01\x02\x03"
 
     def test_text_500(self, api_context: dict[str, Any], test_server: TestServer) -> None:
         """HTTP 500 + text body：返回 Response，model = None。"""
@@ -561,9 +561,9 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 500
+        assert response.raw.status == 500
         assert response.model is None
-        assert response.raw.content == b"internal error"
+        assert response.raw.body() == b"internal error"
 
     def test_no_content_type_fallback(self, api_context: dict[str, Any], test_server: TestServer) -> None:
         """无 content-type：model = None，原始字节在 raw.content。"""
@@ -575,9 +575,9 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert response.model is None
-        assert response.raw.content == b"plain text body"
+        assert response.raw.body() == b"plain text body"
 
     def test_204_no_content(self, api_context: dict[str, Any], test_server: TestServer) -> None:
         """204 No Content：model = None，raw.content 为空。"""
@@ -589,9 +589,9 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 204
+        assert response.raw.status == 204
         assert response.model is None
-        assert response.raw.content == b""
+        assert response.raw.body() == b""
 
     def test_problem_json_plus_suffix(self, api_context: dict[str, Any], test_server: TestServer) -> None:
         """application/problem+json：走 JSON 路径（+json 后缀）。"""
@@ -603,7 +603,7 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert response.model == {"detail": "everything is fine", "status": 200}
 
     def test_charset_in_content_type(self, api_context: dict[str, Any], test_server: TestServer) -> None:
@@ -616,7 +616,7 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert response.model == {"hello": "world"}
 
     def test_raw_response_has_status_code_and_headers(
@@ -631,7 +631,7 @@ class TestResponseEnvelope:
 
         response = endpoint.send(context)
 
-        assert response.raw.status_code == 200
+        assert response.raw.status == 200
         assert isinstance(response.raw.headers, dict)
         # Playwright 返回小写 header 名称
         assert "content-type" in response.raw.headers
@@ -650,7 +650,7 @@ class TestEndToEndFlow:
         create_endpoint = CreateUser(data=CreateUserRequest(name="Test User", email="test@example.com"))
         create_endpoint._servers = [base_url]
         create_response = create_endpoint.send(context)
-        assert create_response.raw.status_code == 201
+        assert create_response.raw.status == 201
         assert isinstance(create_response.model, UserData)
         user_id = create_response.model.id
 
@@ -658,7 +658,7 @@ class TestEndToEndFlow:
         get_endpoint = GetUserById(user_id=user_id)
         get_endpoint._servers = [base_url]
         get_response = get_endpoint.send(context)
-        assert get_response.raw.status_code == 200
+        assert get_response.raw.status == 200
         assert isinstance(get_response.model, UserData)
         # 注意：服务器返回的 name 是 "User {user_id}"，不是创建时传入的 name
         assert get_response.model.name == f"User {user_id}"
@@ -667,7 +667,7 @@ class TestEndToEndFlow:
         list_endpoint = GetUsers(limit=10)
         list_endpoint._servers = [base_url]
         list_response = list_endpoint.send(context)
-        assert list_response.raw.status_code == 200
+        assert list_response.raw.status == 200
         assert isinstance(list_response.model, list)
         assert len(list_response.model) <= 10
 
