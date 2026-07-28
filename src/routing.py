@@ -18,7 +18,7 @@ from pydantic.fields import FieldInfo
 from src.dependencies import Dependant, ModelField
 from src.exceptions import HTTPError, ParseError, ValidationError
 from src.params import Param, ParamTypes
-from src.response import RawResponse, Response
+from src.response import Response
 
 
 class APIRoute[T](BaseModel):
@@ -42,7 +42,7 @@ class APIRoute[T](BaseModel):
 
         endpoint = GetUsers(limit=10)
         response = endpoint.send(context)  # 类型: Response[list[UserData]]
-        if response.raw.status_code == 200:
+        if response.raw.status == 200:
             users = response.model  # 类型: list[UserData] | None
     """
 
@@ -455,38 +455,27 @@ class APIRoute[T](BaseModel):
 
         流程：
 
-        1. 始终构造 ``RawResponse``（不抛错），即便 HTTP 状态码为 4xx/5xx。
+        1. 直接持有 Playwright 原始响应对象作为 ``raw``（不拷贝、不重新包装）。
         2. 根据 content-type 派发：仅当为 JSON（含 ``+json`` 后缀）时，
            用 ``T`` 验证并填充 ``Response.model``；其他 content-type 时
-           ``model`` 保持 ``None``，调用方使用 ``raw.content`` 获取原始字节。
-        3. 4xx/5xx 不抛错，由调用方通过 ``raw.status_code`` 判断。
+           ``model`` 保持 ``None``，调用方使用 ``raw.text()`` / ``raw.body()`` 获取原始数据。
+        3. 4xx/5xx 不抛错，由调用方通过 ``raw.status`` 判断。
 
-        :param response: Playwright 响应对象。
+        :param response: Playwright 响应对象（APIResponse）。
         :type response: Any
         :return: 包装后的 ``Response[T]`` 实例。
         :rtype: Response[T]
         :raise ParseError: 当 content-type 为 JSON 但响应体无法解析。
         :raise ValidationError: 当 JSON 解析成功但不符合 ``T``。
         """
-        # 1. 始终构造 RawResponse（不抛错）
-        try:
-            content: bytes = response.body() if hasattr(response, "body") else b""
-        except Exception:
-            content = b""
-
-        raw = RawResponse(
-            status_code=response.status,
-            headers=dict(response.headers) if response.headers else {},
-            content=content,
-        )
-
+        # 1. 直接持有 Playwright 原始响应对象作为 raw
         # 2. 解析 content-type（处理 charset 等参数）
         content_type = response.headers.get("content-type", "") if response.headers else ""
         media_type = content_type.split(";")[0].strip().lower()
 
         # 3. 特殊：204 No Content 或空 body —— model = None
-        if raw.status_code == 204 or not raw.content:
-            return Response[T](raw=raw, model=None)
+        if response.status == 204:
+            return Response[T](raw=response, model=None)
 
         # 4. 仅当 content-type 为 JSON 时才解析并填充 model 字段
         if media_type.startswith("application/json") or media_type.endswith("+json"):
@@ -496,12 +485,18 @@ class APIRoute[T](BaseModel):
             try:
                 payload: Any = response.json()
             except Exception as e:
+                # 用 response.text() 兜底，Playwright 在解析失败时也能拿到 body 文本
+                fallback_text = ""
+                try:
+                    fallback_text = response.text() if hasattr(response, "text") else ""
+                except Exception:
+                    pass
                 msg = f"响应 JSON 解析失败: {e}"
-                raise ParseError(msg, response_text=raw.content.decode("utf-8", errors="replace")) from e
+                raise ParseError(msg, response_text=fallback_text) from e
 
             # 如果响应类型为 NoneType，跳过 Pydantic 验证
             if dependant.response_type is type(None):
-                return Response[T](raw=raw, model=None)
+                return Response[T](raw=response, model=None)
 
             # 使用缓存的 TypeAdapter 验证响应数据
             assert dependant.response_type_adapter is not None
@@ -514,10 +509,10 @@ class APIRoute[T](BaseModel):
                     errors = list(e.errors())
                 raise ValidationError(msg, errors=errors) from e
 
-            return Response[T](raw=raw, model=validated)
+            return Response[T](raw=response, model=validated)
 
-        # 5. 非 JSON 响应（text、binary、其他）：model 保持 None，调用方使用 raw.content
-        return Response[T](raw=raw, model=None)
+        # 5. 非 JSON 响应（text、binary、其他）：model 保持 None，调用方使用 raw.text()/raw.body()
+        return Response[T](raw=response, model=None)
 
     def send(self, context: APIRequestContext) -> Response[T]:
         """发送 HTTP 请求并返回响应封装。

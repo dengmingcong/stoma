@@ -3,11 +3,10 @@
 提供类似 FastAPI 声明式风格的接口定义和自动化测试能力。
 """
 
-from src.response import RawResponse, Response
+from src.response import Response
 
 __all__ = [
     "__version__",
-    "RawResponse",
     "Response",
 ]
 
