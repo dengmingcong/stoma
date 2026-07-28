@@ -237,6 +237,32 @@ print(meta.path)           # "/users"
 3. Given OpenAPI 定义了请求参数（query、path、header、body），When 查看生成的接口类，Then 参数类型注解、默认值正确；其中头参数使用 `Annotated[Type, Header(...)]` 标记，包含正确的别名信息。
 4. Given OpenAPI 定义了响应 schema，When 查看生成的代码，Then 包含对应的 Pydantic 响应模型类，字段类型与 OpenAPI 定义一致。
 
+### 用户故事 4 - 支持 Body Multiple Parameters（FastAPI 兼容）（优先级：P1）
+
+测试工程师需要在单个接口中支持多个 body 参数（参考 FastAPI 的 [Body - Multiple Parameters](https://fastapi.tiangolo.com/tutorial/body-multiple-params/)），每个参数独立序列化到顶层 key，避免字段名冲突。同时支持 `Body(embed=True)` 显式嵌入单个 Pydantic 模型，以及标量 `Body()` 自动嵌入。
+
+**为何优先**: 当前实现将多个 BaseModel body 字段**展平**到同一对象，导致字段名冲突。这是常见的 API 模式（如 OpenAPI 规范中的 `oneOf`、`anyOf`），必须支持。
+
+**独立测试**: 手动编写多个 body 参数的接口，调用 `send()` 验证请求体 JSON 形状；测试 `Body(embed=True)` 显式嵌入；测试标量 `Body()` 嵌入。
+
+**验收场景**:
+
+1. Given 接口类中只有一个 Pydantic 模型 body 字段（无显式 `Body()` 标记），When 调用 `send()`，Then 请求体为模型字段的平展 JSON（如 `{"name": "...", "email": "..."}`），符合 FastAPI 默认 `embed=False` 行为。
+2. Given 接口类中有 Pydantic 模型 body 字段并标注 `Body(embed=True)`，When 调用 `send()`，Then 请求体中该字段被嵌入到参数名（如 `{"data": {"name": "...", "email": "..."}}`）。
+3. Given 接口类中有标量字段标注 `Body()`（如 `importance: Annotated[int, Body()]`），When 调用 `send()`，Then 请求体为 `{"importance": 5}`（标量必须嵌入，无法平展）。
+4. Given 接口类中有多个 body 参数（多个 Pydantic 模型 + 标量），When 调用 `send()`，Then 每个参数独立序列化到顶层 key（如 `{"item": {...}, "user": {...}, "importance": 5}`），避免字段名冲突。
+5. Given 多个 body 参数中包含相同字段名的 Pydantic 模型，When 调用 `send()`，Then 字段不再被覆盖，因为每个模型独立在各自的 key 下。
+
+**实现规则**（参考 FastAPI 行为）：
+
+| 场景 | embed 判定 |
+|---|---|
+| 单个 Pydantic 模型自动识别 | `embed=False`（平展） |
+| 显式 `Body(embed=True)` | `embed=True`（嵌入） |
+| 显式 `Body(embed=False)` 标量 | `embed=True`（标量必须嵌入） |
+| 显式 `Body()` 标量 | `embed=True`（标量必须嵌入） |
+| 多个 body 参数 | 全部 `embed=True` |
+
 
 ## 需求（必填）
 
