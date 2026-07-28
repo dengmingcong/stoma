@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from playwright.sync_api import APIRequestContext
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, PrivateAttr, TypeAdapter
 from pydantic.fields import FieldInfo
 
 from src.dependencies import Dependant, ModelField
@@ -24,15 +24,14 @@ from src.response import Response
 class APIRoute[T](BaseModel):
     """接口基类，通过泛型指定响应模型类型。
 
-    设计特点：
-
-    1. 继承 BaseModel：自动 __init__ 生成，参数 → 属性，无需样板代码。
-    2. 元数据缓存：所有路由信息和参数依赖存储在 _dependant，避免与用户字段冲突。
-    3. IDE 支持：字段声明即完成一切，IDE 完美补全与类型检查。
-    4. 懒加载优化：参数依赖分析结果缓存在类级别，提升性能。
+    调用方式：
+    - ``endpoint.send()`` —— 使用 ``self._context`` 发送（无参数）
+    - ``endpoint.with_context(ctx)`` —— 设置自定义 context（链式）
 
     :var _dependant: 路由元数据和参数依赖定义缓存。
     :vartype _dependant: ClassVar[Dependant | None]
+    :var _context: Playwright APIRequestContext（懒加载）。
+    :vartype _context: APIRequestContext | None
 
     Example::
 
@@ -40,14 +39,20 @@ class APIRoute[T](BaseModel):
         class GetUsers(APIRoute[list[UserData]]):
             limit: Annotated[int, Query(ge=1, le=100)] = 20
 
-        endpoint = GetUsers(limit=10)
-        response = endpoint.send(context)  # 类型: Response[list[UserData]]
+        # 链式：实例化 + 绑定 context
+        endpoint = GetUsers(limit=10).with_context(custom_ctx)
+        endpoint._servers = [base_url]
+        response = endpoint.send()  # 类型: Response[list[UserData]]
         if response.raw.status == 200:
             users = response.model  # 类型: list[UserData] | None
     """
 
     # Ref: https://pydantic.dev/docs/validation/latest/concepts/models/#class-variables
     _dependant: ClassVar[Dependant | None] = None
+
+    # 私有属性：Playwright context（懒加载），通过 with_context 设置或首次 send() 时自动创建
+    # Ref: https://pydantic.dev/docs/validation/latest/concepts/models/#private-model-attributes
+    _context: APIRequestContext | None = PrivateAttr(default=None)
 
     @classmethod
     def _get_dependant(
@@ -545,26 +550,31 @@ class APIRoute[T](BaseModel):
         # 5. 非 JSON 响应（text、binary、其他）：model 保持 None，调用方使用 raw.text()/raw.body()
         return Response[T](raw=response, model=None)
 
-    def send(self, context: APIRequestContext) -> Response[T]:
+    def send(self) -> Response[T]:
         """发送 HTTP 请求并返回响应封装。
+
+        使用 ``self._context`` 发送请求。首次调用时如果 ``_context`` 为 None，
+        自动创建默认 context（读取 ``self._servers[0]`` 作为 base_url）。
+        调用方应通过 ``with_context(ctx)`` 设置 context。
 
         功能：
 
         1. 从实例字段自动收集请求参数（query/path/header/body）。
-        2. 使用传入的 APIRequestContext 发送 HTTP 请求。
+        2. 使用 ``self._context`` 发送 HTTP 请求。
         3. 始终返回 ``Response[T]``；不因 4xx/5xx 抛出异常。
 
-        :param context: Playwright 的 APIRequestContext 实例，用于发送 HTTP 请求。
-        :type context: APIRequestContext
         :return: 包装后的响应，包含原始 HTTP 信息与（仅 JSON 路径下的）业务数据。
         :rtype: Response[T]
         :raise HTTPError: 仅在网络层失败（连接超时、无法连接等）时抛出。
         :raise ParseError: 当 content-type 为 JSON 但响应体无法解析时。
         :raise ValidationError: 当 JSON 解析成功但不符合 ``T``。
         """
+        if self._context is None:
+            self._context = self._create_default_context()
+
         try:
             # 1. 发送请求
-            response = self._send_request(context)
+            response = self._send_request(self._context)
 
             # 2. 构造响应信封
             return self._build_response(response)
@@ -579,6 +589,39 @@ class APIRoute[T](BaseModel):
             # 包装其他网络层 / 未知异常
             msg = f"请求发送失败: {e}"
             raise HTTPError(msg) from e
+
+    def with_context(self, context: APIRequestContext) -> "APIRoute[T]":
+        """设置 Playwright context，返回 self 用于链式调用。
+
+        :param context: Playwright APIRequestContext 实例。
+        :type context: APIRequestContext
+        :return: self（链式调用）。
+        :rtype: APIRoute[T]
+
+        Example::
+
+            endpoint = GetUsers(limit=10).with_context(custom_ctx)
+            endpoint._servers = [base_url]
+            response = endpoint.send()
+        """
+        self._context = context
+        return self
+
+    def _create_default_context(self) -> APIRequestContext:
+        """创建默认 Playwright context。
+
+        读取 ``self._servers[0]`` 作为 base_url。
+        每次创建会启动新的 Playwright 实例（成本较高），
+        生产环境建议使用 ``with_context`` 复用外部 context。
+
+        :return: 创建好的 APIRequestContext。
+        :rtype: APIRequestContext
+        """
+        from playwright.sync_api import sync_playwright
+
+        playwright = sync_playwright().start()
+        base_url = self._servers[0] if self._servers else None
+        return playwright.request.new_context(base_url=base_url)
 
 
 def api_route_decorator[T: APIRoute[Any]](

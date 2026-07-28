@@ -41,7 +41,7 @@ class Response[T]:
 
     Example::
 
-        response = endpoint.send(context)
+        response = endpoint.with_context(context).send()
         if response.raw.status == 200:
             user = response.model  # 类型为 UserData
         else:
