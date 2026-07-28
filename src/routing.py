@@ -18,6 +18,7 @@ from pydantic.fields import FieldInfo
 from src.dependencies import Dependant, ModelField
 from src.exceptions import HTTPError, ParseError, ValidationError
 from src.params import Param, ParamTypes
+from src.response import RawResponse, Response
 
 
 class APIRoute[T](BaseModel):
@@ -40,7 +41,9 @@ class APIRoute[T](BaseModel):
             limit: Annotated[int, Query(ge=1, le=100)] = 20
 
         endpoint = GetUsers(limit=10)
-        users = endpoint.send(context)  # 返回 list[UserData]
+        response = endpoint.send(context)  # 类型: Response[list[UserData]]
+        if response.raw.status_code == 200:
+            users = response.model  # 类型: list[UserData] | None
     """
 
     _dependant: ClassVar[Dependant | None] = None
@@ -447,76 +450,98 @@ class APIRoute[T](BaseModel):
             msg = f"HTTP 请求失败: {e}"
             raise HTTPError(msg) from e
 
-    def _parse_response(self, response: Any) -> T:
-        """解析 HTTP 响应并验证数据类型。
+    def _build_response(self, response: Any) -> Response[T]:
+        """根据 HTTP 响应构造 ``Response[T]`` 信封。
 
-        将 Playwright 响应解析为泛型类型 T 的实例。
+        流程：
+
+        1. 始终构造 ``RawResponse``（不抛错），即便 HTTP 状态码为 4xx/5xx。
+        2. 根据 content-type 派发：仅当为 JSON（含 ``+json`` 后缀）时，
+           用 ``T`` 验证并填充 ``Response.model``；其他 content-type 时
+           ``model`` 保持 ``None``，调用方使用 ``raw.content`` 获取原始字节。
+        3. 4xx/5xx 不抛错，由调用方通过 ``raw.status_code`` 判断。
 
         :param response: Playwright 响应对象。
         :type response: Any
-        :return: 类型为泛型参数 T 的响应数据。
-        :rtype: T
-        :raise HTTPError: 当 HTTP 状态码表示错误。
-        :raise ParseError: 当响应无法解析为 JSON。
-        :raise ValidationError: 当 JSON 数据无法通过 Pydantic 模型验证。
+        :return: 包装后的 ``Response[T]`` 实例。
+        :rtype: Response[T]
+        :raise ParseError: 当 content-type 为 JSON 但响应体无法解析。
+        :raise ValidationError: 当 JSON 解析成功但不符合 ``T``。
         """
-        # 检查 HTTP 状态码
-        if response.status >= 400:
-            msg = f"HTTP 错误: 状态码 {response.status}"
-            raise HTTPError(
-                msg,
-                status_code=response.status,
-                response_text=response.text if hasattr(response, "text") else None,
-            )
-
-        # 获取响应类型（由 _get_dependant 缓存）
-        dependant = self._get_dependant()
-
-        # 如果响应类型是 NoneType，直接返回
-        if dependant.response_type is type(None):
-            return None  # type: ignore
-
-        # 解析 JSON
+        # 1. 始终构造 RawResponse（不抛错）
         try:
-            response_data = response.json()
-        except Exception as e:
-            msg = f"响应 JSON 解析失败: {e}"
-            raise ParseError(msg, response_text=response.text) from e
+            content: bytes = response.body() if hasattr(response, "body") else b""
+        except Exception:
+            content = b""
 
-        # 使用缓存的 TypeAdapter 验证响应数据
-        assert dependant.response_type_adapter is not None
-        try:
-            return dependant.response_type_adapter.validate_python(response_data)  # type: ignore[no-any-return]
-        except Exception as e:
-            msg = f"响应数据验证失败: {e}"
-            errors: list[dict[str, Any]] = []
-            if hasattr(e, "errors"):
-                errors = list(e.errors())
-            raise ValidationError(msg, errors=errors) from e
+        raw = RawResponse(
+            status_code=response.status,
+            headers=dict(response.headers) if response.headers else {},
+            content=content,
+        )
 
-    def send(self, context: APIRequestContext) -> T:
-        """发送 HTTP 请求并返回响应数据。
+        # 2. 解析 content-type（处理 charset 等参数）
+        content_type = response.headers.get("content-type", "") if response.headers else ""
+        media_type = content_type.split(";")[0].strip().lower()
+
+        # 3. 特殊：204 No Content 或空 body —— model = None
+        if raw.status_code == 204 or not raw.content:
+            return Response[T](raw=raw, model=None)
+
+        # 4. 仅当 content-type 为 JSON 时才解析并填充 model 字段
+        if media_type.startswith("application/json") or media_type.endswith("+json"):
+            dependant = self._get_dependant()
+
+            # 解析 JSON
+            try:
+                payload: Any = response.json()
+            except Exception as e:
+                msg = f"响应 JSON 解析失败: {e}"
+                raise ParseError(msg, response_text=raw.content.decode("utf-8", errors="replace")) from e
+
+            # 如果响应类型为 NoneType，跳过 Pydantic 验证
+            if dependant.response_type is type(None):
+                return Response[T](raw=raw, model=None)
+
+            # 使用缓存的 TypeAdapter 验证响应数据
+            assert dependant.response_type_adapter is not None
+            try:
+                validated = dependant.response_type_adapter.validate_python(payload)  # type: ignore[no-any-return]
+            except Exception as e:
+                msg = f"响应数据验证失败: {e}"
+                errors: list[dict[str, Any]] = []
+                if hasattr(e, "errors"):
+                    errors = list(e.errors())
+                raise ValidationError(msg, errors=errors) from e
+
+            return Response[T](raw=raw, model=validated)
+
+        # 5. 非 JSON 响应（text、binary、其他）：model 保持 None，调用方使用 raw.content
+        return Response[T](raw=raw, model=None)
+
+    def send(self, context: APIRequestContext) -> Response[T]:
+        """发送 HTTP 请求并返回响应封装。
 
         功能：
 
         1. 从实例字段自动收集请求参数（query/path/header/body）。
         2. 使用传入的 APIRequestContext 发送 HTTP 请求。
-        3. 将响应 JSON 自动解析为泛型类型 T 的实例。
+        3. 始终返回 ``Response[T]``；不因 4xx/5xx 抛出异常。
 
         :param context: Playwright 的 APIRequestContext 实例，用于发送 HTTP 请求。
         :type context: APIRequestContext
-        :return: 响应数据，类型为泛型参数 T。
-        :rtype: T
-        :raise HTTPError: 当请求失败、超时或服务器返回错误状态码。
-        :raise ParseError: 当响应无法解析为 JSON。
-        :raise ValidationError: 当响应数据无法通过 Pydantic 模型验证。
+        :return: 包装后的响应，包含原始 HTTP 信息与（仅 JSON 路径下的）业务数据。
+        :rtype: Response[T]
+        :raise HTTPError: 仅在网络层失败（连接超时、无法连接等）时抛出。
+        :raise ParseError: 当 content-type 为 JSON 但响应体无法解析时。
+        :raise ValidationError: 当 JSON 解析成功但不符合 ``T``。
         """
         try:
             # 1. 发送请求
             response = self._send_request(context)
 
-            # 2. 解析响应
-            return self._parse_response(response)
+            # 2. 构造响应信封
+            return self._build_response(response)
         except HTTPError:
             # HTTPError 已经包含足够的信息，直接重新抛出
             raise
@@ -525,7 +550,7 @@ class APIRoute[T](BaseModel):
         except ValidationError:
             raise
         except Exception as e:
-            # 包装其他异常
+            # 包装其他网络层 / 未知异常
             msg = f"请求发送失败: {e}"
             raise HTTPError(msg) from e
 
