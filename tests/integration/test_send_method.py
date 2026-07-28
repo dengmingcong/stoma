@@ -18,7 +18,7 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel
 
-from src.params import Path, Query
+from src.params import Body, Path, Query
 from src.routing import APIRoute, APIRouter
 
 # 测试服务器配置
@@ -126,6 +126,31 @@ class GetCharsetJson(APIRoute[dict[str, Any]]):
 @router.get("/nonexistent")
 class NonExistent(APIRoute[dict[str, Any]]):
     """404 响应测试端点。"""
+
+
+# ===== Body Multiple Parameters 测试端点 =====
+
+
+@router.post("/users-embed")
+class CreateUserEmbed(APIRoute[dict[str, Any]]):
+    """Body(embed=True) 测试：data 字段嵌入到顶层。"""
+
+    data: Annotated[CreateUserRequest, Body(embed=True)]
+
+
+@router.post("/importance")
+class SetImportance(APIRoute[dict[str, Any]]):
+    """标量 Body() 测试：importance 嵌入。"""
+
+    importance: Annotated[int, Body()]
+
+
+@router.post("/multi")
+class CreateItemMulti(APIRoute[dict[str, Any]]):
+    """多 body 测试：item + importance，每个独立命名。"""
+
+    item: CreateUserRequest
+    importance: Annotated[int, Body()]
 
 
 class HTTPHandler(BaseHTTPRequestHandler):
@@ -263,31 +288,54 @@ class HTTPHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         """处理 POST 请求。"""
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode() if content_length > 0 else "{}"
+
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._send_json_response(400, {"error": "Invalid JSON"})
+            return
+
         if self.path == "/users":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length).decode() if content_length > 0 else "{}"
-
-            try:
-                data = json.loads(body)
-            except json.JSONDecodeError:
-                self._send_json_response(400, {"error": "Invalid JSON"})
-                return
-
+            # 单 body Pydantic 模型：平展（FastAPI 默认 embed=False）
             user_id = 999
             user = {"id": user_id, "name": data.get("name", ""), "email": data.get("email")}
             self._send_json_response(201, user)
             return
 
-        if self.path == "/echo":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length).decode() if content_length > 0 else "{}"
-
-            try:
-                data = json.loads(body)
-            except json.JSONDecodeError:
-                self._send_json_response(400, {"error": "Invalid JSON"})
+        if self.path == "/users-embed":
+            # Body(embed=True)：data 字段嵌入到顶层
+            if "data" not in data or not isinstance(data["data"], dict):
+                self._send_json_response(400, {"error": "expected embedded data"})
                 return
+            inner = data["data"]
+            user_id = 999
+            user = {"id": user_id, "name": inner.get("name", ""), "email": inner.get("email")}
+            self._send_json_response(201, user)
+            return
 
+        if self.path == "/importance":
+            # 标量 Body()：嵌入到顶层
+            if "importance" not in data:
+                self._send_json_response(400, {"error": "expected importance"})
+                return
+            self._send_json_response(200, {"received": data["importance"]})
+            return
+
+        if self.path == "/multi":
+            # 多 body：每个独立命名
+            if "item" not in data or "importance" not in data:
+                self._send_json_response(400, {"error": "expected item and importance"})
+                return
+            inner = data["item"]
+            self._send_json_response(200, {
+                "name": inner.get("name"),
+                "importance": data["importance"],
+            })
+            return
+
+        if self.path == "/echo":
             self._send_json_response(200, data)
             return
 
@@ -636,6 +684,84 @@ class TestResponseEnvelope:
         # Playwright 返回小写 header 名称
         assert "content-type" in response.raw.headers
         assert "application/json" in response.raw.headers["content-type"]
+
+
+class TestBodyMultipleParams:
+    """Body Multiple Parameters（FastAPI 兼容）集成测试。
+
+    验证请求体序列化符合 FastAPI 规则：
+    - 单 body Pydantic 模型自动识别 → 平展
+    - Body(embed=True) → 嵌入
+    - 标量 Body() → 嵌入
+    - 多个 body 参数 → 每个独立命名
+    """
+
+    def test_single_pydantic_body_flat(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """单 body Pydantic 模型（CreateUser）→ 平展：服务端收到的是模型字段，不嵌入。
+
+        复用 /users 端点（已存在的 CreateUser 接口）。
+        """
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = CreateUser(data=CreateUserRequest(name="Alice", email="alice@example.com"))
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        # 服务端返回 201 表示请求体格式正确（平展）
+        assert response.raw.status == 201
+        assert response.model is not None
+        assert response.model.name == "Alice"
+        assert response.model.email == "alice@example.com"
+
+    def test_single_pydantic_body_embed_true(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """Body(embed=True) → data 字段嵌入到顶层：服务端从 data 子对象读取。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = CreateUserEmbed(data=CreateUserRequest(name="Bob", email="bob@example.com"))
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        # 服务端从内嵌的 data 子对象提取，返回的是 dict
+        assert response.raw.status == 201
+        assert response.model is not None
+        assert response.model["name"] == "Bob"
+        assert response.model["email"] == "bob@example.com"
+
+    def test_single_scalar_body_embedded(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """标量 Body() → 嵌入：服务端从 importance 键读取。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = SetImportance(importance=42)
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status == 200
+        assert response.model is not None
+        assert response.model["received"] == 42
+
+    def test_multiple_body_params_named(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """多 body 参数：item + importance，每个独立命名。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = CreateItemMulti(
+            item=CreateUserRequest(name="Charlie", email="charlie@example.com"),
+            importance=99,
+        )
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status == 200
+        assert response.model is not None
+        assert response.model["name"] == "Charlie"
+        assert response.model["importance"] == 99
 
 
 class TestEndToEndFlow:

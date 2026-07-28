@@ -219,18 +219,94 @@ def test_param_alias() -> None:
 
 
 def test_multiple_body_params() -> None:
-    """测试多个 Body 参数（虽然不常见）。
+    """测试多个 Body 参数（FastAPI 兼容）。
 
-    在实际场景中通常只有一个 Body，但此测试确保代码能处理多个的情况。
-    最后一个 Body 会覆盖前面的。
+    多个 body 参数序列化时每个独立命名，避免字段冲突。
     """
 
     @router.post("/data")
-    class PostData(APIRoute[dict[str, int]]):
+    class PostData(APIRoute[dict[str, Any]]):
         data1: Annotated[dict[str, int], Body()]
         data2: Annotated[dict[str, int], Body()]
 
     endpoint = PostData(data1={"a": 1}, data2={"b": 2})
-    params = collect_params(endpoint)
-    # 最后一个 Body 参数生效
-    assert params["body"] == {"b": 2}
+    body_json = endpoint._serialize_body_params()
+    assert body_json is not None
+    import json
+    parsed = json.loads(body_json)
+    # 多个 body 参数 → 每个独立命名
+    assert parsed == {"data1": {"a": 1}, "data2": {"b": 2}}
+
+
+def test_single_pydantic_body_flat() -> None:
+    """测试单个 Pydantic 模型 body（自动识别）平展。
+
+    单 body Pydantic 模型默认 embed=False，模型字段作为顶层 key。
+    """
+
+    @router.post("/users")
+    class CreateUser(APIRoute[dict[str, Any]]):
+        data: UserCreateRequest
+
+    endpoint = CreateUser(data=UserCreateRequest(name="Alice", email="alice@example.com", age=30))
+    body_json = endpoint._serialize_body_params()
+    assert body_json is not None
+    import json
+    parsed = json.loads(body_json)
+    # 单 Pydantic 模型自动识别 → 平展
+    assert parsed == {"name": "Alice", "email": "alice@example.com", "age": 30}
+
+
+def test_single_pydantic_body_embed_true() -> None:
+    """测试 Body(embed=True) 显式嵌入。"""
+
+    @router.post("/users-embed")
+    class CreateUserEmbed(APIRoute[dict[str, Any]]):
+        data: Annotated[UserCreateRequest, Body(embed=True)]
+
+    endpoint = CreateUserEmbed(data=UserCreateRequest(name="Bob", email="bob@example.com"))
+    body_json = endpoint._serialize_body_params()
+    assert body_json is not None
+    import json
+    parsed = json.loads(body_json)
+    # Body(embed=True) → 嵌入到 data 键下
+    assert parsed == {"data": {"name": "Bob", "email": "bob@example.com"}}
+
+
+def test_single_scalar_body_embedded() -> None:
+    """测试标量 Body() 默认嵌入（标量必须嵌入）。"""
+
+    @router.post("/importance")
+    class SetImportance(APIRoute[dict[str, Any]]):
+        importance: Annotated[int, Body()]
+
+    endpoint = SetImportance(importance=5)
+    body_json = endpoint._serialize_body_params()
+    assert body_json is not None
+    import json
+    parsed = json.loads(body_json)
+    # 标量必须嵌入（无法平展）
+    assert parsed == {"importance": 5}
+
+
+def test_multiple_body_pydantic_and_scalar() -> None:
+    """测试多个 body 参数：Pydantic 模型 + 标量，每个独立命名。"""
+
+    @router.post("/multi")
+    class CreateItem(APIRoute[dict[str, Any]]):
+        item: UserCreateRequest
+        importance: Annotated[int, Body()]
+
+    endpoint = CreateItem(
+        item=UserCreateRequest(name="Charlie", email="charlie@example.com"),
+        importance=10,
+    )
+    body_json = endpoint._serialize_body_params()
+    assert body_json is not None
+    import json
+    parsed = json.loads(body_json)
+    # 多个 body → 每个独立命名
+    assert parsed == {
+        "item": {"name": "Charlie", "email": "charlie@example.com"},
+        "importance": 10,
+    }
