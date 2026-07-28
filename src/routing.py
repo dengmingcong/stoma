@@ -46,6 +46,7 @@ class APIRoute[T](BaseModel):
             users = response.model  # 类型: list[UserData] | None
     """
 
+    # Ref: https://pydantic.dev/docs/validation/latest/concepts/models/#class-variables
     _dependant: ClassVar[Dependant | None] = None
 
     @classmethod
@@ -323,9 +324,7 @@ class APIRoute[T](BaseModel):
             # 标量 Body()（非 Pydantic 模型）：嵌入
             # 其他情况（单个 Pydantic 模型自动识别 / Body(embed=False)）：平展
             should_embed = (
-                has_multiple
-                or (is_explicit_body and explicit_embed)
-                or (is_explicit_body and not is_pydantic_model)
+                has_multiple or (is_explicit_body and explicit_embed) or (is_explicit_body and not is_pydantic_model)
             )
 
             # 转换 Pydantic 模型为 dict
