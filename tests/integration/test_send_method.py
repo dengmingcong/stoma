@@ -4,6 +4,7 @@
 - 参数自动识别（Query/Path/Body/Header）
 - 服务器配置（servers）
 - HTTP 请求发送与响应解析
+- Response envelope（飞书风格）：raw + model
 - 异常处理（HTTPError/ParseError/ValidationError）
 
 使用 Python 内置 http.server 创建测试服务器。
@@ -17,7 +18,6 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel
 
-from src.exceptions import HTTPError
 from src.params import Path, Query
 from src.routing import APIRoute, APIRouter
 
@@ -83,6 +83,51 @@ class EchoRequest(APIRoute[dict[str, Any]]):
     extra: str | None = None
 
 
+@router.get("/text")
+class GetText(APIRoute[dict[str, Any]]):
+    """返回纯文本响应。"""
+
+
+@router.get("/bytes")
+class GetBytes(APIRoute[dict[str, Any]]):
+    """返回二进制响应。"""
+
+
+@router.get("/notype")
+class GetNoType(APIRoute[dict[str, Any]]):
+    """无 content-type 响应。"""
+
+
+@router.get("/empty")
+class GetEmpty(APIRoute[dict[str, Any]]):
+    """空响应。"""
+
+
+@router.get("/problem-json")
+class GetProblemJson(APIRoute[dict[str, Any]]):
+    """application/problem+json 响应。"""
+
+
+@router.get("/server-error-json")
+class GetServerErrorJson(APIRoute[dict[str, Any]]):
+    """500 + JSON 响应。"""
+
+
+@router.get("/server-error-text")
+class GetServerErrorText(APIRoute[dict[str, Any]]):
+    """500 + 文本响应。"""
+
+
+@router.get("/charset-json")
+class GetCharsetJson(APIRoute[dict[str, Any]]):
+    """application/json; charset=utf-8 响应。"""
+
+
+@router.get("/nonexistent")
+class NonExistent(APIRoute[dict[str, Any]]):
+    """404 响应测试端点。"""
+
+
 class HTTPHandler(BaseHTTPRequestHandler):
     """测试用 HTTP 请求处理器。"""
 
@@ -91,17 +136,57 @@ class HTTPHandler(BaseHTTPRequestHandler):
         pass
 
     def _send_json_response(self, status: int, data: Any) -> None:
-        """发送 JSON 响应。"""
+        """发送 application/json 响应。"""
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 
+    def _send_json_with_charset(self, status: int, data: Any) -> None:
+        """发送带 charset 的 application/json 响应。"""
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def _send_problem_json(self, status: int, data: Any) -> None:
+        """发送 application/problem+json 响应。"""
+        self.send_response(status)
+        self.send_header("Content-Type", "application/problem+json")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def _send_text_response(self, status: int, text: str) -> None:
+        """发送 text/plain 响应。"""
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(text.encode("utf-8"))
+
+    def _send_binary_response(self, status: int, data: bytes) -> None:
+        """发送 application/octet-stream 响应。"""
+        self.send_response(status)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_no_content(self, status: int) -> None:
+        """发送无 body 的响应。"""
+        self.send_response(status)
+        self.end_headers()
+
+    def _send_no_type(self, status: int, body: bytes) -> None:
+        """发送无 Content-Type 的响应。"""
+        self.send_response(status)
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:  # noqa: N802
         """处理 GET 请求。"""
-        if self.path.startswith("/users/"):
-            # GET /users/{user_id}
-            parts = self.path.split("/")
+        path = self.path
+
+        if path.startswith("/users/"):
+            parts = path.split("/")
             if len(parts) == 3 and parts[2].isdigit():
                 user_id = int(parts[2])
                 self._send_json_response(
@@ -109,11 +194,10 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-        if self.path.startswith("/items"):
-            # GET /items?category=xxx&limit=xxx
+        if path.startswith("/items"):
             params = {}
-            if "?" in self.path:
-                query = self.path.split("?")[1]
+            if "?" in path:
+                query = path.split("?")[1]
                 for param in query.split("&"):
                     if "=" in param:
                         key, value = param.split("=", 1)
@@ -121,16 +205,14 @@ class HTTPHandler(BaseHTTPRequestHandler):
 
             category = params.get("category", "default")
             limit = int(params.get("limit", "10"))
-
             items = [{"id": i, "name": f"Item {i}", "category": category} for i in range(limit)]
             self._send_json_response(200, items)
             return
 
-        if self.path.startswith("/users"):
-            # GET /users?limit=xxx&offset=xxx
+        if path.startswith("/users"):
             params = {}
-            if "?" in self.path:
-                query = self.path.split("?")[1]
+            if "?" in path:
+                query = path.split("?")[1]
                 for param in query.split("&"):
                     if "=" in param:
                         key, value = param.split("=", 1)
@@ -138,11 +220,42 @@ class HTTPHandler(BaseHTTPRequestHandler):
 
             limit = int(params.get("limit", "20"))
             offset = int(params.get("offset", "0"))
-
             users = [
                 {"id": i, "name": f"User {i}", "email": f"user{i}@example.com"} for i in range(offset, offset + limit)
             ]
             self._send_json_response(200, users)
+            return
+
+        if path == "/text":
+            self._send_text_response(200, "hello world")
+            return
+
+        if path == "/bytes":
+            self._send_binary_response(200, b"\x00\x01\x02\x03")
+            return
+
+        if path == "/notype":
+            self._send_no_type(200, b"plain text body")
+            return
+
+        if path == "/empty":
+            self._send_no_content(204)
+            return
+
+        if path == "/problem-json":
+            self._send_problem_json(200, {"detail": "everything is fine", "status": 200})
+            return
+
+        if path == "/server-error-json":
+            self._send_json_response(500, {"error": "internal error"})
+            return
+
+        if path == "/server-error-text":
+            self._send_text_response(500, "internal error")
+            return
+
+        if path == "/charset-json":
+            self._send_json_with_charset(200, {"hello": "world"})
             return
 
         # 404
@@ -151,7 +264,6 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         """处理 POST 请求。"""
         if self.path == "/users":
-            # 读取请求体
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode() if content_length > 0 else "{}"
 
@@ -161,14 +273,12 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 self._send_json_response(400, {"error": "Invalid JSON"})
                 return
 
-            # 创建用户
             user_id = 999
             user = {"id": user_id, "name": data.get("name", ""), "email": data.get("email")}
             self._send_json_response(201, user)
             return
 
         if self.path == "/echo":
-            # 回显请求体
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode() if content_length > 0 else "{}"
 
@@ -241,87 +351,76 @@ class TestAPIRouteSend:
         context = api_context["context"]
         base_url = test_server.base_url
 
-        # 创建接口实例（使用默认参数）
         endpoint = GetUsers()
         endpoint._servers = [base_url]
 
-        # 发送请求
-        result = endpoint.send(context)
+        response = endpoint.send(context)
 
-        # 验证结果
-        assert isinstance(result, list)
-        assert len(result) == 20  # 默认 limit=20
-        assert all(isinstance(u, UserData) for u in result)
+        assert response.raw.status_code == 200
+        assert isinstance(response.model, list)
+        assert len(response.model) == 20  # 默认 limit=20
+        assert all(isinstance(u, UserData) for u in response.model)
 
     def test_get_users_list_with_params(self, api_context: dict[str, Any], test_server: TestServer) -> None:
         """测试 GET /users 带参数。"""
         context = api_context["context"]
         base_url = test_server.base_url
 
-        # 创建接口实例（自定义参数）
         endpoint = GetUsers(limit=5, offset=10)
         endpoint._servers = [base_url]
 
-        # 发送请求
-        result = endpoint.send(context)
+        response = endpoint.send(context)
 
-        # 验证结果
-        assert isinstance(result, list)
-        assert len(result) == 5
-        # 验证 offset 生效（id 应该从 10 开始）
-        assert result[0].id == 10
+        assert response.raw.status_code == 200
+        assert isinstance(response.model, list)
+        assert len(response.model) == 5
+        assert response.model[0].id == 10
 
     def test_get_user_by_id(self, api_context: dict[str, Any], test_server: TestServer) -> None:
         """测试 GET /users/{user_id} 路径参数。"""
         context = api_context["context"]
         base_url = test_server.base_url
 
-        # 创建接口实例
         endpoint = GetUserById(user_id=42)
         endpoint._servers = [base_url]
 
-        # 发送请求
-        result = endpoint.send(context)
+        response = endpoint.send(context)
 
-        # 验证结果
-        assert isinstance(result, UserData)
-        assert result.id == 42
-        assert result.name == "User 42"
-        assert result.email == "user42@example.com"
+        assert response.raw.status_code == 200
+        assert isinstance(response.model, UserData)
+        assert response.model.id == 42
+        assert response.model.name == "User 42"
+        assert response.model.email == "user42@example.com"
 
     def test_create_user(self, api_context: dict[str, Any], test_server: TestServer) -> None:
         """测试 POST /users 请求体。"""
         context = api_context["context"]
         base_url = test_server.base_url
 
-        # 创建接口实例
         endpoint = CreateUser(data=CreateUserRequest(name="John Doe", email="john@example.com"))
         endpoint._servers = [base_url]
 
-        # 发送请求
-        result = endpoint.send(context)
+        response = endpoint.send(context)
 
-        # 验证结果
-        assert isinstance(result, UserData)
-        assert result.id == 999  # 服务器返回的固定 ID
-        assert result.name == "John Doe"
-        assert result.email == "john@example.com"
+        assert response.raw.status_code == 201
+        assert isinstance(response.model, UserData)
+        assert response.model.id == 999
+        assert response.model.name == "John Doe"
+        assert response.model.email == "john@example.com"
 
     def test_query_params_filtering(self, api_context: dict[str, Any], test_server: TestServer) -> None:
         """测试查询参数过滤 None 值。"""
         context = api_context["context"]
         base_url = test_server.base_url
 
-        # category 为 None 应该被过滤
         endpoint = GetItems(category=None, limit=5)
         endpoint._servers = [base_url]
 
-        # 发送请求
-        result = endpoint.send(context)
+        response = endpoint.send(context)
 
-        # 验证结果
-        assert isinstance(result, list)
-        assert len(result) == 5
+        assert response.raw.status_code == 200
+        assert isinstance(response.model, list)
+        assert len(response.model) == 5
 
 
 class TestServersConfiguration:
@@ -339,10 +438,11 @@ class TestServersConfiguration:
             endpoint = GetUsers()
             endpoint._servers = [base_url]
 
-            result = endpoint.send(context)
+            response = endpoint.send(context)
 
-            assert isinstance(result, list)
-            assert len(result) == 20
+            assert response.raw.status_code == 200
+            assert isinstance(response.model, list)
+            assert len(response.model) == 20
         finally:
             context.dispose()
             playwright.stop()
@@ -351,14 +451,13 @@ class TestServersConfiguration:
 class TestExceptionHandling:
     """异常处理测试。"""
 
-    def test_http_error_on_404(self, test_server: TestServer) -> None:
-        """测试 HTTP 404 错误抛出 HTTPError。"""
-        from playwright.sync_api import sync_playwright
+    def test_returns_response_on_404(self, test_server: TestServer) -> None:
+        """测试 HTTP 404 不抛错，而是返回 Response。
 
-        # 创建一个会返回 404 的端点
-        @router.get("/nonexistent")
-        class NonExistent(APIRoute[dict[str, Any]]):
-            pass
+        调用方应通过 ``raw.status_code`` 判断是否成功。
+        4xx/5xx 仍会按 content-type 解析 body（这里是 JSON），所以 model 字段会填充。
+        """
+        from playwright.sync_api import sync_playwright
 
         playwright = sync_playwright().start()
         context = playwright.request.new_context()
@@ -368,10 +467,12 @@ class TestExceptionHandling:
             endpoint = NonExistent()
             endpoint._servers = [base_url]
 
-            with pytest.raises(HTTPError) as exc_info:
-                endpoint.send(context)
+            # 4xx/5xx 不再抛错，而是返回 Response
+            response = endpoint.send(context)
 
-            assert exc_info.value.status_code == 404
+            assert response.raw.status_code == 404
+            # T 是 dict[str, Any]，body 是 JSON，被解析为 dict
+            assert response.model == {"error": "Not found"}
         finally:
             context.dispose()
             playwright.stop()
@@ -385,6 +486,158 @@ class TestExceptionHandling:
         pytest.skip("需要特殊设置的测试 - 标准测试服务器总是返回有效 JSON")
 
 
+class TestResponseEnvelope:
+    """Response[T] 信封的集成测试。
+
+    验证不同 content-type 下 Response 行为：
+    - JSON：model 字段填充为 T 验证后的实例
+    - text/binary：model = None，原始字节在 raw.content
+    - HTTP 错误：不抛错，raw.status_code 反映状态
+    """
+
+    def test_json_success_200(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """JSON 成功：status 200, application/json → data 为 T 实例。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetUserById(user_id=1)
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 200
+        assert isinstance(response.model, UserData)
+        assert response.model.id == 1
+
+    def test_json_failure_500_returns_envelope(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """HTTP 500 + JSON body：返回 Response（不抛）。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetServerErrorJson()
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 500
+        # body 是 JSON，T 是 dict[str, Any]，会被验证为 dict
+        assert response.model == {"error": "internal error"}
+
+    def test_text_plain(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """纯文本：status 200, text/plain → model = None, raw.content 是 UTF-8 字节。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetText()
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 200
+        assert response.model is None  # 非 JSON，model 不填充
+        assert response.raw.content == b"hello world"
+
+    def test_binary_octet_stream(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """二进制：status 200, application/octet-stream → model = None, raw.content 是字节。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetBytes()
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 200
+        assert response.model is None
+        assert response.raw.content == b"\x00\x01\x02\x03"
+
+    def test_text_500(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """HTTP 500 + text body：返回 Response，model = None。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetServerErrorText()
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 500
+        assert response.model is None
+        assert response.raw.content == b"internal error"
+
+    def test_no_content_type_fallback(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """无 content-type：model = None，原始字节在 raw.content。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetNoType()
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 200
+        assert response.model is None
+        assert response.raw.content == b"plain text body"
+
+    def test_204_no_content(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """204 No Content：model = None，raw.content 为空。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetEmpty()
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 204
+        assert response.model is None
+        assert response.raw.content == b""
+
+    def test_problem_json_plus_suffix(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """application/problem+json：走 JSON 路径（+json 后缀）。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetProblemJson()
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 200
+        assert response.model == {"detail": "everything is fine", "status": 200}
+
+    def test_charset_in_content_type(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+        """application/json; charset=utf-8：strip charset 后走 JSON 路径。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetCharsetJson()
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 200
+        assert response.model == {"hello": "world"}
+
+    def test_raw_response_has_status_code_and_headers(
+        self, api_context: dict[str, Any], test_server: TestServer
+    ) -> None:
+        """RawResponse 包含 status_code 和 headers。"""
+        context = api_context["context"]
+        base_url = test_server.base_url
+
+        endpoint = GetUserById(user_id=1)
+        endpoint._servers = [base_url]
+
+        response = endpoint.send(context)
+
+        assert response.raw.status_code == 200
+        assert isinstance(response.raw.headers, dict)
+        # Playwright 返回小写 header 名称
+        assert "content-type" in response.raw.headers
+        assert "application/json" in response.raw.headers["content-type"]
+
+
 class TestEndToEndFlow:
     """端到端流程测试。"""
 
@@ -396,24 +649,27 @@ class TestEndToEndFlow:
         # 1. 创建用户
         create_endpoint = CreateUser(data=CreateUserRequest(name="Test User", email="test@example.com"))
         create_endpoint._servers = [base_url]
-        created_user = create_endpoint.send(context)
-        assert isinstance(created_user, UserData)
-        user_id = created_user.id
+        create_response = create_endpoint.send(context)
+        assert create_response.raw.status_code == 201
+        assert isinstance(create_response.model, UserData)
+        user_id = create_response.model.id
 
         # 2. 获取用户
         get_endpoint = GetUserById(user_id=user_id)
         get_endpoint._servers = [base_url]
-        fetched_user = get_endpoint.send(context)
-        assert isinstance(fetched_user, UserData)
+        get_response = get_endpoint.send(context)
+        assert get_response.raw.status_code == 200
+        assert isinstance(get_response.model, UserData)
         # 注意：服务器返回的 name 是 "User {user_id}"，不是创建时传入的 name
-        assert fetched_user.name == f"User {user_id}"
+        assert get_response.model.name == f"User {user_id}"
 
         # 3. 列出用户
         list_endpoint = GetUsers(limit=10)
         list_endpoint._servers = [base_url]
-        users = list_endpoint.send(context)
-        assert isinstance(users, list)
-        assert len(users) <= 10
+        list_response = list_endpoint.send(context)
+        assert list_response.raw.status_code == 200
+        assert isinstance(list_response.model, list)
+        assert len(list_response.model) <= 10
 
 
 if __name__ == "__main__":
