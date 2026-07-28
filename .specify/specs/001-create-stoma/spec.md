@@ -18,7 +18,7 @@
 **验收场景**:
 
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，Then IDE 提供参数补全与类型检查。
-2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.send(context)`），Then mypy/IDE 可正确推断返回类型为 T。
+2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.send(context)`），Then mypy/IDE 可正确推断返回类型为 `Response[T]`，且 `response.model` 的类型为 T。
 3. Given 接口类继承 BaseModel 并使用自动参数识别，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码；支持用户可选地使用 Annotated 标记以指定验证规则（如 ge、le、alias 等）。
 4. Given 生成的接口类使用路由元数据隔离（`_dependant`），When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 
@@ -45,6 +45,18 @@ Path: type  # 占位符，代码生成时会导入真实实现
 Body: type  # 占位符，代码生成时会导入真实实现
 
 
+# 响应封装（飞书风格：raw + model）
+class RawResponse:
+    status_code: int
+    headers: dict[str, str]
+    content: bytes
+
+
+class Response[T]:
+    raw: RawResponse
+    model: T | None  # 仅当 content-type 为 JSON 时填充
+
+
 # 框架提供的基类（继承 Pydantic BaseModel 以获得最佳 IDE 支持）
 class APIRoute[T](BaseModel):
     """
@@ -57,12 +69,14 @@ class APIRoute[T](BaseModel):
     """
     _dependant: ClassVar[Dependant | None] = None
     
-    def send(self, context: APIRequestContext) -> T:
+    def send(self, context: APIRequestContext) -> Response[T]:
         """
-        发送 HTTP 请求并返回响应数据（由框架基类实现）：
+        发送 HTTP 请求并返回响应封装（由框架基类实现）：
         1. 从实例字段自动收集请求参数（query/path/header/body）
         2. 使用传入的 APIRequestContext 发送 HTTP 请求
-        3. 将响应 JSON 自动解析为泛型类型 T 的实例
+        3. 始终返回 Response[T] 信封；不因 4xx/5xx 抛出异常
+        4. 仅当 content-type 为 JSON（含 +json 后缀）时，用 T 验证并填充 model 字段；
+           其他 content-type 时 model = None，调用方使用 raw.content 获取原始字节
         
         详细实现将在用户故事 2 中完成。
         
@@ -167,18 +181,24 @@ with sync_playwright() as p:
     
     # 1. 列出用户（使用默认参数）
     list_endpoint = GetUsers(token="Bearer xxx")  # IDE 完美补全所有字段
-    users = list_endpoint.send(context)  # 类型推断: list[UserData]
-    
+    response = list_endpoint.send(context)  # 类型推断: Response[list[UserData]]
+    if response.raw.status_code == 200:
+        users = response.model  # 类型推断: list[UserData] | None
+
     # 2. 创建用户
     create_endpoint = CreateUser(
         body=UserCreateRequest(name="Alice", email="alice@example.com"),
         idempotency_key="unique-key-123"
     )
-    new_user = create_endpoint.send(context)  # 类型推断: UserData
-    
+    response = create_endpoint.send(context)  # 类型推断: Response[UserData]
+    if response.raw.status_code == 201:
+        new_user = response.model  # 类型推断: UserData | None
+
     # 3. 获取特定用户
     get_endpoint = GetUserById(user_id=1, include_profile=True)
-    user_data = get_endpoint.send(context)  # 类型推断: UserData
+    response = get_endpoint.send(context)  # 类型推断: Response[UserData]
+    if response.raw.status_code == 200:
+        user_data = response.model  # 类型推断: UserData | None
     
     context.dispose()
 
@@ -190,7 +210,7 @@ print(meta.path)           # "/users"
 
 ### 用户故事 2 - 使用 Playwright 调用接口（优先级：P1）
 
-测试工程师希望实例化接口类后，通过调用实例的 `send(context)` 方法自动发送 HTTP 请求并获得类型化的响应。`send` 方法接收一个 `APIRequestContext` 参数，内部自动完成以下工作：（1）从实例属性按参数类型分类（query/path/header/body）；（2）对路径参数进行插值（如 `/users/{user_id}` 替换为 `/users/1`）；（3）对查询参数进行序列化；（4）对请求体（BaseModel 实例）进行 JSON 序列化；（5）对头参数进行别名转换和格式化；（6）使用传入的 APIRequestContext 发送构造好的 HTTP 请求到目标服务器；（7）将响应 JSON 自动解析为 Pydantic 响应模型实例并返回。
+测试工程师希望实例化接口类后，通过调用实例的 `send(context)` 方法自动发送 HTTP 请求并获得类型化的响应。`send` 方法接收一个 `APIRequestContext` 参数，内部自动完成以下工作：（1）从实例属性按参数类型分类（query/path/header/body）；（2）对路径参数进行插值（如 `/users/{user_id}` 替换为 `/users/1`）；（3）对查询参数进行序列化；（4）对请求体（BaseModel 实例）进行 JSON 序列化；（5）对头参数进行别名转换和格式化；（6）使用传入的 APIRequestContext 发送构造好的 HTTP 请求到目标服务器；（7）始终返回 `Response[T]` 信封（飞书风格），包含 `raw: RawResponse`（HTTP 状态码/响应头/字节内容）和 `model: T | None`（仅 JSON content-type 时填充）。**HTTP 4xx/5xx 不抛错**，由调用方通过 `raw.status_code` 判断成功/失败。
 
 **为何优先**: 这是框架的核心执行能力，验证接口定义可以真正调用远程服务并获得结果。
 
@@ -204,6 +224,8 @@ print(meta.path)           # "/users"
 4. Given 服务器返回的 JSON 与响应模型不匹配（缺少字段或类型错误），When 调用接口，Then 抛出 Pydantic 校验异常并提供清晰的错误信息。
 5. Given 接口定义了路径参数（如 `/users/{user_id}`），When 实例化接口类并设置 `user_id=1` 后调用 `send(context)`，Then 框架自动将路径参数插值到 URL 中，发送到 `/users/1`。
 6. Given 接口定义了头参数，When 实例化接口类并调用 `send(context)`，Then 框架自动应用别名转换，将 Python 属性名转换为正确的 HTTP 头格式。
+7. Given 服务器返回任意 HTTP 状态码（包括 4xx/5xx），When 调用接口，Then 不抛出异常，调用方通过 `response.raw.status_code` 判断成功/失败，`response.raw` 始终包含完整的 HTTP 原始信息。
+8. Given 响应 content-type 为 `application/json`（含 `+json` 后缀），When 调用接口，Then `response.model` 字段填充为 Pydantic 验证后的 T 类型实例；其他 content-type（text/plain、application/octet-stream 等）时 `response.model` 为 `None`，原始字节可通过 `response.raw.content` 获取。
 
 ### 用户故事 3 - 从 OpenAPI 生成接口定义（优先级：P2）
 
