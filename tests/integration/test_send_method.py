@@ -1,9 +1,8 @@
-"""T021 Integration Test: APIRoute.send() 端到端测试
+"""T021 Integration Test: Client.send() 端到端测试
 
 验证 User Story 2 的完整功能：
 - 参数自动识别（Query/Path/Body/Header）
-- 服务器配置（servers）
-- HTTP 请求发送与响应解析
+- HTTP 请求发送与响应解析（通过 Client）
 - Response envelope（飞书风格）：raw + model
 - 异常处理（HTTPError/ParseError/ValidationError）
 
@@ -18,6 +17,7 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel
 
+from src.client import Client
 from src.params import Body, Path, Query
 from src.routing import APIRoute, APIRouter
 
@@ -388,54 +388,51 @@ def api_context(test_server: TestServer) -> Any:
     from playwright.sync_api import sync_playwright
 
     playwright = sync_playwright().start()
-    context = playwright.request.new_context()
+    context = playwright.request.new_context(base_url=test_server.base_url)
     yield {"context": context, "base_url": test_server.base_url, "playwright": playwright}
     context.dispose()
     playwright.stop()
 
 
+@pytest.fixture
+def client(api_context: dict[str, Any]) -> Client:
+    """提供共享的 Client 实例。"""
+    return Client(context=api_context["context"])
+
+
 class TestAPIRouteSend:
     """APIRoute.send() 方法集成测试。"""
 
-    def test_get_users_list(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_get_users_list(self, client: Client, test_server: TestServer) -> None:
         """测试 GET /users 列表接口。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetUsers()
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert isinstance(response.model, list)
         assert len(response.model) == 20  # 默认 limit=20
         assert all(isinstance(u, UserData) for u in response.model)
 
-    def test_get_users_list_with_params(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_get_users_list_with_params(self, client: Client, test_server: TestServer) -> None:
         """测试 GET /users 带参数。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetUsers(limit=5, offset=10)
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert isinstance(response.model, list)
         assert len(response.model) == 5
         assert response.model[0].id == 10
 
-    def test_get_user_by_id(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_get_user_by_id(self, client: Client, test_server: TestServer) -> None:
         """测试 GET /users/{user_id} 路径参数。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetUserById(user_id=42)
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert isinstance(response.model, UserData)
@@ -443,15 +440,12 @@ class TestAPIRouteSend:
         assert response.model.name == "User 42"
         assert response.model.email == "user42@example.com"
 
-    def test_create_user(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_create_user(self, client: Client, test_server: TestServer) -> None:
         """测试 POST /users 请求体。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = CreateUser(data=CreateUserRequest(name="John Doe", email="john@example.com"))
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 201
         assert isinstance(response.model, UserData)
@@ -459,15 +453,12 @@ class TestAPIRouteSend:
         assert response.model.name == "John Doe"
         assert response.model.email == "john@example.com"
 
-    def test_query_params_filtering(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_query_params_filtering(self, client: Client, test_server: TestServer) -> None:
         """测试查询参数过滤 None 值。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetItems(category=None, limit=5)
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert isinstance(response.model, list)
@@ -477,56 +468,30 @@ class TestAPIRouteSend:
 class TestServersConfiguration:
     """servers 配置测试。"""
 
-    def test_global_servers_config(self, test_server: TestServer) -> None:
-        """测试全局 servers 配置。"""
-        from playwright.sync_api import sync_playwright
+    def test_global_servers_config(self, client: Client) -> None:
+        """测试全局 servers 配置（base_url 通过 context 设置）。"""
+        endpoint = GetUsers()
+        response = client.send(endpoint)
 
-        playwright = sync_playwright().start()
-        context = playwright.request.new_context()
-        base_url = test_server.base_url
-
-        try:
-            endpoint = GetUsers()
-            endpoint._servers = [base_url]
-
-            response = endpoint.with_context(context).send()
-
-            assert response.raw.status == 200
-            assert isinstance(response.model, list)
-            assert len(response.model) == 20
-        finally:
-            context.dispose()
-            playwright.stop()
+        assert response.raw.status == 200
+        assert isinstance(response.model, list)
+        assert len(response.model) == 20
 
 
 class TestExceptionHandling:
     """异常处理测试。"""
 
-    def test_returns_response_on_404(self, test_server: TestServer) -> None:
+    def test_returns_response_on_404(self, client: Client) -> None:
         """测试 HTTP 404 不抛错，而是返回 Response。
 
-        调用方应通过 ``raw.status_code`` 判断是否成功。
         4xx/5xx 仍会按 content-type 解析 body（这里是 JSON），所以 model 字段会填充。
         """
-        from playwright.sync_api import sync_playwright
+        endpoint = NonExistent()
+        response = client.send(endpoint)
 
-        playwright = sync_playwright().start()
-        context = playwright.request.new_context()
-        base_url = test_server.base_url
-
-        try:
-            endpoint = NonExistent()
-            endpoint._servers = [base_url]
-
-            # 4xx/5xx 不再抛错，而是返回 Response
-            response = endpoint.with_context(context).send()
-
-            assert response.raw.status == 404
-            # T 是 dict[str, Any]，body 是 JSON，被解析为 dict
-            assert response.model == {"error": "Not found"}
-        finally:
-            context.dispose()
-            playwright.stop()
+        assert response.raw.status == 404
+        # T 是 dict[str, Any]，body 是 JSON，被解析为 dict
+        assert response.model == {"error": "Not found"}
 
     def test_parse_error_on_invalid_json(self) -> None:
         """测试响应解析错误。
@@ -546,141 +511,111 @@ class TestResponseEnvelope:
     - HTTP 错误：不抛错，raw.status_code 反映状态
     """
 
-    def test_json_success_200(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_json_success_200(self, client: Client, test_server: TestServer) -> None:
         """JSON 成功：status 200, application/json → data 为 T 实例。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetUserById(user_id=1)
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert isinstance(response.model, UserData)
         assert response.model.id == 1
 
-    def test_json_failure_500_returns_envelope(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_json_failure_500_returns_envelope(self, client: Client, test_server: TestServer) -> None:
         """HTTP 500 + JSON body：返回 Response（不抛）。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetServerErrorJson()
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 500
         # body 是 JSON，T 是 dict[str, Any]，会被验证为 dict
         assert response.model == {"error": "internal error"}
 
-    def test_text_plain(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_text_plain(self, client: Client, test_server: TestServer) -> None:
         """纯文本：status 200, text/plain → model = None, raw.content 是 UTF-8 字节。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetText()
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert response.model is None  # 非 JSON，model 不填充
         assert response.raw.body() == b"hello world"
 
-    def test_binary_octet_stream(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_binary_octet_stream(self, client: Client, test_server: TestServer) -> None:
         """二进制：status 200, application/octet-stream → model = None, raw.content 是字节。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetBytes()
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert response.model is None
         assert response.raw.body() == b"\x00\x01\x02\x03"
 
-    def test_text_500(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_text_500(self, client: Client, test_server: TestServer) -> None:
         """HTTP 500 + text body：返回 Response，model = None。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetServerErrorText()
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 500
         assert response.model is None
         assert response.raw.body() == b"internal error"
 
-    def test_no_content_type_fallback(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_no_content_type_fallback(self, client: Client, test_server: TestServer) -> None:
         """无 content-type：model = None，原始字节在 raw.content。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetNoType()
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert response.model is None
         assert response.raw.body() == b"plain text body"
 
-    def test_204_no_content(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_204_no_content(self, client: Client, test_server: TestServer) -> None:
         """204 No Content：model = None，raw.content 为空。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetEmpty()
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 204
         assert response.model is None
         assert response.raw.body() == b""
 
-    def test_problem_json_plus_suffix(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_problem_json_plus_suffix(self, client: Client, test_server: TestServer) -> None:
         """application/problem+json：走 JSON 路径（+json 后缀）。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetProblemJson()
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert response.model == {"detail": "everything is fine", "status": 200}
 
-    def test_charset_in_content_type(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_charset_in_content_type(self, client: Client, test_server: TestServer) -> None:
         """application/json; charset=utf-8：strip charset 后走 JSON 路径。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetCharsetJson()
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert response.model == {"hello": "world"}
 
     def test_raw_response_has_status_code_and_headers(
-        self, api_context: dict[str, Any], test_server: TestServer
+        self, client: Client
     ) -> None:
         """RawResponse 包含 status_code 和 headers。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = GetUserById(user_id=1)
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert isinstance(response.raw.headers, dict)
@@ -699,18 +634,15 @@ class TestBodyMultipleParams:
     - 多个 body 参数 → 每个独立命名
     """
 
-    def test_single_pydantic_body_flat(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_single_pydantic_body_flat(self, client: Client, test_server: TestServer) -> None:
         """单 body Pydantic 模型（CreateUser）→ 平展：服务端收到的是模型字段，不嵌入。
 
         复用 /users 端点（已存在的 CreateUser 接口）。
         """
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = CreateUser(data=CreateUserRequest(name="Alice", email="alice@example.com"))
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         # 服务端返回 201 表示请求体格式正确（平展）
         assert response.raw.status == 201
@@ -718,15 +650,12 @@ class TestBodyMultipleParams:
         assert response.model.name == "Alice"
         assert response.model.email == "alice@example.com"
 
-    def test_single_pydantic_body_embed_true(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_single_pydantic_body_embed_true(self, client: Client, test_server: TestServer) -> None:
         """Body(embed=True) → data 字段嵌入到顶层：服务端从 data 子对象读取。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = CreateUserEmbed(data=CreateUserRequest(name="Bob", email="bob@example.com"))
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         # 服务端从内嵌的 data 子对象提取，返回的是 dict
         assert response.raw.status == 201
@@ -734,32 +663,26 @@ class TestBodyMultipleParams:
         assert response.model["name"] == "Bob"
         assert response.model["email"] == "bob@example.com"
 
-    def test_single_scalar_body_embedded(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_single_scalar_body_embedded(self, client: Client, test_server: TestServer) -> None:
         """标量 Body() → 嵌入：服务端从 importance 键读取。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = SetImportance(importance=42)
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert response.model is not None
         assert response.model["received"] == 42
 
-    def test_multiple_body_params_named(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_multiple_body_params_named(self, client: Client, test_server: TestServer) -> None:
         """多 body 参数：item + importance，每个独立命名。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         endpoint = CreateItemMulti(
             item=CreateUserRequest(name="Charlie", email="charlie@example.com"),
             importance=99,
         )
-        endpoint._servers = [base_url]
 
-        response = endpoint.with_context(context).send()
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert response.model is not None
@@ -767,88 +690,79 @@ class TestBodyMultipleParams:
         assert response.model["importance"] == 99
 
 
-class TestAPIRouteContext:
-    """APIRoute Context 管理测试。
+class TestClient:
+    """Client 模式测试。
 
     验证：
-    - `with_context(ctx)` 返回 self（链式）
-    - `send()` 使用 `self._context` 发送请求
-    - 首次 `send()` 时懒加载创建默认 context
-    - 第二次 `send()` 复用已有 context
+    - `client.send(endpoint)` 返回 `Response[T]`，T 从 endpoint 推断
+    - `client.dispose()` 释放 context
+    - 链式 `client.send(endpoint).raw.status` 流畅
     """
 
-    def test_with_context_returns_self(self) -> None:
-        """with_context 返回 self，支持链式。"""
-        from playwright.sync_api import sync_playwright
+    def test_send_returns_typed_response(self, client: Client) -> None:
+        """client.send(endpoint) 返回 Response[T]，T 从 endpoint 推断。"""
+        endpoint = GetUsers(limit=5)
+        response = client.send(endpoint)
 
-        with sync_playwright() as p:
-            context = p.request.new_context()
-            try:
-                endpoint = GetUsers()
-                result = endpoint.with_context(context)
-                # 返回 self 链式
-                assert result is endpoint
-            finally:
-                context.dispose()
-
-    def test_send_uses_with_context(self, api_context: dict[str, Any], test_server: TestServer) -> None:
-        """send() 使用 with_context 绑定的 context。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
-
-        endpoint = GetUsers(limit=5).with_context(context)
-        endpoint._servers = [base_url]
-
-        response = endpoint.send()
-
+        # IDE 能推断 response.model 为 list[UserData] | None
         assert response.raw.status == 200
         assert isinstance(response.model, list)
         assert len(response.model) == 5
 
-    def test_send_uses_chain_with_context(self, api_context: dict[str, Any], test_server: TestServer) -> None:
-        """链式调用：endpoint.with_context(ctx).send() 等价于分两步。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
+    def test_send_extracts_path_params(self, client: Client) -> None:
+        """路径参数正确插值。"""
+        endpoint = GetUserById(user_id=42)
+        response = client.send(endpoint)
 
-        endpoint = GetUsers(limit=3)
-        endpoint._servers = [base_url]
+        assert response.raw.status == 200
+        assert response.model.id == 42
 
-        # 链式
-        response = endpoint.with_context(context).send()
+    def test_send_builds_query_params(self, client: Client) -> None:
+        """查询参数正确序列化。"""
+        endpoint = GetUsers(limit=3, offset=10)
+        response = client.send(endpoint)
 
         assert response.raw.status == 200
         assert len(response.model) == 3
+        assert response.model[0].id == 10
 
-    def test_send_lazy_creates_default_context(self, api_context: dict[str, Any], test_server: TestServer) -> None:
-        """首次 send() 时懒加载创建默认 context（_context 初始为 None）。"""
-        base_url = test_server.base_url
-        endpoint = GetUsers(limit=2)
-        endpoint._servers = [base_url]
+    def test_send_body_preserves_pydantic_model(self, client: Client) -> None:
+        """Pydantic model body 自动反序列化为 T 实例。"""
+        endpoint = CreateUser(data=CreateUserRequest(name="Alice", email="a@x.com"))
+        response = client.send(endpoint)
 
-        # _context 初始为 None（懒加载）
-        assert endpoint._context is None
+        assert response.raw.status == 201
+        assert isinstance(response.model, UserData)
+        assert response.model.name == "Alice"
+
+    def test_client_can_be_reused(self, client: Client) -> None:
+        """Client 可复用，发送多个请求。"""
+        endpoint1 = GetUsers(limit=1)
+        endpoint2 = GetUserById(user_id=1)
+
+        response1 = client.send(endpoint1)
+        response2 = client.send(endpoint2)
+
+        assert response1.raw.status == 200
+        assert response2.raw.status == 200
 
 
 class TestEndToEndFlow:
     """端到端流程测试。"""
 
-    def test_complete_user_crud_flow(self, api_context: dict[str, Any], test_server: TestServer) -> None:
+    def test_complete_user_crud_flow(self, client: Client, test_server: TestServer) -> None:
         """测试完整的用户 CRUD 流程。"""
-        context = api_context["context"]
-        base_url = test_server.base_url
 
         # 1. 创建用户
         create_endpoint = CreateUser(data=CreateUserRequest(name="Test User", email="test@example.com"))
-        create_endpoint._servers = [base_url]
-        create_response = create_endpoint.with_context(context).send()
+        create_response = client.send(create_endpoint)
         assert create_response.raw.status == 201
         assert isinstance(create_response.model, UserData)
         user_id = create_response.model.id
 
         # 2. 获取用户
         get_endpoint = GetUserById(user_id=user_id)
-        get_endpoint._servers = [base_url]
-        get_response = get_endpoint.with_context(context).send()
+        get_response = client.send(get_endpoint)
         assert get_response.raw.status == 200
         assert isinstance(get_response.model, UserData)
         # 注意：服务器返回的 name 是 "User {user_id}"，不是创建时传入的 name
@@ -856,8 +770,7 @@ class TestEndToEndFlow:
 
         # 3. 列出用户
         list_endpoint = GetUsers(limit=10)
-        list_endpoint._servers = [base_url]
-        list_response = list_endpoint.with_context(context).send()
+        list_response = client.send(list_endpoint)
         assert list_response.raw.status == 200
         assert isinstance(list_response.model, list)
         assert len(list_response.model) <= 10

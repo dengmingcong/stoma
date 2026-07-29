@@ -8,6 +8,7 @@ from typing import Annotated
 
 from pydantic import BaseModel
 
+from src.client import Client
 from src.params import Path
 from src.routing import APIRoute, APIRouter
 
@@ -33,7 +34,7 @@ def test_interpolate_single_path_param() -> None:
 
     # 创建实例并测试路径插值
     endpoint = GetUser(user_id=123)
-    interpolated_path = endpoint._interpolate_path_params()
+    interpolated_path = Client(context=None)._interpolate_path_params(endpoint, endpoint._get_dependant())
 
     assert interpolated_path == "/users/123"
 
@@ -48,7 +49,7 @@ def test_interpolate_multiple_path_params() -> None:
 
     # 创建实例并测试路径插值
     endpoint = GetUserPost(user_id=123, post_id=456)
-    interpolated_path = endpoint._interpolate_path_params()
+    interpolated_path = Client(context=None)._interpolate_path_params(endpoint, endpoint._get_dependant())
 
     assert interpolated_path == "/users/123/posts/456"
 
@@ -63,7 +64,7 @@ def test_interpolate_path_with_string_param() -> None:
 
     # 创建实例并测试路径插值
     endpoint = GetPostComment(slug="hello-world", comment_id=789)
-    interpolated_path = endpoint._interpolate_path_params()
+    interpolated_path = Client(context=None)._interpolate_path_params(endpoint, endpoint._get_dependant())
 
     assert interpolated_path == "/posts/hello-world/comments/789"
 
@@ -79,7 +80,7 @@ def test_interpolate_path_with_mixed_params() -> None:
 
     # 创建实例并测试路径插值
     endpoint = UpdateResource(user_id=42, resource_id="abc123", version=2)
-    interpolated_path = endpoint._interpolate_path_params()
+    interpolated_path = Client(context=None)._interpolate_path_params(endpoint, endpoint._get_dependant())
 
     assert interpolated_path == "/users/42/resource/abc123/version/2"
 
@@ -94,7 +95,7 @@ def test_interpolate_path_no_params() -> None:
 
     # 创建实例并测试路径插值
     endpoint = ListUsers(limit=10, offset=5)
-    interpolated_path = endpoint._interpolate_path_params()
+    interpolated_path = Client(context=None)._interpolate_path_params(endpoint, endpoint._get_dependant())
 
     assert interpolated_path == "/users"
 
@@ -108,6 +109,6 @@ def test_interpolate_path_preserves_base_path() -> None:
 
     # 创建实例并测试路径插值
     endpoint = GetUserV1(user_id=999)
-    interpolated_path = endpoint._interpolate_path_params()
+    interpolated_path = Client(context=None)._interpolate_path_params(endpoint, endpoint._get_dependant())
 
     assert interpolated_path == "/api/v1/users/999"

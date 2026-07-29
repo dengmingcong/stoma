@@ -15,6 +15,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel
 
+from src.client import Client
 from src.params import Body, Header, Path, Query
 from src.routing import APIRoute, APIRouter
 
@@ -230,7 +231,7 @@ def test_multiple_body_params() -> None:
         data2: Annotated[dict[str, int], Body()]
 
     endpoint = PostData(data1={"a": 1}, data2={"b": 2})
-    body_json = endpoint._serialize_body_params()
+    body_json = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body_json is not None
     import json
     parsed = json.loads(body_json)
@@ -249,7 +250,7 @@ def test_single_pydantic_body_flat() -> None:
         data: UserCreateRequest
 
     endpoint = CreateUser(data=UserCreateRequest(name="Alice", email="alice@example.com", age=30))
-    body_json = endpoint._serialize_body_params()
+    body_json = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body_json is not None
     import json
     parsed = json.loads(body_json)
@@ -265,7 +266,7 @@ def test_single_pydantic_body_embed_true() -> None:
         data: Annotated[UserCreateRequest, Body(embed=True)]
 
     endpoint = CreateUserEmbed(data=UserCreateRequest(name="Bob", email="bob@example.com"))
-    body_json = endpoint._serialize_body_params()
+    body_json = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body_json is not None
     import json
     parsed = json.loads(body_json)
@@ -281,7 +282,7 @@ def test_single_scalar_body_embedded() -> None:
         importance: Annotated[int, Body()]
 
     endpoint = SetImportance(importance=5)
-    body_json = endpoint._serialize_body_params()
+    body_json = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body_json is not None
     import json
     parsed = json.loads(body_json)
@@ -301,7 +302,7 @@ def test_multiple_body_pydantic_and_scalar() -> None:
         item=UserCreateRequest(name="Charlie", email="charlie@example.com"),
         importance=10,
     )
-    body_json = endpoint._serialize_body_params()
+    body_json = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body_json is not None
     import json
     parsed = json.loads(body_json)

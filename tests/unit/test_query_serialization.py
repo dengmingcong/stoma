@@ -8,6 +8,7 @@ from typing import Annotated
 
 from pydantic import BaseModel
 
+from src.client import Client
 from src.params import Query
 from src.routing import APIRoute, APIRouter
 
@@ -33,7 +34,7 @@ def test_serialize_single_query_param() -> None:
 
     # 创建实例并测试查询参数序列化
     endpoint = GetUsers(limit=10)
-    query_params = endpoint._serialize_query_params()
+    query_params = Client(context=None)._serialize_query_params(endpoint, endpoint._get_dependant())
 
     assert query_params == {"limit": "10"}
 
@@ -49,7 +50,7 @@ def test_serialize_multiple_query_params() -> None:
 
     # 创建实例并测试查询参数序列化
     endpoint = GetUsers(limit=50, offset=10, keyword="test")
-    query_params = endpoint._serialize_query_params()
+    query_params = Client(context=None)._serialize_query_params(endpoint, endpoint._get_dependant())
 
     assert query_params == {"limit": "50", "offset": "10", "keyword": "test"}
 
@@ -65,7 +66,7 @@ def test_serialize_query_params_skip_none() -> None:
 
     # 创建实例（filter_type = None）
     endpoint = Search(query="hello", limit=25, filter_type=None)
-    query_params = endpoint._serialize_query_params()
+    query_params = Client(context=None)._serialize_query_params(endpoint, endpoint._get_dependant())
 
     # filter_type 应该被跳过
     assert query_params == {"query": "hello", "limit": "25"}
@@ -82,7 +83,7 @@ def test_serialize_query_params_with_alias() -> None:
 
     # 创建实例并测试查询参数序列化
     endpoint = GetUsers(page_size=50, page_num=2)
-    query_params = endpoint._serialize_query_params()
+    query_params = Client(context=None)._serialize_query_params(endpoint, endpoint._get_dependant())
 
     # 应该使用别名作为键
     assert query_params == {"pageSize": "50", "pageNum": "2"}
@@ -98,7 +99,7 @@ def test_serialize_query_params_with_boolean() -> None:
 
     # 创建实例并测试查询参数序列化
     endpoint = GetUsers(active=True, verified=False)
-    query_params = endpoint._serialize_query_params()
+    query_params = Client(context=None)._serialize_query_params(endpoint, endpoint._get_dependant())
 
     # 布尔值应该转换为 'true'/'false' 字符串
     assert query_params == {"active": "true", "verified": "false"}
@@ -114,7 +115,7 @@ def test_serialize_query_params_with_default_values() -> None:
 
     # 创建实例，使用默认值
     endpoint = GetUsers()
-    query_params = endpoint._serialize_query_params()
+    query_params = Client(context=None)._serialize_query_params(endpoint, endpoint._get_dependant())
 
     assert query_params == {"limit": "20", "offset": "0"}
 
@@ -130,6 +131,6 @@ def test_serialize_query_params_type_conversion() -> None:
 
     # 创建实例并测试参数序列化
     endpoint = GetData(count=42, ratio=3.14, name="test")
-    query_params = endpoint._serialize_query_params()
+    query_params = Client(context=None)._serialize_query_params(endpoint, endpoint._get_dependant())
 
     assert query_params == {"count": "42", "ratio": "3.14", "name": "test"}
