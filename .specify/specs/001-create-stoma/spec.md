@@ -18,7 +18,7 @@
 **验收场景**:
 
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，Then IDE 提供参数补全与类型检查。
-2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.send()`），Then mypy/IDE 可正确推断返回类型为 `Response[T]`，且 `response.model` 的类型为 T。`response.raw` 是 Playwright 原始 `APIResponse` 对象，提供完整 HTTP 协议层访问（`status` / `headers` / `text()` / `body()` / `json()`）。
+2. Given 接口类继承 `APIRoute[T]` 泛型，When 通过 `Client.send(endpoint)` 发送请求，Then mypy/IDE 可正确推断返回类型为 `Response[T]`，且 `response.model` 的类型为 T。`response.raw` 是 Playwright 原始 `APIResponse` 对象，提供完整 HTTP 协议层访问（`status` / `headers` / `text()` / `body()` / `json()`）。
 3. Given 接口类继承 BaseModel 并使用自动参数识别，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码；支持用户可选地使用 Annotated 标记以指定验证规则（如 ge、le、alias 等）。
 4. Given 生成的接口类使用路由元数据隔离（`_dependant`），When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 
@@ -161,22 +161,24 @@ class GetUserById(APIRoute[UserData]):
     include_profile: bool = False
 ```
 
-**使用示例**：
+**使用示例**（通过 Client 发送请求）：
 
 ```python
 # 测试脚本中的使用
 from users.endpoints import GetUsers, CreateUser, GetUserById
 from users.models import UserCreateRequest, UserData
+from stoma import Client
 
 # 准备 APIRequestContext
 from playwright.sync_api import sync_playwright
 
 with sync_playwright() as p:
     context = p.request.new_context(base_url="https://api.example.com")
-    
+    client = Client(context=context)
+
     # 1. 列出用户（使用默认参数）
-    list_endpoint = GetUsers(token="Bearer xxx").with_context(context)
-    response = list_endpoint.send()  # 类型推断: Response[list[UserData]]
+    list_endpoint = GetUsers(token="Bearer xxx")
+    response = client.send(list_endpoint)  # 类型推断: Response[list[UserData]]
     if response.raw.status == 200:
         users = response.model  # 类型推断: list[UserData] | None
 
@@ -184,18 +186,18 @@ with sync_playwright() as p:
     create_endpoint = CreateUser(
         body=UserCreateRequest(name="Alice", email="alice@example.com"),
         idempotency_key="unique-key-123"
-    ).with_context(context)
-    response = create_endpoint.send()  # 类型推断: Response[UserData]
+    )
+    response = client.send(create_endpoint)  # 类型推断: Response[UserData]
     if response.raw.status == 201:
         new_user = response.model  # 类型推断: UserData | None
 
     # 3. 获取特定用户
-    get_endpoint = GetUserById(user_id=1, include_profile=True).with_context(context)
-    response = get_endpoint.send()  # 类型推断: Response[UserData]
+    get_endpoint = GetUserById(user_id=1, include_profile=True)
+    response = client.send(get_endpoint)  # 类型推断: Response[UserData]
     if response.raw.status == 200:
         user_data = response.model  # 类型推断: UserData | None
-    
-    context.dispose()
+
+    client.dispose()
 
 # 4. 访问路由元数据（框架内部使用）
 meta = GetUsers.route_meta()
@@ -262,6 +264,32 @@ print(meta.path)           # "/users"
 | 显式 `Body(embed=False)` 标量 | `embed=True`（标量必须嵌入） |
 | 显式 `Body()` 标量 | `embed=True`（标量必须嵌入） |
 | 多个 body 参数 | 全部 `embed=True` |
+
+### 用户故事 5 - Client 模式：分离请求发送与接口定义（优先级：P1）
+
+测试工程师希望 `APIRoute` 是纯数据类（字段 + 路由元数据），不直接发送请求。所有 HTTP 请求发送由 `Client` 类负责，`Client` 持有 Playwright `APIRequestContext` 并调用 `client.send(endpoint)` 发起请求。T 通过 PEP 695 泛型方法从 `endpoint` 自动推断，IDE 能精确识别 `response.model` 的类型。
+
+**为何优先**: 当前每个接口都需调用 `with_context(ctx)` 链式注入 context，繁琐且重复。`Client` 模式让用户在一个地方管理 context（设置 base_url、headers、auth 等），所有接口自动复用。
+
+**独立测试**: 创建一个 `Client`，调用 `client.send(endpoint)` 验证：
+- `response.raw` 是 Playwright `APIResponse`
+- `response.model` 是 `T` 推断出的具体类型
+- 多次发送使用同一个 `Client`（共享 context）
+- `client.dispose()` 释放 context
+
+**验收场景**:
+
+1. Given 用户创建 `Client(context=ctx)`，When 调用 `client.send(GetUsers(limit=10))`，Then 返回 `Response[list[UserData]]`，T 从 `GetUsers` 推断。
+2. Given 多个 endpoint 共用同一个 `Client`，When 依次发送请求，Then 共享同一个 `APIRequestContext`（cookies、headers 等）。
+3. Given `Client` 设置了 `base_url`（在 context 创建时），When endpoint 路径为相对路径（如 `/users/123`），Then 实际请求 URL 拼接 base_url。
+4. Given `client.send()` 完成后，When 调用 `client.dispose()`，Then 底层 context 被释放。
+5. Given 任意 endpoint，When `client.send(endpoint)` 失败，Then 抛出 `HTTPError` / `ParseError` / `ValidationError`，不静默失败。
+
+**实现要点**:
+- `Client.__init__(context)` 只接受 context（base_url 在 `new_context(base_url=...)` 时设置）
+- `Client.send[T](api_route: APIRoute[T]) -> Response[T]` 用 PEP 695 泛型方法从 `api_route` 推断 T
+- 所有请求参数序列化（URL、headers、body）和响应处理逻辑都从 `APIRoute` 迁移到 `Client`
+- `APIRoute` 简化为只持有字段和路由元数据（`_dependant`），不持有 context 或 send 能力
 
 
 ## 需求（必填）
