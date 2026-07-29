@@ -19,7 +19,6 @@ URL/Query 处理说明：
 - 路径只需相对路径（如 /users/123），Playwright 自动拼接 base_url
 """
 
-import json
 from typing import Any
 
 from playwright.sync_api import APIRequestContext, APIResponse
@@ -92,11 +91,12 @@ class Client:
     def _extract_request_params(
         self,
         api_route: APIRoute[Any],
-    ) -> tuple[str, str, dict[str, Any], dict[str, str], str | None]:
+    ) -> tuple[str, str, dict[str, Any], dict[str, str], dict[str, Any] | None]:
         """从 api_route 提取（method, path, params, headers, body）。
 
         path 是相对路径，Playwright 会自动拼接 base_url。
         params 是 dict，Playwright 自动拼接为 query string。
+        body 是 dict，Playwright 会自动序列化为 JSON 并设置 Content-Type: application/json。
         """
         dependant = api_route._get_dependant()
         path = self._interpolate_path_params(api_route, dependant)
@@ -179,7 +179,7 @@ class Client:
         self,
         api_route: APIRoute[Any],
         dependant: Dependant,
-    ) -> str | None:
+    ) -> dict[str, Any] | None:
         """根据 FastAPI Body Multiple Parameters 规则序列化请求体为 JSON 字符串。
 
         规则（参考 https://fastapi.tiangolo.com/tutorial/body-multiple-params/）：
@@ -232,7 +232,7 @@ class Client:
 
         if not body_data:
             return None
-        return json.dumps(body_data, ensure_ascii=False)
+        return body_data
 
     # ===== 私有方法：发送请求 =====
 
@@ -242,19 +242,20 @@ class Client:
         path: str,
         params: dict[str, Any],
         headers: dict[str, str],
-        data: str | None,
+        data: dict[str, Any] | None,
     ) -> APIResponse:
         """用 self._context 发送 HTTP 请求。
 
         Playwright 自动处理：
         - base_url 拼接（在 context 创建时设置）
         - query string 拼接（通过 params 参数）
+        - body 序列化为 JSON 并设置 Content-Type: application/json（通过 data=dict）
 
         :param method: HTTP 方法。
         :param path: 相对路径。
         :param params: 查询参数 dict。
         :param headers: 请求头 dict。
-        :param data: 请求体 JSON 字符串。
+        :param data: body dict（Playwright 自动序列化为 JSON）。
         :return: Playwright APIResponse 对象。
         :raise HTTPError: 网络层失败。
         """
