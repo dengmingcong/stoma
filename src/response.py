@@ -36,17 +36,17 @@ class Response[T]:
 
     :var raw: Playwright 原始响应对象。
     :vartype raw: APIResponse
-    :var model: JSON 响应解析后的 Pydantic 模型实例，其他 content-type 时为 None。
-    :vartype model: T | None
+    :var data: JSON 响应解析后的 Pydantic 模型实例，其他 content-type 时为 None。
+    :vartype data: T | None
 
     Example::
 
         response = endpoint.with_context(context).send()
         if response.raw.status == 200:
-            user = response.model  # 类型为 UserData
+            user = response.data  # 类型为 UserData
         else:
             log.error(f"failed: {response.raw.status}")
     """
 
     raw: APIResponse
-    model: T | None = None
+    data: T | None = None

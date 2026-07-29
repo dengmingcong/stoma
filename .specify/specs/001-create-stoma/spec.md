@@ -18,7 +18,7 @@
 **验收场景**:
 
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，Then IDE 提供参数补全与类型检查。
-2. Given 接口类继承 `APIRoute[T]` 泛型，When 通过 `Client.send(endpoint)` 发送请求，Then mypy/IDE 可正确推断返回类型为 `Response[T]`，且 `response.model` 的类型为 T。`response.raw` 是 Playwright 原始 `APIResponse` 对象，提供完整 HTTP 协议层访问（`status` / `headers` / `text()` / `body()` / `json()`）。
+2. Given 接口类继承 `APIRoute[T]` 泛型，When 通过 `Client.send(endpoint)` 发送请求，Then mypy/IDE 可正确推断返回类型为 `Response[T]`，且 `response.data` 的类型为 T。`response.raw` 是 Playwright 原始 `APIResponse` 对象，提供完整 HTTP 协议层访问（`status` / `headers` / `text()` / `body()` / `json()`）。
 3. Given 接口类继承 BaseModel 并使用自动参数识别，When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码；支持用户可选地使用 Annotated 标记以指定验证规则（如 ge、le、alias 等）。
 4. Given 生成的接口类使用路由元数据隔离（`_dependant`），When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 
@@ -45,11 +45,11 @@ Path: type  # 占位符，代码生成时会导入真实实现
 Body: type  # 占位符，代码生成时会导入真实实现
 
 
-# 响应封装：raw 是 Playwright APIResponse，model 是 T | None
+# 响应封装：raw 是 Playwright APIResponse，data 是 T | None
 @dataclass
 class Response[T]:
     raw: APIResponse  # Playwright 原始响应对象
-    model: T | None = None  # 仅当 content-type 为 JSON 时填充
+    data: T | None = None  # 仅当 content-type 为 JSON 时填充
 
 
 # 框架提供的基类（继承 Pydantic BaseModel 以获得最佳 IDE 支持）
@@ -70,8 +70,8 @@ class APIRoute[T](BaseModel):
         1. 从实例字段自动收集请求参数（query/path/header/body）
         2. 使用传入的 APIRequestContext 发送 HTTP 请求
         3. 始终返回 Response[T] 信封；不因 4xx/5xx 抛出异常
-        4. 仅当 content-type 为 JSON（含 +json 后缀）时，用 T 验证并填充 model 字段；
-           其他 content-type 时 model = None，调用方使用 raw.content 获取原始字节
+        4. 仅当 content-type 为 JSON（含 +json 后缀）时，用 T 验证并填充 data 字段；
+           其他 content-type 时 data = None，调用方使用 raw.text()/raw.body() 获取原始字节
         
         详细实现将在用户故事 2 中完成。
         
@@ -180,7 +180,7 @@ with sync_playwright() as p:
     list_endpoint = GetUsers(token="Bearer xxx")
     response = client.send(list_endpoint)  # 类型推断: Response[list[UserData]]
     if response.raw.status == 200:
-        users = response.model  # 类型推断: list[UserData] | None
+        users = response.data  # 类型推断: list[UserData] | None
 
     # 2. 创建用户
     create_endpoint = CreateUser(
@@ -189,13 +189,13 @@ with sync_playwright() as p:
     )
     response = client.send(create_endpoint)  # 类型推断: Response[UserData]
     if response.raw.status == 201:
-        new_user = response.model  # 类型推断: UserData | None
+        new_user = response.data  # 类型推断: UserData | None
 
     # 3. 获取特定用户
     get_endpoint = GetUserById(user_id=1, include_profile=True)
     response = client.send(get_endpoint)  # 类型推断: Response[UserData]
     if response.raw.status == 200:
-        user_data = response.model  # 类型推断: UserData | None
+        user_data = response.data  # 类型推断: UserData | None
 
     client.dispose()
 
@@ -207,7 +207,7 @@ print(meta.path)           # "/users"
 
 ### 用户故事 2 - 使用 Playwright 调用接口（优先级：P1）
 
-测试工程师希望实例化接口类后，通过调用实例的 `send(context)` 方法自动发送 HTTP 请求并获得类型化的响应。`send` 方法接收一个 `APIRequestContext` 参数，内部自动完成以下工作：（1）从实例属性按参数类型分类（query/path/header/body）；（2）对路径参数进行插值（如 `/users/{user_id}` 替换为 `/users/1`）；（3）对查询参数进行序列化；（4）对请求体（BaseModel 实例）进行 JSON 序列化；（5）对头参数进行别名转换和格式化；（6）使用传入的 APIRequestContext 发送构造好的 HTTP 请求到目标服务器；（7）始终返回 `Response[T]` 信封，包含 `raw: APIResponse`（Playwright 原始响应对象）和 `model: T | None`（仅 JSON content-type 时填充）。**HTTP 4xx/5xx 不抛错**，由调用方通过 `raw.status` 判断成功/失败。
+测试工程师希望实例化接口类后，通过调用实例的 `send(context)` 方法自动发送 HTTP 请求并获得类型化的响应。`send` 方法接收一个 `APIRequestContext` 参数，内部自动完成以下工作：（1）从实例属性按参数类型分类（query/path/header/body）；（2）对路径参数进行插值（如 `/users/{user_id}` 替换为 `/users/1`）；（3）对查询参数进行序列化；（4）对请求体（BaseModel 实例）进行 JSON 序列化；（5）对头参数进行别名转换和格式化；（6）使用传入的 APIRequestContext 发送构造好的 HTTP 请求到目标服务器；（7）始终返回 `Response[T]` 信封，包含 `raw: APIResponse`（Playwright 原始响应对象）和 `data: T | None`（仅 JSON content-type 时填充）。**HTTP 4xx/5xx 不抛错**，由调用方通过 `raw.status` 判断成功/失败。
 
 **为何优先**: 这是框架的核心执行能力，验证接口定义可以真正调用远程服务并获得结果。
 
@@ -222,7 +222,7 @@ print(meta.path)           # "/users"
 5. Given 接口定义了路径参数（如 `/users/{user_id}`），When 实例化接口类并设置 `user_id=1` 后调用 `send(context)`，Then 框架自动将路径参数插值到 URL 中，发送到 `/users/1`。
 6. Given 接口定义了头参数，When 实例化接口类并调用 `send(context)`，Then 框架自动应用别名转换，将 Python 属性名转换为正确的 HTTP 头格式。
 7. Given 服务器返回任意 HTTP 状态码（包括 4xx/5xx），When 调用接口，Then 不抛出异常，调用方通过 `response.raw.status` 判断成功/失败，`response.raw` 始终是 Playwright 原始 `APIResponse` 对象。
-8. Given 响应 content-type 为 `application/json`（含 `+json` 后缀），When 调用接口，Then `response.model` 字段填充为 Pydantic 验证后的 T 类型实例；其他 content-type（text/plain、application/octet-stream 等）时 `response.model` 为 `None`，原始数据可通过 `response.raw.text()` / `response.raw.body()` 获取。
+8. Given 响应 content-type 为 `application/json`（含 `+json` 后缀），When 调用接口，Then `response.data` 字段填充为 Pydantic 验证后的 T 类型实例；其他 content-type（text/plain、application/octet-stream 等）时 `response.data` 为 `None`，原始数据可通过 `response.raw.text()` / `response.raw.body()` 获取。
 
 ### 用户故事 3 - 从 OpenAPI 生成接口定义（优先级：P2）
 
@@ -267,13 +267,13 @@ print(meta.path)           # "/users"
 
 ### 用户故事 5 - Client 模式：分离请求发送与接口定义（优先级：P1）
 
-测试工程师希望 `APIRoute` 是纯数据类（字段 + 路由元数据），不直接发送请求。所有 HTTP 请求发送由 `Client` 类负责，`Client` 持有 Playwright `APIRequestContext` 并调用 `client.send(endpoint)` 发起请求。T 通过 PEP 695 泛型方法从 `endpoint` 自动推断，IDE 能精确识别 `response.model` 的类型。
+测试工程师希望 `APIRoute` 是纯数据类（字段 + 路由元数据），不直接发送请求。所有 HTTP 请求发送由 `Client` 类负责，`Client` 持有 Playwright `APIRequestContext` 并调用 `client.send(endpoint)` 发起请求。T 通过 PEP 695 泛型方法从 `endpoint` 自动推断，IDE 能精确识别 `response.data` 的类型。
 
 **为何优先**: 当前每个接口都需调用 `with_context(ctx)` 链式注入 context，繁琐且重复。`Client` 模式让用户在一个地方管理 context（设置 base_url、headers、auth 等），所有接口自动复用。
 
 **独立测试**: 创建一个 `Client`，调用 `client.send(endpoint)` 验证：
 - `response.raw` 是 Playwright `APIResponse`
-- `response.model` 是 `T` 推断出的具体类型
+- `response.data` 是 `T` 推断出的具体类型
 - 多次发送使用同一个 `Client`（共享 context）
 - `client.dispose()` 释放 context
 

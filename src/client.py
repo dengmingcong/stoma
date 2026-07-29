@@ -48,7 +48,7 @@ class Client:
         endpoint = GetUsers(limit=10)
         response = client.send(endpoint)
         # IDE: response 类型为 Response[list[UserData]]，T 从 GetUsers 推断
-        # response.model: list[UserData] | None
+        # response.data: list[UserData] | None
         # response.raw: Playwright APIResponse
     """
 
@@ -313,7 +313,7 @@ class Client:
 
         # 2. 特殊：204 No Content → model = None
         if api_response.status == 204:
-            return Response[T](raw=api_response, model=None)
+            return Response[T](raw=api_response, data=None)
 
         # 3. 仅当 content-type 为 JSON 时才解析并填充 model
         if media_type.startswith("application/json") or media_type.endswith("+json"):
@@ -331,7 +331,7 @@ class Client:
                 raise ParseError(msg, response_text=fallback_text) from e
 
             if dependant.response_type is type(None):
-                return Response[T](raw=api_response, model=None)
+                return Response[T](raw=api_response, data=None)
 
             assert dependant.response_type_adapter is not None
             try:
@@ -343,7 +343,7 @@ class Client:
                     errors = list(e.errors())
                 raise ValidationError(msg, errors=errors) from e
 
-            return Response[T](raw=api_response, model=validated)
+            return Response[T](raw=api_response, data=validated)
 
         # 4. 非 JSON 响应：model = None
-        return Response[T](raw=api_response, model=None)
+        return Response[T](raw=api_response, data=None)
