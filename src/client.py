@@ -2,7 +2,7 @@
 
 Client 是 stoma 的运行时入口，封装所有 HTTP 细节：
 - 持有 Playwright APIRequestContext（用户提供）
-- 从 APIRoute 提取参数（URL、headers、body）
+- 从 APIRoute 提取参数（path、headers、body）
 - 发送 HTTP 请求
 - 解析响应并按 content-type 派发
 
@@ -11,6 +11,12 @@ Client 是 stoma 的运行时入口，封装所有 HTTP 细节：
     client = Client(context=ctx)
     response = client.send(GetUsers(limit=10))
     # response: Response[list[UserData]]，T 从 GetUsers 推断
+
+URL/Query 处理说明：
+- base_url 由 Playwright context 管理（new_context 时设置）
+- 查询参数通过 Playwright 的 ``params=dict`` 参数自动拼接为 query string
+- 路径参数（{user_id}）需要手动插值
+- 路径只需相对路径（如 /users/123），Playwright 自动拼接 base_url
 """
 
 import json
@@ -68,8 +74,8 @@ class Client:
         :raise ValidationError: 当 JSON 解析成功但不符合 T。
         """
         try:
-            method, url, headers, data = self._extract_request_params(api_route)
-            api_response = self._execute_request(method, url, headers, data)
+            method, path, params, headers, data = self._extract_request_params(api_route)
+            api_response = self._execute_request(method, path, params, headers, data)
             return self._build_response(api_route, api_response)
         except (HTTPError, ParseError, ValidationError):
             raise
@@ -86,25 +92,18 @@ class Client:
     def _extract_request_params(
         self,
         api_route: APIRoute[Any],
-    ) -> tuple[str, str, dict[str, str], str | None]:
-        """从 api_route 提取（method, url, headers, body）。
+    ) -> tuple[str, str, dict[str, Any], dict[str, str], str | None]:
+        """从 api_route 提取（method, path, params, headers, body）。
 
-        :param api_route: APIRoute 实例。
-        :return: (method, url, headers, body) 元组。
+        path 是相对路径，Playwright 会自动拼接 base_url。
+        params 是 dict，Playwright 自动拼接为 query string。
         """
         dependant = api_route._get_dependant()
         path = self._interpolate_path_params(api_route, dependant)
-        query = self._serialize_query_params(api_route, dependant)
+        params = self._collect_query_params(api_route, dependant)
         headers = self._serialize_header_params(api_route, dependant)
         body = self._serialize_body_params(api_route, dependant)
-
-        # 拼接 URL（Playwright 用 base_url 解析相对路径）
-        url = path
-        if query:
-            query_parts = [f"{k}={v}" for k, v in query.items()]
-            url = path + "?" + "&".join(query_parts)
-
-        return dependant.method, url, headers, body
+        return dependant.method, path, params, headers, body
 
     def _interpolate_path_params(
         self,
@@ -113,77 +112,75 @@ class Client:
     ) -> str:
         """插值路径参数（将 {param} 占位符替换为实际值）。
 
-        :param api_route: APIRoute 实例。
-        :param dependant: APIRoute 的依赖定义。
-        :return: 插值后的路径字符串。
+        :return: 插值后的相对路径字符串。
         """
-        interpolated_path = dependant.path
+        path = dependant.path
         for model_field in dependant.path_params:
-            param_value = getattr(api_route, model_field.name)
+            value = getattr(api_route, model_field.name)
             placeholder = f"{{{model_field.name}}}"
-            interpolated_path = interpolated_path.replace(placeholder, str(param_value))
-        return interpolated_path
+            path = path.replace(placeholder, str(value))
+        return path
 
-    def _serialize_query_params(
+    def _collect_query_params(
         self,
         api_route: APIRoute[Any],
         dependant: Dependant,
-    ) -> dict[str, str]:
-        """序列化查询参数为字典。
+    ) -> dict[str, Any]:
+        """收集查询参数为 dict（Playwright 自动拼接为 query string）。
 
-        规则：
+        Playwright 的 params 参数自动 str() 转换 int/float/str，
+        但 bool 会输出 Python convention "True"/"False"（HTTP 期望小写 "true"/"false"），
+        None 会被字面量化为 "None"。所以：
+
         - None 值：跳过
-        - 布尔值：转换为 'true'/'false'
-        - 其他：转换为字符串
-
-        :return: 查询参数字典。
+        - 布尔值：手动转为 'true'/'false'（HTTP 约定）
+        - 其他类型：直接传递，Playwright 自动转换
         """
-        query_params: dict[str, str] = {}
+        query: dict[str, Any] = {}
         for model_field in dependant.query_params:
-            param_value = getattr(api_route, model_field.name)
-            if param_value is None:
+            value = getattr(api_route, model_field.name)
+            if value is None:
                 continue
-            if isinstance(param_value, bool):
-                param_value = "true" if param_value else "false"
-            else:
-                param_value = str(param_value)
-            query_params[model_field.alias] = param_value
-        return query_params
+            if isinstance(value, bool):
+                value = "true" if value else "false"
+            query[model_field.alias] = value
+        return query
 
     def _serialize_header_params(
         self,
         api_route: APIRoute[Any],
         dependant: Dependant,
     ) -> dict[str, str]:
-        """序列化请求头参数为字典。
+        """序列化请求头参数为 dict。
 
         规则：
         - None 值：跳过
-        - 布尔值：转换为 'true'/'false'
+        - 布尔值：转换为 'true'/'false'（HTTP 约定）
+        - 其他类型：str() 转换（HTTP header 值必须是字符串）
         - 别名：使用 Annotated[Type, Header(alias="...")] 显式设置；否则 snake_case → kebab-case
         """
-        header_params: dict[str, str] = {}
+        headers: dict[str, str] = {}
         for model_field in dependant.header_params:
-            param_value = getattr(api_route, model_field.name)
-            if param_value is None:
+            value = getattr(api_route, model_field.name)
+            if value is None:
                 continue
-            if isinstance(param_value, bool):
-                param_value = "true" if param_value else "false"
+            if isinstance(value, bool):
+                value = "true" if value else "false"
             else:
-                param_value = str(param_value)
+                value = str(value)
 
             alias = model_field.alias
             if alias == model_field.name:
                 alias = alias.replace("_", "-")
-            header_params[alias] = param_value
-        return header_params
+            headers[alias] = value
+        return headers
 
     def _serialize_body_params(
         self,
         api_route: APIRoute[Any],
         dependant: Dependant,
     ) -> str | None:
-        """根据 FastAPI Body Multiple Parameters 规则序列化请求体。
+        """根据 FastAPI Body Multiple Parameters 规则序列化请求体为 JSON 字符串。
 
         规则（参考 https://fastapi.tiangolo.com/tutorial/body-multiple-params/）：
 
@@ -201,11 +198,10 @@ class Client:
         body_data: dict[str, Any] = {}
 
         for model_field in dependant.body_params:
-            param_value = getattr(api_route, model_field.name)
-            if param_value is None:
+            value = getattr(api_route, model_field.name)
+            if value is None:
                 continue
 
-            # 检查显式 Body 标记
             param_info = api_route._get_param_info_from_field(
                 model_field.name, model_field.field_info
             )
@@ -213,9 +209,8 @@ class Client:
             explicit_embed = (
                 getattr(param_info, "embed", False) if is_explicit_body else False
             )
-            is_pydantic_model = isinstance(param_value, BaseModel)
+            is_pydantic_model = isinstance(value, BaseModel)
 
-            # 判定是否嵌入
             should_embed = (
                 has_multiple
                 or (is_explicit_body and explicit_embed)
@@ -223,17 +218,17 @@ class Client:
             )
 
             if is_pydantic_model:
-                value = param_value.model_dump(exclude_none=True)
+                dumped = value.model_dump(exclude_none=True)
             else:
-                value = param_value
+                dumped = value
 
             if should_embed:
-                body_data[model_field.alias] = value
+                body_data[model_field.alias] = dumped
             else:
                 if is_pydantic_model:
-                    body_data.update(value)
+                    body_data.update(dumped)
                 else:
-                    body_data[model_field.alias] = value
+                    body_data[model_field.alias] = dumped
 
         if not body_data:
             return None
@@ -244,16 +239,22 @@ class Client:
     def _execute_request(
         self,
         method: str,
-        url: str,
+        path: str,
+        params: dict[str, Any],
         headers: dict[str, str],
         data: str | None,
     ) -> APIResponse:
         """用 self._context 发送 HTTP 请求。
 
+        Playwright 自动处理：
+        - base_url 拼接（在 context 创建时设置）
+        - query string 拼接（通过 params 参数）
+
         :param method: HTTP 方法。
-        :param url: 完整 URL（已含 base_url）。
-        :param headers: 请求头。
-        :param data: 请求体（JSON 字符串）。
+        :param path: 相对路径。
+        :param params: 查询参数 dict。
+        :param headers: 请求头 dict。
+        :param data: 请求体 JSON 字符串。
         :return: Playwright APIResponse 对象。
         :raise HTTPError: 网络层失败。
         """
@@ -271,7 +272,8 @@ class Client:
 
         try:
             return request_method(
-                url,
+                path,
+                params=params if params else None,
                 headers=headers if headers else None,
                 data=data,
             )
