@@ -226,7 +226,7 @@ class OpenAPIParser:
             schema_obj = p.param_schema
             schema: dict[str, Any] | None = None
             if schema_obj is not None:
-                schema = schema_obj.model_dump()
+                schema = schema_obj.model_dump(mode="json")
 
             params.append(
                 {
@@ -249,7 +249,7 @@ class OpenAPIParser:
 
         rb = operation.requestBody
         if isinstance(rb, RequestBody):
-            return rb.model_dump()
+            return rb.model_dump(mode="json")
         if isinstance(rb, Reference):
             return {"$ref": rb.ref}
         return dict(rb)
@@ -267,7 +267,7 @@ class OpenAPIParser:
         result: dict[str, Any] = {}
         for status_code, response in operation.responses.items():
             if isinstance(response, Response):
-                result[status_code] = response.model_dump()
+                result[status_code] = response.model_dump(mode="json")
             else:
                 result[status_code] = dict(response)
         return result
@@ -297,4 +297,4 @@ class OpenAPIParser:
             msg = f"Schema not found: {schema_name}"
             raise ValueError(msg)
 
-        return resolved.model_dump() if hasattr(resolved, "model_dump") else dict(resolved)
+        return resolved.model_dump(mode="json") if hasattr(resolved, "model_dump") else dict(resolved)

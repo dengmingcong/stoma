@@ -10,7 +10,7 @@ from typing import Annotated
 
 import typer
 
-from src.openapi.parser import OpenAPIParser
+from src.openapi.parser import OpenAPIParser, OpenAPISchemaError
 from src.openapi.renderer import EndpointRenderer, render_to_file
 
 app = typer.Typer(
@@ -42,9 +42,12 @@ def make(
         raise typer.BadParameter(f"无法创建输出目录: {out}") from e
 
     # 解析 OpenAPI 规范。
-    parser = OpenAPIParser(spec)
-    parser.load()
-    parser.validate()
+    try:
+        parser = OpenAPIParser(spec)
+        parser.load()
+        parser.validate()
+    except (FileNotFoundError, ValueError, OpenAPISchemaError) as e:
+        raise typer.BadParameter(str(e)) from e
 
     # 获取所有 endpoint 并渲染。
     renderer = EndpointRenderer()

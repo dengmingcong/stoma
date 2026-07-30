@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -27,6 +28,25 @@ class HeaderParamInfo(TypedDict):
     type: str
     required: bool | None
     alias: str
+
+
+_JSON_SCHEMA_TYPE_TO_PYTHON: dict[str, str] = {
+    "string": "str",
+    "integer": "int",
+    "number": "float",
+    "boolean": "bool",
+    "array": "list",
+    "object": "dict",
+}
+
+
+def map_json_schema_type(json_type: str) -> str:
+    """将 JSON Schema 类型映射为 Python 类型。
+
+    :param json_type: JSON Schema 类型（如 "string"、"integer"）。
+    :return: Python 类型字符串。
+    """
+    return _JSON_SCHEMA_TYPE_TO_PYTHON.get(json_type, json_type)
 
 
 class EndpointRenderer:
@@ -110,7 +130,7 @@ class EndpointRenderer:
         if not response_200:
             return "None", []
 
-        content = response_200.get("content", {})
+        content = response_200.get("content") or {}
         json_content = content.get("application/json", {})
         schema = json_content.get("schema")
 
@@ -144,7 +164,7 @@ class EndpointRenderer:
         if not request_body:
             return [], []
 
-        content = request_body.get("content", {})
+        content = request_body.get("content") or {}
         json_content = content.get("application/json", {})
         schema = json_content.get("schema")
 
@@ -175,7 +195,8 @@ class EndpointRenderer:
             param_location = param.get("location", "") or ""
             required = param.get("required", False) or False
             schema = param.get("schema") or {}
-            param_type = schema.get("type", "Any")
+            json_type = schema.get("type", "Any")
+            param_type = map_json_schema_type(str(json_type))
 
             if param_location == "header":
                 header_params.append({
@@ -194,11 +215,15 @@ class EndpointRenderer:
 def operation_id_to_class_name(operation_id: str) -> str:
     """将 operationId 转换为类名。
 
+    支持 snake_case（list_users）和 camelCase（listUsers）两种格式。
+
     :param operation_id: operationId 字符串。
     :return: 类名字符串。
     """
-    # 保持首字母大写。
-    words = operation_id.replace("-", "_").split("_")
+    # 统一分隔符：连字符转下划线。
+    normalized = operation_id.replace("-", "_")
+    # 在小写字母/数字与大写字母之间插入下划线（处理 camelCase）。
+    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", normalized).split("_")
     return "".join(word.capitalize() for word in words if word)
 
 

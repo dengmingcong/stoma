@@ -149,7 +149,7 @@
 - [X] T030 [P] [US3] 实现 CLI 命令入口（stoma make --spec --out）in src/cli.py
 - [X] T031 [US3] 添加 CLI 参数解析与校验（使用 Typer）in src/cli.py
 - [X] T032 [US3] 集成 parser, renderer, 文件输出到 CLI 工作流 in src/cli.py
-- [ ] T033 [US3] 测试：准备示例 OpenAPI yaml，运行 stoma make 验证生成代码
+- [X] T033 [US3] 测试：准备示例 OpenAPI yaml，运行 stoma make 验证生成代码
 - [ ] T033a [US3] 测试：验证严格模式（使用包含不支持特性如 allOf/not 的 OpenAPI 文件，验证报错并停止）
 
 **Checkpoint**: User Story 3 完成，可从 OpenAPI 自动生成完整的接口代码
