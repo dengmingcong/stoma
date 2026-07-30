@@ -29,6 +29,18 @@ def make(
     读取 OpenAPI 规范文件，为每个 endpoint 生成独立的 .py 文件，
     包含 route 类和内嵌的 model。
     """
+    # 校验 spec 文件。
+    if not spec.exists():
+        raise typer.BadParameter(f"文件不存在: {spec}")
+    if not spec.is_file():
+        raise typer.BadParameter(f"不是文件: {spec}")
+
+    # 确保输出目录可写。
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise typer.BadParameter(f"无法创建输出目录: {out}") from e
+
     # 解析 OpenAPI 规范。
     parser = OpenAPIParser(spec)
     parser.load()

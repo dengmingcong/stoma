@@ -1,9 +1,6 @@
 """{{ summary | default(operation_id) }}。
 
-Generated from OpenAPI: {{ operation_id }}
-{% if description %}
-{{ description }}
-{% endif %}
+Generated from OpenAPI: {{ operation_id }}{{ "\n" + description if description else "" }}
 """
 
 from __future__ import annotations
@@ -28,7 +25,6 @@ from __future__ import annotations
 {{ model }}
 {% endfor %}
 {% endif %}
-
 {% if header_params %}
 from typing import Annotated
 
@@ -40,13 +36,10 @@ from stoma import router, APIRoute
 
 @router.{{ method }}("{{ path }}")
 class {{ class_name }}(APIRoute[{{ response_type }}]):
-    """{{ summary | default(operation_id) }}。
-
-    {% if description %}
-    {{ description }}
-    {% endif %}
+    """{{ summary | default(operation_id) }}。{{ "\n    " + description if description else "" }}
     """
-
 {% if param_fields %}
-    {{ param_fields }}
+{% for field in param_fields %}
+    {{ field }}
+{% endfor %}
 {% endif %}

@@ -6,9 +6,27 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from jinja2 import Environment, FileSystemLoader, Template
+
+
+class ParameterInfo(TypedDict):
+    """OpenAPI 参数信息。"""
+
+    name: str | None
+    location: str
+    required: bool | None
+    schema: dict[str, Any] | None
+
+
+class HeaderParamInfo(TypedDict):
+    """头参数信息。"""
+
+    name: str
+    type: str
+    required: bool | None
+    alias: str
 
 
 class EndpointRenderer:
@@ -24,6 +42,8 @@ class EndpointRenderer:
         self.template_dir = Path(template_path)
         self.env = Environment(
             loader=FileSystemLoader(str(self.template_dir)),
+            trim_blocks=True,
+            lstrip_blocks=True,
         )
 
     def render(
@@ -31,7 +51,7 @@ class EndpointRenderer:
         operation_id: str,
         method: str,
         path: str,
-        parameters: list[dict[str, Any]],
+        parameters: list[ParameterInfo],
         request_body: dict[str, Any] | None,
         responses: dict[str, Any] | None,
         summary: str | None = None,
@@ -79,7 +99,7 @@ class EndpointRenderer:
     ) -> tuple[str, list[str]]:
         """提取响应信息。
 
-        :param responses: 响应信息字典。
+        :param responses: 响应信息。
         :return: (响应类型, 内嵌模型列表)。
         """
         if not responses:
@@ -118,7 +138,7 @@ class EndpointRenderer:
     ) -> tuple[list[str], list[str]]:
         """提取请求体信息。
 
-        :param request_body: 请求体信息字典。
+        :param request_body: 请求体信息。
         :return: (内嵌模型列表, 导入列表)。
         """
         if not request_body:
@@ -140,24 +160,24 @@ class EndpointRenderer:
         return [], []
 
     def _extract_params(
-        self, parameters: list[dict[str, Any]]
-    ) -> tuple[list[dict[str, Any]], list[str]]:
+        self, parameters: list[ParameterInfo]
+    ) -> tuple[list[HeaderParamInfo], list[str]]:
         """提取参数信息。
 
         :param parameters: 参数列表。
         :return: (头参数列表, 参数字段声明列表)。
         """
-        header_params: list[dict[str, Any]] = []
+        header_params: list[HeaderParamInfo] = []
         param_fields: list[str] = []
 
         for param in parameters:
-            name = param.get("name", "")
-            param_in = param.get("in", "")
-            required = param.get("required", False)
+            name = param.get("name", "") or ""
+            param_location = param.get("location", "") or ""
+            required = param.get("required", False) or False
             schema = param.get("schema") or {}
             param_type = schema.get("type", "Any")
 
-            if param_in == "header":
+            if param_location == "header":
                 header_params.append({
                     "name": name,
                     "type": param_type,

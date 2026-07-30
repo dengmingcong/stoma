@@ -16,9 +16,48 @@ from openapi_pydantic.v3.v3_0 import (
     OpenAPI as OpenAPI30,
 )
 from openapi_pydantic.v3.v3_0 import (
-    Operation,
-    ParameterLocation,
+    Operation as Operation30,
 )
+from openapi_pydantic.v3.v3_0 import (
+    Parameter as Parameter30,
+)
+from openapi_pydantic.v3.v3_0 import (
+    ParameterLocation as ParameterLocation30,
+)
+from openapi_pydantic.v3.v3_0 import (
+    Reference as Reference30,
+)
+from openapi_pydantic.v3.v3_0 import (
+    RequestBody as RequestBody30,
+)
+from openapi_pydantic.v3.v3_0 import (
+    Response as Response30,
+)
+from openapi_pydantic.v3.v3_1 import (
+    Operation as Operation31,
+)
+from openapi_pydantic.v3.v3_1 import (
+    Parameter as Parameter31,
+)
+from openapi_pydantic.v3.v3_1 import (
+    ParameterLocation as ParameterLocation31,
+)
+from openapi_pydantic.v3.v3_1 import (
+    Reference as Reference31,
+)
+from openapi_pydantic.v3.v3_1 import (
+    RequestBody as RequestBody31,
+)
+from openapi_pydantic.v3.v3_1 import (
+    Response as Response31,
+)
+
+Operation = Operation30 | Operation31
+Parameter = Parameter30 | Parameter31
+ParameterLocation = ParameterLocation30 | ParameterLocation31
+Reference = Reference30 | Reference31
+RequestBody = RequestBody30 | RequestBody31
+Response = Response30 | Response31
 
 
 class OpenAPISchemaError(Exception):
@@ -175,28 +214,25 @@ class OpenAPIParser:
         params: list[dict[str, Any]] = []
         for p in operation.parameters:
             # 跳过 Reference 类型（Reference 只有 $ref，没有 param_in 等字段）。
-            p_any: Any = p
-            param_in = getattr(p_any, "param_in", None)
-            if param_in is None:
+            if isinstance(p, Reference):
+                continue
+            if not isinstance(p, Parameter):
                 continue
 
+            param_in = p.param_in
             if isinstance(param_in, ParameterLocation):
                 param_in = param_in.value
 
-            schema_obj = getattr(p_any, "schema", None)
-            schema = None
+            schema_obj = p.param_schema
+            schema: dict[str, Any] | None = None
             if schema_obj is not None:
-                model_dump = getattr(schema_obj, "model_dump", None)
-                if model_dump is not None:
-                    schema = model_dump()
-                else:
-                    schema = dict(schema_obj)
+                schema = schema_obj.model_dump()
 
             params.append(
                 {
-                    "name": getattr(p_any, "name", None),
-                    "in": param_in,
-                    "required": getattr(p_any, "required", None),
+                    "name": p.name,
+                    "location": param_in,
+                    "required": p.required,
                     "schema": schema,
                 }
             )
@@ -212,7 +248,11 @@ class OpenAPIParser:
             return None
 
         rb = operation.requestBody
-        return rb.model_dump() if hasattr(rb, "model_dump") else dict(rb)
+        if isinstance(rb, RequestBody):
+            return rb.model_dump()
+        if isinstance(rb, Reference):
+            return {"$ref": rb.ref}
+        return dict(rb)
 
     def _extract_responses(self, operation: Operation) -> dict[str, Any] | None:
         """提取响应信息。
@@ -223,8 +263,14 @@ class OpenAPIParser:
         if not operation.responses:
             return None
 
-        # Responses 是 Dict[str, Response]，直接转为 dict。
-        return dict(operation.responses)
+        # Responses 是 Dict[str, Response]，递归转换为 dict。
+        result: dict[str, Any] = {}
+        for status_code, response in operation.responses.items():
+            if isinstance(response, Response):
+                result[status_code] = response.model_dump()
+            else:
+                result[status_code] = dict(response)
+        return result
 
     def resolve_schema(self, schema: dict[str, Any]) -> dict[str, Any]:
         """解析 schema 引用，返回完整的 schema 定义。
