@@ -71,7 +71,7 @@ specs/001-create-stoma/
 │   ├── params.py           # Query/Path/Header/Body 标记与校验辅助（参考 fastapi.params 实现，包括参数验证逻辑、与 Pydantic Field 的集成、元数据存储传递、默认值/别名/验证器处理）
 │   ├── exceptions.py       # 自定义异常类（ValidationError、HTTPError、ParseError 等，包含详细上下文信息）
 │   ├── cli.py              # stoma make 命令入口与参数解析（Typer）
-│   └── codegen/            # OpenAPI 解析、模板渲染、文件生成（严格模式：遇到不支持特性立即报错）
+│   └── openapi/            # OpenAPI 解析、模板渲染、文件生成（严格模式：遇到不支持特性立即报错）
 │       ├── __init__.py
 │       ├── parser.py
 │       ├── renderer.py
@@ -82,7 +82,7 @@ specs/001-create-stoma/
     └── contract/           # OpenAPI 输入与生成结果比对、严格模式验证
 ```
 
-**Structure Decision**: 源码直接置于 `src` 根部，遵循 FastAPI 源码的模块化文件布局（routing.py/params.py 等为单文件），仅在代码生成需要时使用 `codegen/` 子目录，避免新增 `src/stoma` 之类的多层包结构；APIRoute 基类合并到 routing.py 以保持核心路由逻辑集中；测试继续按单元/集成/契约划分。
+**Structure Decision**: 源码直接置于 `src` 根部，遵循 FastAPI 源码的模块化文件布局（routing.py/params.py 等为单文件），仅在 OpenAPI 代码生成需要时使用 `openapi/` 子目录，避免新增 `src/stoma` 之类的多层包结构；APIRoute 基类合并到 routing.py 以保持核心路由逻辑集中；CLI 入口单独置于 cli.py；测试继续按单元/集成/契约划分。
 
 ## Complexity Tracking
 

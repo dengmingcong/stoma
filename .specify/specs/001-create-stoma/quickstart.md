@@ -13,12 +13,12 @@
    ```bash
    stoma make --spec api.yaml --out ./generated --feature users
    ```
-2. 生成目录参考 FastAPI 分层：`generated/users/{routing.py,params.py,models.py}`，如需 CLI/模板可放入 `generated/users/codegen/`。
+2. 生成目录按 feature 组织：`generated/users/{router.py,models.py}`，每个 feature 一个包。
 
 ## 使用生成的接口
 1. 在测试脚本中导入生成的接口类与模型：
    ```python
-   from generated.users.endpoints import GetUsers
+   from generated.users.router import GetUsers
    users = GetUsers(token="Bearer xxx")()
    ```
 2. 通过 `route_meta = GetUsers.route_meta()` 获取元数据。

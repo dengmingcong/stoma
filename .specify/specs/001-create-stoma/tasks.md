@@ -139,17 +139,17 @@
 
 ### Implementation for User Story 3
 
-- [ ] T022 [P] [US3] 实现 OpenAPI 文件读取与解析（支持 yaml/json）in src/codegen/parser.py
-- [ ] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/codegen/parser.py
-- [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性或参数验证规则无法完全转换时立即抛出详细错误并停止生成）in src/codegen/parser.py
-- [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas, servers）in src/codegen/parser.py
-- [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body，根据参数位置自动识别）in src/codegen/parser.py
-- [ ] T025a [US3] 实现参数验证规则转换（OpenAPI 的 minimum/maximum/minLength/pattern 等转换为 Pydantic Field/Annotated 约束，无法转换时报错）in src/codegen/parser.py
-- [ ] T025b [US3] 实现 servers 配置解析逻辑（从 OpenAPI 全局 servers 和接口级 servers 提取）in src/codegen/parser.py
-- [ ] T026 [P] [US3] 创建 Pydantic 模型生成模板 in src/codegen/templates/models.py.jinja2
-- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解，非头参数使用简化形式 `= value`，头参数使用 `Annotated[Type, Header(...)]`，servers 配置）in src/codegen/templates/routing.py.jinja2
-- [ ] T028 [US3] 实现模板渲染器（Jinja2 渲染 routing 和 models）in src/codegen/renderer.py
-- [ ] T029 [US3] 实现文件输出逻辑（按 feature 组织目录：routing.py, models.py）in src/codegen/renderer.py
+- [ ] T022 [P] [US3] 实现 OpenAPI 文件读取与解析（支持 yaml/json）in src/openapi/parser.py
+- [ ] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/openapi/parser.py
+- [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性或参数验证规则无法完全转换时立即抛出详细错误并停止生成）in src/openapi/parser.py
+- [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas, servers）in src/openapi/parser.py
+- [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body，根据参数位置自动识别）in src/openapi/parser.py
+- [ ] T025a [US3] 实现参数验证规则转换（OpenAPI 的 minimum/maximum/minLength/pattern 等转换为 Pydantic Field/Annotated 约束，无法转换时报错）in src/openapi/parser.py
+- [ ] T025b [US3] 实现 servers 配置解析逻辑（从 OpenAPI 全局 servers 和接口级 servers 提取）in src/openapi/parser.py
+- [ ] T026 [P] [US3] 创建 Pydantic 模型生成模板 in src/openapi/templates/models.py.jinja2
+- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解，非头参数使用简化形式 `= value`，头参数使用 `Annotated[Type, Header(...)]`，servers 配置）in src/openapi/templates/routing.py.jinja2
+- [ ] T028 [US3] 实现模板渲染器（Jinja2 渲染 routing 和 models）in src/openapi/renderer.py
+- [ ] T029 [US3] 实现文件输出逻辑（按 feature 组织目录：routing.py, models.py）in src/openapi/renderer.py
 - [ ] T030 [P] [US3] 实现 CLI 命令入口（stoma make --spec --out --feature）in src/cli.py
 - [ ] T031 [US3] 添加 CLI 参数解析与校验（使用 Typer）in src/cli.py
 - [ ] T032 [US3] 集成 parser, renderer, 文件输出到 CLI 工作流 in src/cli.py
@@ -255,12 +255,12 @@ touch src/routing.py && code src/routing.py  # T009-T011
 
 ```bash
 # Developer A:
-touch src/codegen/parser.py && code src/codegen/parser.py  # T022-T025b (参数验证规则转换)
+touch src/openapi/parser.py && code src/openapi/parser.py  # T022-T025b (参数验证规则转换)
 
 # Developer B (并行):
-mkdir -p src/codegen/templates
-touch src/codegen/templates/models.py.jinja2  # T026
-touch src/codegen/templates/routing.py.jinja2 # T027 (简化形式 + 头参数标记)
+mkdir -p src/openapi/templates
+touch src/openapi/templates/models.py.jinja2  # T026
+touch src/openapi/templates/routing.py.jinja2 # T027 (简化形式 + 头参数标记)
 
 # Developer C (可并行准备 CLI 框架):
 touch src/cli.py && code src/cli.py  # T030

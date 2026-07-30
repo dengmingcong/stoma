@@ -1,7 +1,7 @@
 # Research
 
-## Decision: 目录分层参考 FastAPI 源码（routing/params/client/codegen/cli/templates）
-- Rationale: 与用户要求对齐，保持熟悉的命名和分层（类似 fastapi/routing、params、applications），便于将装饰器、路由元数据与参数标记解耦，生成模板也可紧贴同构目录。APIRoute 基类合并到 routing.py 以保持核心路由逻辑集中。
+## Decision: 目录分层参考 FastAPI 源码（routing/params/client/openapi/cli/templates）
+- Rationale: 与用户要求对齐，保持熟悉的命名和分层（类似 fastapi/routing、params、applications），便于将装饰器、路由元数据与参数标记解耦，OpenAPI 代码生成模块置于 openapi/ 目录，CLI 入口单独置于 cli.py。APIRoute 基类合并到 routing.py 以保持核心路由逻辑集中。
 - Alternatives considered: 扁平化 `stoma/`（降低目录层级但混合职责，后续扩展困难）；按领域拆包（如 http/generator/runner），但与 FastAPI 源码风格不一致，学习成本更高；独立 models.py（额外分层但核心路由类与装饰器过于分散）。
 
 ## Decision: 默认 HTTP 客户端采用 Playwright，直接使用 APIRequestContext
