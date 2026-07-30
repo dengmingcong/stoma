@@ -356,8 +356,8 @@ print(meta.path)           # "/users"
 ### Session 2025-12-15
 
 - Q: OpenAPI Specification 的转换是运行时动态生成还是预先代码生成? → A: 预先代码生成
-- Q: 代码生成产物的输出结构应如何组织? → A: 按 feature 归档的包结构,参考 fastapi-best-practices: 每个功能一个包,`router.py` 存放该功能所有接口,`models.py` 存放该功能所有接口相关模型,其余辅助文件同包内组织。
-- Q: 代码生成 CLI 的入口命令与最小参数集合? → A: 使用 `stoma make --spec <openapi.yaml> --out <dir> --feature <name>` 形式。
+- Q: 代码生成产物的输出结构应如何组织? → A: 每个 endpoint 生成独立 .py 文件，包含 route 类和内嵌 model，由用户自行复制/合并
+- Q: 代码生成 CLI 的入口命令与最小参数集合? → A: 使用 `stoma make --spec <openapi.yaml> --out <dir>` 形式（无 --feature 参数）
 
 ### Session 2025-12-16
 
@@ -388,6 +388,12 @@ print(meta.path)           # "/users"
 - Q: `send()` 方法中如何处理参数映射和编码细节？ → A: 完整的自动处理（框架负责路径参数插值、查询参数序列化、Body JSON 化、Header 别名转换等）
 - Q: 代码生成工具在转换 OpenAPI 规范时，如何处理参数验证规则？ → A: 严格模式（将 OpenAPI 的 minimum/maximum/minLength 等转换为 Pydantic 约束，若无法转换则直接抛出异常）
 - Q: 参数类型识别是否每次调用都需要重新执行？ → A: 性能优化（参数识别仅执行一次并缓存在类级别，后续调用复用缓存）
+
+### Session 2026-07-30
+
+- Q: 代码生成产物的输出结构？ → A: 每个 endpoint 生成独立 .py 文件，包含 route 类和内嵌 model，不按 feature 分组
+- Q: 代码生成 CLI 的参数？ → A: 使用 `stoma make --spec <openapi.yaml> --out <dir>` 形式（移除 --feature 参数）
+- Q: schema 跨 endpoint 引用如何处理？ → A: 内嵌在各自的 endpoint 文件中，由用户自行复制/合并到目标文件
 
 ## Future Iterations（后续迭代需求）
 

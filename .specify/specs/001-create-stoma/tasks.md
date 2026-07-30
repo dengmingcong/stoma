@@ -124,14 +124,14 @@
 
 ## Phase 5: User Story 3 - 从 OpenAPI 生成接口定义（Priority: P2）
 
-**Goal**: 从 OpenAPI 文件自动生成符合 User Story 1 格式的接口类和 Pydantic 模型，支持严格模式和 servers 配置生成
+**Goal**: 从 OpenAPI 文件自动生成符合 User Story 1 格式的接口类和 Pydantic 模型，每个 endpoint 生成独立 .py 文件，支持严格模式
 
 **Independent Test**: 准备 OpenAPI YAML，运行生成工具，验证生成代码符合格式且可导入
 
 **实现参考**: 参考 [spec.md](spec.md) 用户故事 3 的说明和澄清决策，关注：
 - 生成的代码必须完全符合 User Story 1 定义的接口格式，特别是参数自动识别和简化形式
 - OpenAPI 各字段到 Python 类型的映射规则，包括参数验证规则到 Pydantic 约束的转换
-- CLI 命令的参数设计（--spec, --out, --feature）
+- CLI 命令的参数设计（--spec, --out）
 - 生成文件的目录结构和命名约定
 - **严格模式**：遇到不支持的 OpenAPI 特性（如未支持的参数类型、认证方式等）立即报错并停止生成；参数验证规则（minimum、maximum、minLength 等）无法完全转换时也直接报错
 - servers 配置生成：从 OpenAPI servers 字段提取并生成到 APIRouter 初始化和接口装饰器
@@ -146,11 +146,11 @@
 - [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body，根据参数位置自动识别）in src/openapi/parser.py
 - [ ] T025a [US3] 实现参数验证规则转换（OpenAPI 的 minimum/maximum/minLength/pattern 等转换为 Pydantic Field/Annotated 约束，无法转换时报错）in src/openapi/parser.py
 - [ ] T025b [US3] 实现 servers 配置解析逻辑（从 OpenAPI 全局 servers 和接口级 servers 提取）in src/openapi/parser.py
-- [ ] T026 [P] [US3] 创建 Pydantic 模型生成模板 in src/openapi/templates/models.py.jinja2
-- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解，非头参数使用简化形式 `= value`，头参数使用 `Annotated[Type, Header(...)]`，servers 配置）in src/openapi/templates/routing.py.jinja2
+- [ ] T026 [P] [US3] 创建 endpoint 生成模板（包含 route 类和内嵌 model）in src/openapi/templates/endpoint.py.jinja2
+- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解、内嵌 model，非头参数使用简化形式 `= value`，头参数使用 `Annotated[Type, Header(...)]`）in src/openapi/templates/routing.py.jinja2
 - [ ] T028 [US3] 实现模板渲染器（Jinja2 渲染 routing 和 models）in src/openapi/renderer.py
-- [ ] T029 [US3] 实现文件输出逻辑（按 feature 组织目录：routing.py, models.py）in src/openapi/renderer.py
-- [ ] T030 [P] [US3] 实现 CLI 命令入口（stoma make --spec --out --feature）in src/cli.py
+- [ ] T029 [US3] 实现文件输出逻辑（每个 endpoint 生成独立 .py 文件）in src/openapi/renderer.py
+- [ ] T030 [P] [US3] 实现 CLI 命令入口（stoma make --spec --out）in src/cli.py
 - [ ] T031 [US3] 添加 CLI 参数解析与校验（使用 Typer）in src/cli.py
 - [ ] T032 [US3] 集成 parser, renderer, 文件输出到 CLI 工作流 in src/cli.py
 - [ ] T033 [US3] 测试：准备示例 OpenAPI yaml（包含 servers 配置和参数验证规则），运行 stoma make 验证生成代码
@@ -189,7 +189,7 @@
 
 - **User Story 1 (P0) - MVP**: Foundational 完成后可开始 - 最高优先级
 - **User Story 2 (P1)**: 依赖 US1 的 APIRoute 基类和装饰器
-- **User Story 3 (P2)**: 依赖 US1 的接口格式定义
+- **User Story 3 (P2)**: 依赖 US1 的接口格式定义（每个 endpoint 生成独立 .py 文件）
 
 ### Within Each User Story
 
@@ -324,12 +324,12 @@ touch src/cli.py && code src/cli.py  # T030
 - 支持 servers 配置（全局 + 接口级），接口级优先
 
 ### User Story 3 (OpenAPI 生成)
-- 准备包含参数验证规则和 servers 配置的 OpenAPI YAML
-- 运行 `stoma make --spec api.yaml --out ./gen --feature users`
+- 准备包含参数验证规则的 OpenAPI YAML
+- 运行 `stoma make --spec api.yaml --out ./gen`
+- 每个 endpoint 生成独立 .py 文件，包含 route 类和内嵌 model
 - 生成的代码符合 User Story 1 格式（参数自动识别、简化形式、头参数显式标记）
 - 参数验证规则正确转换为 Pydantic 约束
 - 生成的接口类可导入并使用
-- 类型注解完整，models.py 包含所有 schema
 - 严格模式验证：遇到不支持的特性或无法转换的验证规则时报错并停止
 
 ---

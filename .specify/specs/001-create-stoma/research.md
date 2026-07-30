@@ -8,7 +8,7 @@
 - Rationale: 规格已指明 Playwright；直接使用 Playwright 的 APIRequestContext 发送请求，无需额外包装层，减少抽象开销。APIRequestContext 可支持更复杂场景（如需要 cookie、鉴权、前置流程），并提供稳定的 API。
 - Alternatives considered: httpx/requests（更轻但与"浏览器级"验证不符）；aiohttp（轻量但额外配置 SSL/Session）；自定义 HTTP 客户端包装类（增加抽象层但无实际必要）。
 
-## Decision: CLI 采用 Typer，输入格式固定为 `stoma make --spec <openapi> --out <dir> --feature <name>`
+## Decision: CLI 采用 Typer，输入格式固定为 `stoma make --spec <openapi> --out <dir>`（每个 endpoint 生成独立 .py 文件）
 - Rationale: Typer 基于 Click，提供类型注解与自动帮助文档，契合“易用性优先”与类型安全要求；参数形态已在澄清会话确定。
 - Alternatives considered: argparse（标准库但缺少自动补全与类型提示）；纯脚本入口（最少依赖但可维护性差，扩展子命令困难）。
 

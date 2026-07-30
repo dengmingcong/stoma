@@ -11,15 +11,22 @@
 ## 从 OpenAPI 生成代码
 1. 运行代码生成命令：
    ```bash
-   stoma make --spec api.yaml --out ./generated --feature users
+   stoma make --spec api.yaml --out ./generated
    ```
-2. 生成目录按 feature 组织：`generated/users/{router.py,models.py}`，每个 feature 一个包。
+2. 每个 endpoint 生成独立的 .py 文件，包含 route 类和内嵌的 model：
+   ```
+   generated/
+   ├── __init__.py
+   ├── get_users.py      # GetUsers + UserData
+   ├── create_user.py    # CreateUser + UserCreateRequest
+   └── get_user_by_id.py # GetUserById
+   ```
 
 ## 使用生成的接口
 1. 在测试脚本中导入生成的接口类与模型：
    ```python
-   from generated.users.router import GetUsers
-   users = GetUsers(token="Bearer xxx")()
+   from generated import GetUsers
+   users = GetUsers(token="Bearer xxx")
    ```
 2. 通过 `route_meta = GetUsers.route_meta()` 获取元数据。
 
