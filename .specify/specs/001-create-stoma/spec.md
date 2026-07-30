@@ -395,6 +395,7 @@ print(meta.path)           # "/users"
 - Q: 代码生成 CLI 的参数？ → A: 使用 `stoma make --spec <openapi.yaml> --out <dir>` 形式（移除 --feature 参数）
 - Q: schema 跨 endpoint 引用如何处理？ → A: 内嵌在各自的 endpoint 文件中，由用户自行复制/合并到目标文件
 - Q: 生成的文件如何命名？ → A: 基于 operationId 转换为 snake_case（如 listUsers → list_users.py），operationId 全局唯一
+- Q: oneOf/anyOf 如何处理？ → A: 生成 `Type1 | Type2 | ...` 联合类型；allOf/not 暂不支持，严格报错
 
 ## Future Iterations（后续迭代需求）
 

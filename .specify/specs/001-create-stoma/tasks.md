@@ -134,6 +134,7 @@
 - CLI 命令的参数设计（--spec, --out）
 - 生成文件命名规则：基于 operationId 转换为 snake_case（如 listUsers → list_users.py）
 - **严格模式**：遇到不支持的 OpenAPI 特性（如未支持的参数类型、认证方式等）立即报错并停止生成；参数验证规则（minimum、maximum、minLength 等）无法完全转换时也直接报错
+- **oneOf/anyOf 处理**：生成 `Type1 | Type2 | ...` 联合类型；allOf/not 暂不支持，直接报错
 - servers 配置生成：从 OpenAPI servers 字段提取并生成到 APIRouter 初始化和接口装饰器
 - 参数注解生成：简化形式 + 头参数使用 Annotated[Type, Header(...)]；包含验证规则时也使用 Annotated 标记
 
