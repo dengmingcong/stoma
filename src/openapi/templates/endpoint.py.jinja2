@@ -1,0 +1,52 @@
+"""{{ summary | default(operation_id) }}。
+
+Generated from OpenAPI: {{ operation_id }}
+{% if description %}
+{{ description }}
+{% endif %}
+"""
+
+from __future__ import annotations
+
+{% if request_body_model_imports %}
+{% for imp in request_body_model_imports %}
+{{ imp }}
+{% endfor %}
+{% endif %}
+{% if response_model_imports %}
+{% for imp in response_model_imports %}
+{{ imp }}
+{% endfor %}
+{% endif %}
+{% if request_body_models %}
+{% for model in request_body_models %}
+{{ model }}
+{% endfor %}
+{% endif %}
+{% if response_models %}
+{% for model in response_models %}
+{{ model }}
+{% endfor %}
+{% endif %}
+
+{% if header_params %}
+from typing import Annotated
+
+from stoma import router, APIRoute, Header
+{% else %}
+from stoma import router, APIRoute
+{% endif %}
+
+
+@router.{{ method }}("{{ path }}")
+class {{ class_name }}(APIRoute[{{ response_type }}]):
+    """{{ summary | default(operation_id) }}。
+
+    {% if description %}
+    {{ description }}
+    {% endif %}
+    """
+
+{% if param_fields %}
+    {{ param_fields }}
+{% endif %}

@@ -143,7 +143,7 @@
 - [X] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 openapi-pydantic）in src/openapi/parser.py
 - [X] T024 [US3] 实现 OpenAPI 组件提取（使用 openapi-pydantic，paths, methods, parameters, schemas）in src/openapi/parser.py
 - [X] T025 [US3] 实现参数映射逻辑（使用 openapi-pydantic 的 ParameterLocation）in src/openapi/parser.py
-- [ ] T026 [P] [US3] 创建 endpoint 生成模板（包含 route 类和内嵌 model）in src/openapi/templates/endpoint.py.jinja2
+- [X] T026 [P] [US3] 创建 endpoint 生成模板（包含 route 类和内嵌 model）in src/openapi/templates/endpoint.py.jinja2
 - [ ] T027 [P] [US3] 实现模板渲染器（Jinja2 渲染 endpoint 模板）in src/openapi/renderer.py
 - [ ] T028 [US3] 实现文件输出逻辑（每个 endpoint 生成独立 .py 文件）in src/openapi/renderer.py
 - [ ] T030 [P] [US3] 实现 CLI 命令入口（stoma make --spec --out）in src/cli.py
