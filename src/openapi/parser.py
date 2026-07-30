@@ -156,3 +156,116 @@ class OpenAPIParser:
         :return: info 字典。
         """
         return self.spec.get("info", {})
+
+    def get_endpoints(self) -> list[dict[str, Any]]:
+        """获取所有 endpoint 的结构化信息。
+
+        :return: endpoint 列表，每个 endpoint 包含 path、method、operation_id、summary、parameters、request_body、responses、tags。
+        :raise RuntimeError: 尚未加载规范。
+        """
+        if self._spec is None:
+            msg = "OpenAPI specification not loaded. Call load() first."
+            raise RuntimeError(msg)
+
+        endpoints: list[dict[str, Any]] = []
+        paths = self.spec.get("paths", {})
+
+        for path, path_item in paths.items():
+            if not isinstance(path_item, dict):
+                continue
+
+            for method in ["get", "post", "put", "patch", "delete", "options", "head"]:
+                if method not in path_item:
+                    continue
+
+                operation = path_item[method]
+                if not isinstance(operation, dict):
+                    continue
+
+                endpoint: dict[str, Any] = {
+                    "path": path,
+                    "method": method,
+                    "operation_id": operation.get("operationId"),
+                    "summary": operation.get("summary"),
+                    "description": operation.get("description"),
+                    "parameters": operation.get("parameters", []),
+                    "request_body": operation.get("requestBody"),
+                    "responses": operation.get("responses", {}),
+                    "tags": operation.get("tags", []),
+                }
+                endpoints.append(endpoint)
+
+        return endpoints
+
+    def get_endpoint_parameters(self, path: str, method: str) -> list[dict[str, Any]]:
+        """获取指定 endpoint 的参数列表。
+
+        :param path: API 路径。
+        :param method: HTTP 方法（get/post/put/patch/delete）。
+        :return: 参数列表，每个参数包含 name、in、required、schema 等信息。
+        :raise RuntimeError: 尚未加载规范。
+        """
+        if self._spec is None:
+            msg = "OpenAPI specification not loaded. Call load() first."
+            raise RuntimeError(msg)
+
+        paths = self.spec.get("paths", {})
+        path_item = paths.get(path, {})
+
+        if not isinstance(path_item, dict):
+            return []
+
+        operation = path_item.get(method.lower())
+        if not isinstance(operation, dict):
+            return []
+
+        return operation.get("parameters", [])
+
+    def get_endpoint_request_body(self, path: str, method: str) -> dict[str, Any] | None:
+        """获取指定 endpoint 的请求体信息。
+
+        :param path: API 路径。
+        :param method: HTTP 方法。
+        :return: 请求体信息，包含 content_type 和 schema。
+        :raise RuntimeError: 尚未加载规范。
+        """
+        if self._spec is None:
+            msg = "OpenAPI specification not loaded. Call load() first."
+            raise RuntimeError(msg)
+
+        paths = self.spec.get("paths", {})
+        path_item = paths.get(path, {})
+
+        if not isinstance(path_item, dict):
+            return None
+
+        operation = path_item.get(method.lower())
+        if not isinstance(operation, dict):
+            return None
+
+        return operation.get("requestBody")
+
+    def resolve_schema(self, schema: dict[str, Any]) -> dict[str, Any]:
+        """解析 schema 引用，返回完整的 schema 定义。
+
+        :param schema: 包含 $ref 的 schema 或完整 schema。
+        :return: 解析后的完整 schema。
+        """
+        if "$ref" not in schema:
+            return schema
+
+        # 解析 $ref，格式：#/components/schemas/UserName
+        ref = schema["$ref"]
+        if not ref.startswith("#/components/schemas/"):
+            msg = f"Unsupported $ref format: {ref}"
+            raise ValueError(msg)
+
+        schema_name = ref.split("/")[-1]
+        schemas = self.get_schemas()
+        resolved = schemas.get(schema_name)
+
+        if resolved is None:
+            msg = f"Schema not found: {schema_name}"
+            raise ValueError(msg)
+
+        return resolved
