@@ -140,10 +140,9 @@
 ### Implementation for User Story 3
 
 - [X] T022 [P] [US3] 实现 OpenAPI 文件读取与解析（支持 yaml/json）in src/openapi/parser.py
-- [X] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/openapi/parser.py
-- [X] T023a [US3] 实现不支持特性的跳过逻辑（遇到 allOf/not/securitySchemes 时跳过，打印日志）in src/openapi/parser.py
-- [X] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas）in src/openapi/parser.py
-- [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body，根据参数位置自动识别）in src/openapi/parser.py
+- [X] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 openapi-pydantic）in src/openapi/parser.py
+- [X] T024 [US3] 实现 OpenAPI 组件提取（使用 openapi-pydantic，paths, methods, parameters, schemas）in src/openapi/parser.py
+- [X] T025 [US3] 实现参数映射逻辑（使用 openapi-pydantic 的 ParameterLocation）in src/openapi/parser.py
 - [ ] T026 [P] [US3] 创建 endpoint 生成模板（包含 route 类和内嵌 model）in src/openapi/templates/endpoint.py.jinja2
 - [ ] T027 [P] [US3] 实现模板渲染器（Jinja2 渲染 endpoint 模板）in src/openapi/renderer.py
 - [ ] T028 [US3] 实现文件输出逻辑（每个 endpoint 生成独立 .py 文件）in src/openapi/renderer.py
