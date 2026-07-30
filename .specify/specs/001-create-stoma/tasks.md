@@ -135,7 +135,7 @@
 - 生成文件命名规则：基于 operationId 转换为 snake_case（如 listUsers → list_users.py）
 - **严格模式**：遇到不支持的 OpenAPI 特性（如未支持的参数类型、认证方式等）立即报错并停止生成；参数验证规则（minimum、maximum、minLength 等）无法完全转换时也直接报错
 - **oneOf/anyOf 处理**：生成 `Type1 | Type2 | ...` 联合类型；allOf/not 暂不支持，直接报错
-- servers 配置生成：从 OpenAPI servers 字段提取并生成到 APIRouter 初始化和接口装饰器
+- servers 配置由 Client 实例化时设置，生成代码不包含 servers 配置
 - 参数注解生成：简化形式 + 头参数使用 Annotated[Type, Header(...)]；包含验证规则时也使用 Annotated 标记
 
 ### Implementation for User Story 3
@@ -143,18 +143,16 @@
 - [ ] T022 [P] [US3] 实现 OpenAPI 文件读取与解析（支持 yaml/json）in src/openapi/parser.py
 - [ ] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/openapi/parser.py
 - [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性或参数验证规则无法完全转换时立即抛出详细错误并停止生成）in src/openapi/parser.py
-- [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas, servers）in src/openapi/parser.py
+- [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas）in src/openapi/parser.py
 - [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body，根据参数位置自动识别）in src/openapi/parser.py
-- [ ] T025a [US3] 实现参数验证规则转换（OpenAPI 的 minimum/maximum/minLength/pattern 等转换为 Pydantic Field/Annotated 约束，无法转换时报错）in src/openapi/parser.py
-- [ ] T025b [US3] 实现 servers 配置解析逻辑（从 OpenAPI 全局 servers 和接口级 servers 提取）in src/openapi/parser.py
+- [ ] T025a [US3] 实现参数验证规则转换（OpenAPI 的 minimum/maximum/minLength/pattern 等转换为 Pydantic Field/Annotated 约束）in src/openapi/parser.py
 - [ ] T026 [P] [US3] 创建 endpoint 生成模板（包含 route 类和内嵌 model）in src/openapi/templates/endpoint.py.jinja2
-- [ ] T027 [P] [US3] 创建接口类生成模板（包含装饰器、参数注解、内嵌 model，非头参数使用简化形式 `= value`，头参数使用 `Annotated[Type, Header(...)]`）in src/openapi/templates/routing.py.jinja2
-- [ ] T028 [US3] 实现模板渲染器（Jinja2 渲染 routing 和 models）in src/openapi/renderer.py
-- [ ] T029 [US3] 实现文件输出逻辑（每个 endpoint 生成独立 .py 文件）in src/openapi/renderer.py
+- [ ] T027 [P] [US3] 实现模板渲染器（Jinja2 渲染 endpoint 模板）in src/openapi/renderer.py
+- [ ] T028 [US3] 实现文件输出逻辑（每个 endpoint 生成独立 .py 文件）in src/openapi/renderer.py
 - [ ] T030 [P] [US3] 实现 CLI 命令入口（stoma make --spec --out）in src/cli.py
 - [ ] T031 [US3] 添加 CLI 参数解析与校验（使用 Typer）in src/cli.py
 - [ ] T032 [US3] 集成 parser, renderer, 文件输出到 CLI 工作流 in src/cli.py
-- [ ] T033 [US3] 测试：准备示例 OpenAPI yaml（包含 servers 配置和参数验证规则），运行 stoma make 验证生成代码
+- [ ] T033 [US3] 测试：准备示例 OpenAPI yaml，运行 stoma make 验证生成代码
 - [ ] T033a [US3] 测试：验证严格模式（使用包含不支持特性或无法转换的验证规则的 OpenAPI 文件，验证报错并停止）
 
 **Checkpoint**: User Story 3 完成，可从 OpenAPI 自动生成完整的接口代码
