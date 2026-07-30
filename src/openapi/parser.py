@@ -10,7 +10,18 @@ import json
 from pathlib import Path
 from typing import Any
 
+import jsonschema
 import yaml
+
+# OpenAPI JSON Schema 文件路径（相对于当前模块）。
+_OPENAPI_3_0_SCHEMA_PATH = Path(__file__).parent / "schemas" / "openapi-3.0.json"
+_OPENAPI_3_1_SCHEMA_PATH = Path(__file__).parent / "schemas" / "openapi-3.1.json"
+
+
+class OpenAPISchemaError(Exception):
+    """OpenAPI schema 校验失败。"""
+
+    pass
 
 
 class OpenAPIParser:
@@ -64,6 +75,38 @@ class OpenAPIParser:
             raise ValueError(msg)
 
         return self._spec
+
+    def validate(self) -> None:
+        """使用 JSON Schema 校验 OpenAPI 规范。
+
+        :raise OpenAPISchemaError: 规范不符合 JSON Schema。
+        :raise ValueError: 尚未加载规范。
+        """
+        if self._spec is None:
+            msg = "OpenAPI specification not loaded. Call load() first."
+            raise ValueError(msg)
+
+        # 根据 OpenAPI 版本选择对应的 JSON Schema。
+        openapi_version = self.get_openapi_version()
+        if openapi_version.startswith("3.1."):
+            schema_path = _OPENAPI_3_1_SCHEMA_PATH
+        elif openapi_version.startswith("3.0."):
+            schema_path = _OPENAPI_3_0_SCHEMA_PATH
+        else:
+            msg = f"Unsupported OpenAPI version: {openapi_version}. Only 3.0.x and 3.1.x are supported."
+            raise OpenAPISchemaError(msg)
+
+        try:
+            # 从本地文件加载 JSON Schema。
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            # 使用 schema 校验 OpenAPI 规范。
+            jsonschema.validate(instance=self._spec, schema=schema)
+        except jsonschema.ValidationError as e:
+            msg = f"OpenAPI specification validation failed: {e.message}"
+            raise OpenAPISchemaError(msg) from e
+        except jsonschema.SchemaError as e:
+            msg = f"Invalid JSON Schema: {e.message}"
+            raise OpenAPISchemaError(msg) from e
 
     @property
     def spec(self) -> dict[str, Any]:

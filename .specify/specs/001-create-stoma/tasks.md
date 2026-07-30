@@ -141,7 +141,7 @@
 ### Implementation for User Story 3
 
 - [X] T022 [P] [US3] 实现 OpenAPI 文件读取与解析（支持 yaml/json）in src/openapi/parser.py
-- [ ] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/openapi/parser.py
+- [X] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/openapi/parser.py
 - [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性立即抛出详细错误并停止生成）in src/openapi/parser.py
 - [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas）in src/openapi/parser.py
 - [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body，根据参数位置自动识别）in src/openapi/parser.py
