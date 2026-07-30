@@ -43,3 +43,7 @@ query_params_list = []
 ## 常量
 
 规范见 [常量编码规范](./instructions/constants.instructions.md)。
+
+## 站在巨人肩上
+
+遇到问题时，先搜索是否有现成的解决方案（是否可以使用第三方库来解决问题），避免重复造轮子。
