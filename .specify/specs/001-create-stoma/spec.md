@@ -394,6 +394,7 @@ print(meta.path)           # "/users"
 - Q: 代码生成产物的输出结构？ → A: 每个 endpoint 生成独立 .py 文件，包含 route 类和内嵌 model，不按 feature 分组
 - Q: 代码生成 CLI 的参数？ → A: 使用 `stoma make --spec <openapi.yaml> --out <dir>` 形式（移除 --feature 参数）
 - Q: schema 跨 endpoint 引用如何处理？ → A: 内嵌在各自的 endpoint 文件中，由用户自行复制/合并到目标文件
+- Q: 生成的文件如何命名？ → A: 基于 operationId 转换为 snake_case（如 listUsers → list_users.py），operationId 全局唯一
 
 ## Future Iterations（后续迭代需求）
 
