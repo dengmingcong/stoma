@@ -192,3 +192,24 @@ def extract_schema_name(ref: str) -> str:
         msg = f"Unsupported $ref format: {ref}"
         raise ValueError(msg)
     return ref.split("/")[-1]
+
+
+def render_to_file(
+    output_dir: str | Path,
+    operation_id: str,
+    rendered_code: str,
+) -> Path:
+    """将渲染后的代码写入文件。
+
+    :param output_dir: 输出目录。
+    :param operation_id: operationId，用于生成文件名。
+    :param rendered_code: 渲染后的代码。
+    :return: 生成的文件路径。
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    file_name = f"{operation_id}.py"
+    file_path = output_path / file_name
+    file_path.write_text(rendered_code, encoding="utf-8")
+    return file_path
