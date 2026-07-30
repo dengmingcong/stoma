@@ -133,8 +133,7 @@
 - OpenAPI 各字段到 Python 类型的映射规则
 - CLI 命令的参数设计（--spec, --out）
 - 生成文件命名规则：基于 operationId 转换为 snake_case（如 listUsers → list_users.py）
-- **严格模式**：遇到不支持的 OpenAPI 特性（如 allOf、not、认证方式等）立即报错并停止生成
-- **oneOf/anyOf 处理**：生成 `Type1 | Type2 | ...` 联合类型；allOf/not 暂不支持，严格报错
+- **oneOf/anyOf 处理**：生成 `Type1 | Type2 | ...` 联合类型；allOf/not 暂不支持，跳过
 - servers 配置由 Client 实例化时设置，生成代码不包含 servers 配置
 - 参数注解生成：简化形式 + 头参数使用 Annotated[Type, Header(...)]
 
@@ -142,7 +141,7 @@
 
 - [X] T022 [P] [US3] 实现 OpenAPI 文件读取与解析（支持 yaml/json）in src/openapi/parser.py
 - [X] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/openapi/parser.py
-- [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性立即抛出详细错误并停止生成）in src/openapi/parser.py
+- [X] T023a [US3] 实现不支持特性的跳过逻辑（遇到 allOf/not/securitySchemes 时跳过，打印日志）in src/openapi/parser.py
 - [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas）in src/openapi/parser.py
 - [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body，根据参数位置自动识别）in src/openapi/parser.py
 - [ ] T026 [P] [US3] 创建 endpoint 生成模板（包含 route 类和内嵌 model）in src/openapi/templates/endpoint.py.jinja2
