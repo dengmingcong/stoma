@@ -30,7 +30,7 @@
 - 生成产物必须零样板、可直接导入；保持 Pydantic v2 语义
 - HTTP 客户端可替换但默认 Playwright，当前版本采用同步实现（异步支持在后续版本添加）
 - 错误处理机制：必须抛出详细的自定义异常类（ValidationError、HTTPError、ParseError 等），包含足够的上下文信息
-- 代码生成采用严格模式：遇到 OpenAPI 规范中包含框架尚未支持的特性或参数验证规则无法完全转换时立即报错并停止生成
+- 代码生成采用严格模式：遇到 OpenAPI 规范中包含框架尚未支持的特性（如 allOf、not、认证方式）时立即报错并停止生成
 - 装饰器与元数据：api_route_decorator 工厂函数返回类装饰器，调用 `_get_dependant(method, path)` 生成并缓存路由元数据和参数依赖
 **Scale/Scope**: 面向中小型 API 套件（10-300 endpoints）
 

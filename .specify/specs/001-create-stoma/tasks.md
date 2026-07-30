@@ -130,22 +130,21 @@
 
 **实现参考**: 参考 [spec.md](spec.md) 用户故事 3 的说明和澄清决策，关注：
 - 生成的代码必须完全符合 User Story 1 定义的接口格式，特别是参数自动识别和简化形式
-- OpenAPI 各字段到 Python 类型的映射规则，包括参数验证规则到 Pydantic 约束的转换
+- OpenAPI 各字段到 Python 类型的映射规则
 - CLI 命令的参数设计（--spec, --out）
 - 生成文件命名规则：基于 operationId 转换为 snake_case（如 listUsers → list_users.py）
-- **严格模式**：遇到不支持的 OpenAPI 特性（如未支持的参数类型、认证方式等）立即报错并停止生成；参数验证规则（minimum、maximum、minLength 等）无法完全转换时也直接报错
-- **oneOf/anyOf 处理**：生成 `Type1 | Type2 | ...` 联合类型；allOf/not 暂不支持，直接报错
+- **严格模式**：遇到不支持的 OpenAPI 特性（如 allOf、not、认证方式等）立即报错并停止生成
+- **oneOf/anyOf 处理**：生成 `Type1 | Type2 | ...` 联合类型；allOf/not 暂不支持，严格报错
 - servers 配置由 Client 实例化时设置，生成代码不包含 servers 配置
-- 参数注解生成：简化形式 + 头参数使用 Annotated[Type, Header(...)]；包含验证规则时也使用 Annotated 标记
+- 参数注解生成：简化形式 + 头参数使用 Annotated[Type, Header(...)]
 
 ### Implementation for User Story 3
 
 - [ ] T022 [P] [US3] 实现 OpenAPI 文件读取与解析（支持 yaml/json）in src/openapi/parser.py
 - [ ] T023 [P] [US3] 实现 OpenAPI schema 校验逻辑（使用 jsonschema）in src/openapi/parser.py
-- [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性或参数验证规则无法完全转换时立即抛出详细错误并停止生成）in src/openapi/parser.py
+- [ ] T023a [US3] 实现严格模式检查（遇到不支持的 OpenAPI 特性立即抛出详细错误并停止生成）in src/openapi/parser.py
 - [ ] T024 [US3] 实现 OpenAPI 组件提取（paths, methods, parameters, schemas）in src/openapi/parser.py
 - [ ] T025 [US3] 实现参数映射逻辑（OpenAPI parameter → Query/Path/Header/Body，根据参数位置自动识别）in src/openapi/parser.py
-- [ ] T025a [US3] 实现参数验证规则转换（OpenAPI 的 minimum/maximum/minLength/pattern 等转换为 Pydantic Field/Annotated 约束）in src/openapi/parser.py
 - [ ] T026 [P] [US3] 创建 endpoint 生成模板（包含 route 类和内嵌 model）in src/openapi/templates/endpoint.py.jinja2
 - [ ] T027 [P] [US3] 实现模板渲染器（Jinja2 渲染 endpoint 模板）in src/openapi/renderer.py
 - [ ] T028 [US3] 实现文件输出逻辑（每个 endpoint 生成独立 .py 文件）in src/openapi/renderer.py
@@ -153,7 +152,7 @@
 - [ ] T031 [US3] 添加 CLI 参数解析与校验（使用 Typer）in src/cli.py
 - [ ] T032 [US3] 集成 parser, renderer, 文件输出到 CLI 工作流 in src/cli.py
 - [ ] T033 [US3] 测试：准备示例 OpenAPI yaml，运行 stoma make 验证生成代码
-- [ ] T033a [US3] 测试：验证严格模式（使用包含不支持特性或无法转换的验证规则的 OpenAPI 文件，验证报错并停止）
+- [ ] T033a [US3] 测试：验证严格模式（使用包含不支持特性如 allOf/not 的 OpenAPI 文件，验证报错并停止）
 
 **Checkpoint**: User Story 3 完成，可从 OpenAPI 自动生成完整的接口代码
 
@@ -254,7 +253,7 @@ touch src/routing.py && code src/routing.py  # T009-T011
 
 ```bash
 # Developer A:
-touch src/openapi/parser.py && code src/openapi/parser.py  # T022-T025b (参数验证规则转换)
+touch src/openapi/parser.py && code src/openapi/parser.py  # T022-T025
 
 # Developer B (并行):
 mkdir -p src/openapi/templates
@@ -323,13 +322,12 @@ touch src/cli.py && code src/cli.py  # T030
 - 支持 servers 配置（全局 + 接口级），接口级优先
 
 ### User Story 3 (OpenAPI 生成)
-- 准备包含参数验证规则的 OpenAPI YAML
+- 准备 OpenAPI YAML
 - 运行 `stoma make --spec api.yaml --out ./gen`
 - 每个 endpoint 生成独立 .py 文件，包含 route 类和内嵌 model
 - 生成的代码符合 User Story 1 格式（参数自动识别、简化形式、头参数显式标记）
-- 参数验证规则正确转换为 Pydantic 约束
 - 生成的接口类可导入并使用
-- 严格模式验证：遇到不支持的特性或无法转换的验证规则时报错并停止
+- 严格模式验证：遇到 allOf/not 等不支持的特性时报错并停止
 
 ---
 
