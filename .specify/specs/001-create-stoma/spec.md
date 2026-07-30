@@ -397,6 +397,8 @@ print(meta.path)           # "/users"
 - Q: 生成的文件如何命名？ → A: 基于 operationId 转换为 snake_case（如 listUsers → list_users.py），operationId 全局唯一
 - Q: oneOf/anyOf 如何处理？ → A: 生成 `Type1 | Type2 | ...` 联合类型；allOf/not 暂不支持，严格报错
 - Q: servers 配置如何处理？ → A: servers 由 Client 实例化时设置（通过 context 的 base_url），生成代码不包含 servers 配置
+- Q: 参数验证规则（minimum/maximum/minLength 等）如何处理？ → A: 暂不支持，生成简化形式参数声明
+- Q: 认证方式（securitySchemes）如何处理？ → A: 暂不支持，记录为 Future Iterations
 
 ## Future Iterations（后续迭代需求）
 

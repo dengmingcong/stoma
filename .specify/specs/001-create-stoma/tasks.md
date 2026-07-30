@@ -293,12 +293,12 @@ touch src/cli.py && code src/cli.py  # T030
 
 ## Task Count Summary
 
-- **Total Tasks**: 52（原 39，新增 13 个任务）
+- **Total Tasks**: 51
 - **Phase 1 (Setup)**: 5 tasks
 - **Phase 2 (Foundational)**: 4 tasks
 - **Phase 3 (User Story 1)**: 6 tasks
 - **Phase 4 (User Story 2)**: 16 tasks（新增 T015c, T015d, T015e）
-- **Phase 5 (User Story 3)**: 15 tasks
+- **Phase 5 (User Story 3)**: 13 tasks（移除 servers 配置、参数验证规则转换相关任务）
 - **Phase 6 (Polish)**: 6 tasks
 - **Parallelizable Tasks**: 20 tasks marked with [P]
 
@@ -325,9 +325,11 @@ touch src/cli.py && code src/cli.py  # T030
 - 准备 OpenAPI YAML
 - 运行 `stoma make --spec api.yaml --out ./gen`
 - 每个 endpoint 生成独立 .py 文件，包含 route 类和内嵌 model
+- 文件命名基于 operationId snake_case（如 listUsers → list_users.py）
+- oneOf/anyOf 生成 `Type1 | Type2 | ...` 联合类型
 - 生成的代码符合 User Story 1 格式（参数自动识别、简化形式、头参数显式标记）
 - 生成的接口类可导入并使用
-- 严格模式验证：遇到 allOf/not 等不支持的特性时报错并停止
+- 严格模式验证：遇到 allOf/not/认证方式等不支持的特性时报错并停止
 
 ---
 
