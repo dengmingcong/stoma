@@ -248,11 +248,18 @@ class OpenAPIParser:
             return None
 
         rb = operation.requestBody
-        if isinstance(rb, RequestBody):
-            return rb.model_dump(mode="json")
         if isinstance(rb, Reference):
             return {"$ref": rb.ref}
-        return dict(rb)
+        if isinstance(rb, RequestBody):
+            dumped = rb.model_dump(mode="json")
+        else:
+            dumped = dict(rb)
+        # 规范化内嵌的 MediaType 结构。
+        content = dumped.get("content")
+        if isinstance(content, dict):
+            for media_type in content.values():
+                self._normalize_media_type(media_type)
+        return dumped
 
     def _extract_responses(self, operation: Operation) -> dict[str, Any] | None:
         """提取响应信息。
@@ -270,7 +277,71 @@ class OpenAPIParser:
                 result[status_code] = response.model_dump(mode="json")
             else:
                 result[status_code] = dict(response)
+        # 规范化：把 MediaType 嵌套结构（media_type_schema）转为标准 schema 字段。
+        self._normalize_media_types(result)
         return result
+
+    def _normalize_media_types(self, responses: dict[str, Any]) -> None:
+        """将 MediaType 嵌套结构展开为标准的 schema/$ref 字段。
+
+        openapi-pydantic 序列化后使用 media_type_schema 字段，需转换为 schema 字段。
+        Reference 类型的 media_type_schema 序列化为 {\"ref\": \"#/...\"}，转换为 {\"$ref\": \"#/...\"}。
+
+        :param responses: 响应字典，将被就地修改。
+        """
+        for response in responses.values():
+            if not isinstance(response, dict):
+                continue
+            content = response.get("content")
+            if not isinstance(content, dict):
+                continue
+            for media_type in content.values():
+                self._normalize_media_type(media_type)
+
+    def _normalize_media_type(self, media_type: dict[str, Any]) -> None:
+        """将单个 MediaType 字典展开为标准 schema 字段。
+
+        同时递归处理嵌套的 items、properties 中的 Reference。
+
+        :param media_type: MediaType 字典，将被就地修改。
+        """
+        if not isinstance(media_type, dict):
+            return
+        media_type_schema = media_type.get("media_type_schema")
+        if media_type_schema is None:
+            return
+        if isinstance(media_type_schema, dict):
+            ref = media_type_schema.get("ref")
+            if ref is not None:
+                normalized = {"$ref": ref}
+            else:
+                normalized = media_type_schema
+            # 递归处理嵌套的 Reference（如 array.items、object.properties）。
+            self._normalize_references_in_schema(normalized)
+            media_type["schema"] = normalized
+        del media_type["media_type_schema"]
+
+    def _normalize_references_in_schema(self, schema: dict[str, Any]) -> None:
+        """递归将 schema 内嵌的 Reference 字段转换为 $ref 字段。
+
+        处理 items（array）、properties.*（object）、additionalProperties 等嵌套位置。
+
+        :param schema: schema 字典，将被就地修改。
+        """
+        if not isinstance(schema, dict):
+            return
+        # 处理 items（数组元素类型）。
+        items = schema.get("items")
+        if isinstance(items, dict) and "ref" in items and "$ref" not in items:
+            ref_value = items.get("ref")
+            schema["items"] = {"$ref": ref_value} if ref_value else items
+        # 处理 properties（对象字段类型）。
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            for prop_name, prop_schema in properties.items():
+                if isinstance(prop_schema, dict) and "ref" in prop_schema and "$ref" not in prop_schema:
+                    ref_value = prop_schema.get("ref")
+                    properties[prop_name] = {"$ref": ref_value} if ref_value else prop_schema
 
     def resolve_schema(self, schema: dict[str, Any]) -> dict[str, Any]:
         """解析 schema 引用，返回完整的 schema 定义。

@@ -220,9 +220,31 @@ def operation_id_to_class_name(operation_id: str) -> str:
     :param operation_id: operationId 字符串。
     :return: 类名字符串。
     """
+    return _to_pascal_case(operation_id)
+
+
+def operation_id_to_snake_case(operation_id: str) -> str:
+    """将 operationId 转换为 snake_case。
+
+    支持 snake_case（list_users）和 camelCase（listUsers）两种格式。
+
+    :param operation_id: operationId 字符串。
+    :return: snake_case 字符串。
+    """
     # 统一分隔符：连字符转下划线。
     normalized = operation_id.replace("-", "_")
     # 在小写字母/数字与大写字母之间插入下划线（处理 camelCase）。
+    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", normalized).split("_")
+    return "_".join(word.lower() for word in words if word)
+
+
+def _to_pascal_case(operation_id: str) -> str:
+    """将 operationId 转换为 PascalCase。
+
+    :param operation_id: operationId 字符串。
+    :return: PascalCase 字符串。
+    """
+    normalized = operation_id.replace("-", "_")
     words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", normalized).split("_")
     return "".join(word.capitalize() for word in words if word)
 
@@ -246,6 +268,8 @@ def render_to_file(
 ) -> Path:
     """将渲染后的代码写入文件。
 
+    文件名基于 operationId 转换为 snake_case（如 listUsers → list_users.py）。
+
     :param output_dir: 输出目录。
     :param operation_id: operationId，用于生成文件名。
     :param rendered_code: 渲染后的代码。
@@ -254,7 +278,7 @@ def render_to_file(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    file_name = f"{operation_id}.py"
+    file_name = f"{operation_id_to_snake_case(operation_id)}.py"
     file_path = output_path / file_name
     file_path.write_text(rendered_code, encoding="utf-8")
     return file_path
