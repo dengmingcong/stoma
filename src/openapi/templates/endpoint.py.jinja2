@@ -25,10 +25,15 @@ from __future__ import annotations
 {{ model }}
 {% endfor %}
 {% endif %}
-{% if header_params %}
+{% if header_params or (request_body_type and request_body_embed) %}
 from typing import Annotated
-
+{% endif %}
+{% if header_params and request_body_type %}
+from stoma import router, APIRoute, Body, Header
+{% elif header_params %}
 from stoma import router, APIRoute, Header
+{% elif request_body_type and (request_body_embed or not request_body_is_model_ref) %}
+from stoma import router, APIRoute, Body
 {% else %}
 from stoma import router, APIRoute
 {% endif %}
@@ -42,4 +47,13 @@ class {{ class_name }}(APIRoute[{{ response_type }}]):
 {% for field in param_fields %}
     {{ field }}
 {% endfor %}
+{% endif %}
+{% if request_body_type %}
+    {% if request_body_embed %}
+    {{ request_body_field_name }}: Annotated[{{ request_body_type }}, Body(embed=True)]
+    {% elif request_body_is_model_ref %}
+    {{ request_body_field_name }}: {{ request_body_type }}
+    {% else %}
+    {{ request_body_field_name }}: Annotated[{{ request_body_type }}, Body()]
+    {% endif %}
 {% endif %}

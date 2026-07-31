@@ -30,6 +30,16 @@ class HeaderParamInfo(TypedDict):
     alias: str
 
 
+class RequestBodyInfo(TypedDict):
+    """请求体信息（包含 embed 标记）。"""
+
+    type: str
+    models: list[str]
+    embed: bool
+    field_name: str | None
+    is_model_ref: bool
+
+
 _JSON_SCHEMA_TYPE_TO_PYTHON: dict[str, str] = {
     "string": "str",
     "integer": "int",
@@ -90,11 +100,8 @@ class EndpointRenderer:
         :return: 渲染后的 Python 代码。
         """
         class_name = operation_id_to_class_name(operation_id)
-        response_type, response_models = self._extract_response_info(responses)
-        (
-            request_body_models,
-            request_body_imports,
-        ) = self._extract_request_body_info(request_body)
+        response_type, response_models = self._extract_response_info(responses, class_name)
+        request_body_info = self._extract_request_body_info(request_body, class_name)
         header_params, param_fields = self._extract_params(parameters)
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
@@ -107,25 +114,30 @@ class EndpointRenderer:
             description=description,
             response_type=response_type,
             response_models=response_models,
-            response_model_imports=[],  # 内嵌模型不需要导入
-            request_body_models=request_body_models,
-            request_body_model_imports=request_body_imports,
+            response_model_imports=[],
+            request_body_models=request_body_info["models"],
+            request_body_model_imports=[],
+            request_body_type=request_body_info["type"],
+            request_body_embed=request_body_info["embed"],
+            request_body_field_name=request_body_info["field_name"] or "body",
+            request_body_is_model_ref=request_body_info["is_model_ref"],
             header_params=header_params,
             param_fields=param_fields,
         )
 
     def _extract_response_info(
-        self, responses: dict[str, Any] | None
+        self, responses: dict[str, Any] | None, class_name: str = ""
     ) -> tuple[str, list[str]]:
         """提取响应信息。
 
         :param responses: 响应信息。
+        :param class_name: 接口类名，用于生成内联响应模型名。
         :return: (响应类型, 内嵌模型列表)。
         """
         if not responses:
             return "None", []
 
-        # 查找 200 响应。
+        # 查找 200/201 响应。
         response_200 = responses.get("200") or responses.get("201")
         if not response_200:
             return "None", []
@@ -137,47 +149,190 @@ class EndpointRenderer:
         if not schema:
             return "None", []
 
-        # 处理 schema。
-        if schema.get("type") == "array":
-            items = schema.get("items", {})
-            ref = items.get("$ref", "")
-            if ref:
-                model_name = extract_schema_name(ref)
-                return f"list[{model_name}]", [f"class {model_name}(BaseModel):\n    pass"]
-            return "list[Any]", []
-
-        ref = schema.get("$ref", "")
-        if ref:
-            model_name = extract_schema_name(ref)
-            return model_name, [f"class {model_name}(BaseModel):\n    pass"]
-
-        return "dict[str, Any]", []
+        default_name = f"{class_name}Response" if class_name else ""
+        type_name, models = self._resolve_schema_to_type(schema, default_name)
+        # 内联对象（无 $ref）需要额外生成模型类。
+        if (
+            schema.get("type") == "object"
+            and "$ref" not in schema
+            and "properties" in schema
+            and class_name
+        ):
+            model_code = self._render_object_schema(default_name, schema)
+            return default_name, [model_code]
+        return type_name, models
 
     def _extract_request_body_info(
-        self, request_body: dict[str, Any] | None
-    ) -> tuple[list[str], list[str]]:
+        self,
+        request_body: dict[str, Any] | None,
+        class_name: str,
+    ) -> RequestBodyInfo:
         """提取请求体信息。
 
+        检测 embed=True 模式：schema 是 type:object，有且仅有一个 required property。
+
+        生成逻辑与请求体示例：
+
+        | 场景 | OpenAPI schema | 生成代码 | 请求体示例 |
+        |------|----------------|----------|------------|
+        | 直接 $ref | ``{$ref: User}`` | ``body: User`` | ``{"id": "1"}`` |
+        | 内联 object | ``{type: object, properties: {...}}`` | ``body: Annotated[Req, Body()]`` | ``{"name": "Bob"}`` |
+        | 数组 | ``{type: array, items: {$ref: Item}}`` | ``body: Annotated[list[Item], Body()]`` | ``[{"id": "1"}]`` |
+        | 标量 | ``{type: integer}`` | ``body: Annotated[int, Body()]`` | ``42`` |
+        | embed=True | 单属性 wrapper object | ``data: Annotated[User, Body(embed=True)]`` | ``{"data": {"id": "1"}}`` |
+
         :param request_body: 请求体信息。
-        :return: (内嵌模型列表, 导入列表)。
+        :param class_name: 接口类名，用于生成内联 body 模型名。
+        :return: RequestBodyInfo，包含类型、内嵌模型、embed 标记和字段名。
         """
         if not request_body:
-            return [], []
+            return RequestBodyInfo(type="", models=[], embed=False, field_name=None, is_model_ref=False)
 
         content = request_body.get("content") or {}
         json_content = content.get("application/json", {})
         schema = json_content.get("schema")
 
         if not schema:
-            return [], []
+            return RequestBodyInfo(type="", models=[], embed=False, field_name=None, is_model_ref=False)
 
-        ref = schema.get("$ref", "")
+        # 检测 embed=True 模式。
+        embed, field_name, inner_schema = self._detect_embed_wrapper(schema)
+
+        if embed and field_name and inner_schema:
+            # embed=True：处理内嵌的 schema。
+            type_name, models = self._resolve_schema_to_type(
+                inner_schema, default_name=f"{class_name}Request"
+            )
+            is_model_ref = "$ref" in inner_schema
+            return RequestBodyInfo(
+                type=type_name,
+                models=models,
+                embed=True,
+                field_name=field_name,
+                is_model_ref=is_model_ref,
+            )
+
+        # 非 embed：标准处理。
+        type_name, models = self._resolve_schema_to_type(
+            schema, default_name=f"{class_name}Request"
+        )
+        is_model_ref = "$ref" in schema
+
+        # 如果是 inline 对象（没有 $ref），需要生成模型类。
+        if schema.get("type") == "object" and not is_model_ref:
+            model_code = self._render_object_schema(
+                f"{class_name}Request", schema
+            )
+            return RequestBodyInfo(
+                type=f"{class_name}Request",
+                models=[model_code],
+                embed=False,
+                field_name=None,
+                is_model_ref=False,
+            )
+
+        return RequestBodyInfo(
+            type=type_name,
+            models=models,
+            embed=False,
+            field_name=None,
+            is_model_ref=is_model_ref,
+        )
+
+    def _detect_embed_wrapper(
+        self, schema: dict[str, Any]
+    ) -> tuple[bool, str | None, dict[str, Any] | None]:
+        """检测是否是 embed=True 的单属性 wrapper。
+
+        embed=True 的 OpenAPI 特征：
+        - type: object
+        - 有且仅有一个 property
+        - 该 property 的 key 在 required 列表中
+
+        :param schema: JSON Schema 字典。
+        :return: (is_embed, field_name, inner_schema)。
+        """
+        if schema.get("type") != "object":
+            return False, None, None
+
+        properties = schema.get("properties") or {}
+        if len(properties) != 1:
+            return False, None, None
+
+        required = schema.get("required") or []
+        field_name = list(properties.keys())[0]
+
+        if field_name not in required:
+            return False, None, None
+
+        inner_schema = properties[field_name]
+        if not isinstance(inner_schema, dict):
+            return False, None, None
+
+        return True, field_name, inner_schema
+
+    def _resolve_schema_to_type(
+        self,
+        schema: dict[str, Any],
+        default_name: str = "",
+    ) -> tuple[str, list[str]]:
+        """将 JSON Schema 转换为 Python 类型表达式。
+
+        :param schema: JSON Schema 字典。
+        :param default_name: 内联对象使用的默认模型名。
+        :return: (类型表达式, 内嵌模型列表)。
+        """
+        # $ref 引用。
+        ref = schema.get("$ref")
         if ref:
             model_name = extract_schema_name(ref)
-            return [f"class {model_name}(BaseModel):\n    pass"], []
+            return model_name, [f"class {model_name}(BaseModel):\n    pass"]
 
-        # 内联 schema。
-        return [], []
+        # 数组类型。
+        if schema.get("type") == "array":
+            items = schema.get("items") or {}
+            items_type, items_models = self._resolve_schema_to_type(items, default_name)
+            return f"list[{items_type}]", items_models
+
+        # 内联对象。
+        if schema.get("type") == "object":
+            # 对象有 properties 才视为有意义的模型。
+            if "properties" in schema:
+                return default_name, []
+            return "dict[str, Any]", []
+
+        # 基础类型。
+        json_type = schema.get("type", "Any")
+        return map_json_schema_type(str(json_type)), []
+
+    def _render_object_schema(
+        self, model_name: str, schema: dict[str, Any]
+    ) -> str:
+        """将内联 object schema 渲染为 Pydantic 模型类定义。
+
+        :param model_name: 模型类名。
+        :param schema: JSON Schema 字典。
+        :return: Python 类定义代码字符串。
+        """
+        lines: list[str] = [f"class {model_name}(BaseModel):"]
+        properties = schema.get("properties") or {}
+        required_list = schema.get("required") or []
+
+        if not properties:
+            lines.append("    pass")
+            return "\n".join(lines)
+
+        for prop_name, prop_schema in properties.items():
+            if not isinstance(prop_schema, dict):
+                continue
+            prop_type, _ = self._resolve_schema_to_type(
+                prop_schema, default_name=f"{model_name}{prop_name.capitalize()}"
+            )
+            required = prop_name in required_list
+            default_str = "" if required else " = None"
+            lines.append(f"    {prop_name}: {prop_type}{default_str}")
+
+        return "\n".join(lines)
 
     def _extract_params(
         self, parameters: list[ParameterInfo]

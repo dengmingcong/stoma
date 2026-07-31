@@ -384,6 +384,8 @@ components:
         # 生成的代码应该包含 User 模型（作为内嵌 BaseModel）。
         assert "class User" in content
         assert "BaseModel" in content
+        # 直接 $ref 引用时，body 字段不需要 Annotated 包装。
+        assert "body: User" in content
 
     def test_request_body_with_inline_object_schema(self, tmp_path: Path) -> None:
         """验证 requestBody 使用内联 object schema 时能正常生成。"""
@@ -415,6 +417,13 @@ components:
         assert (out_dir / "create_item.py").exists()
         content = (out_dir / "create_item.py").read_text(encoding="utf-8")
         assert "@router.post" in content
+        # 内联对象生成 CreateItemRequest 模型。
+        assert "class CreateItemRequest" in content
+        # body 字段类型为生成的模型。
+        assert "body: Annotated[CreateItemRequest, Body()]" in content
+        # 内联对象的属性映射为 Python 类型。
+        assert "name: str" in content
+        assert "quantity: int = None" in content
 
     def test_request_body_with_nested_object_schema(self, tmp_path: Path) -> None:
         """验证 requestBody 使用嵌套 object schema 时能正常生成。"""
@@ -520,6 +529,48 @@ paths:
         assert result.exit_code == 0, result.output
         content = (out_dir / "health.py").read_text(encoding="utf-8")
         assert "@router.get" in content
+
+    def test_request_body_with_embed_true(self, tmp_path: Path) -> None:
+        """验证 requestBody 使用 embed=True（单属性 wrapper）时生成 Body(embed=True)。"""
+        spec = self._build_spec(
+            "/users",
+            "post",
+            "createUserEmbed",
+            """\
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data]
+              properties:
+                data:
+                  $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        assert (out_dir / "create_user_embed.py").exists()
+        content = (out_dir / "create_user_embed.py").read_text(encoding="utf-8")
+        # embed=True 时，字段名是 wrapper 的 key，类型是内嵌的 $ref 模型。
+        assert "data: Annotated[User, Body(embed=True)]" in content
+        assert "from stoma import router, APIRoute, Body" in content
+        assert "from typing import Annotated" in content
 
 
 class TestMakeResponseBody:
@@ -667,6 +718,9 @@ paths:
         assert (out_dir / "get_profile.py").exists()
         content = (out_dir / "get_profile.py").read_text(encoding="utf-8")
         assert "@router.get" in content
+        # 嵌套对象响应也生成对应的模型类。
+        assert "class GetProfileResponse" in content
+        assert "APIRoute[GetProfileResponse]" in content
 
     def test_response_201_uses_201_status(self, tmp_path: Path) -> None:
         """验证 201 Created 响应也能正确识别。"""
