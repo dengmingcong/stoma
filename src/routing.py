@@ -134,7 +134,7 @@ class APIRoute[T](BaseModel):
                 if name.startswith("APIRoute["):
                     metadata = getattr(c, "__pydantic_generic_metadata__", {})
                     if args := metadata.get("args"):
-                        response_type = args[0]
+                        response_type = args[0]  # 如果泛型有多个参数，取第一个作为响应类型，忽略后续其他参数
                     break
 
             if response_type is None:
