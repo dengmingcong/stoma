@@ -86,11 +86,16 @@ class OpenAPIParser:
         self._spec: OpenAPI | OpenAPI30 | None = None
 
     def load(self) -> dict[str, Any]:
-        """加载并解析 OpenAPI 规范文件。
+        """加载 OpenAPI 规范文件。
 
-        :return: 解析后的 OpenAPI 规范字典。
+        根据文件后缀判断格式：
+
+        - ``.yaml`` / ``.yml`` → YAML 格式
+        - ``.json`` → JSON 格式
+
+        :return: 加载后的 OpenAPI 规范字典。
         :raise FileNotFoundError: 规范文件不存在。
-        :raise ValueError: 规范文件格式错误。
+        :raise ValueError: 不支持的文件后缀。
         """
         if not self.spec_path.exists():
             msg = f"OpenAPI specification file not found: {self.spec_path}"
@@ -98,19 +103,14 @@ class OpenAPIParser:
 
         content = self.spec_path.read_text(encoding="utf-8")
 
-        try:
-            if self.spec_path.suffix.lower() in {".yaml", ".yml"}:
-                self._spec_dict = yaml.safe_load(content)
-            elif self.spec_path.suffix.lower() == ".json":
-                self._spec_dict = json.loads(content)
-            else:
-                try:
-                    self._spec_dict = yaml.safe_load(content)
-                except yaml.YAMLError:
-                    self._spec_dict = json.loads(content)
-        except (yaml.YAMLError, json.JSONDecodeError) as e:
-            msg = f"Failed to parse OpenAPI specification: {e}"
-            raise ValueError(msg) from e
+        suffix = self.spec_path.suffix.lower()
+        if suffix in {".yaml", ".yml"}:
+            self._spec_dict = yaml.safe_load(content)
+        elif suffix == ".json":
+            self._spec_dict = json.loads(content)
+        else:
+            msg = f"Unsupported file suffix: {suffix}. Supported: .yaml, .yml, .json"
+            raise ValueError(msg)
 
         if not isinstance(self._spec_dict, dict):
             msg = "OpenAPI specification must be a JSON object."
