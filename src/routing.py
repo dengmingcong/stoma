@@ -17,6 +17,7 @@ from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from src.dependencies import Dependant, ModelField
+from src.dependencies.utils import field_annotation_is_complex
 from src.params import Param, ParamTypes
 
 
@@ -105,25 +106,13 @@ class APIRoute[T](BaseModel):
                     path_params.append(model_field)
                     continue
 
-                # 3. 检查是否是请求体（类型为 BaseModel 子类）
-                # field_info.annotation 已经是 Pydantic 展开后的基础类型
+                # 3. 检查是否是复杂类型（BaseModel、Mapping、序列、dataclass）→ 请求体
+                #    标量类型（int、str、bool、float 等）→ 查询参数
                 field_type = field_info.annotation
-
-                # 检查是否是 BaseModel 子类（排除 BaseModel 本身）
-                try:
-                    if (
-                        isinstance(field_type, type)
-                        and issubclass(field_type, BaseModel)
-                        and field_type is not BaseModel
-                    ):
-                        body_params.append(model_field)
-                        continue
-                except TypeError:
-                    # 某些类型（如泛型）无法使用 issubclass 检查
-                    pass
-
-                # 4. 默认为查询参数
-                query_params.append(model_field)
+                if field_annotation_is_complex(field_type):
+                    body_params.append(model_field)
+                else:
+                    query_params.append(model_field)
 
             # 提取响应类型
             response_type: type | None = None
