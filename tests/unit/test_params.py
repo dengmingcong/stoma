@@ -72,7 +72,7 @@ class TestHeader:
         """测试在 Pydantic 模型中使用 Header。"""
 
         class TestModel(BaseModel):
-            model_config = ConfigDict(populate_by_name=True)
+            model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
             authorization: Annotated[str, Header()] = Field(alias="Authorization")
             user_agent: Annotated[str | None, Header()] = None
@@ -123,7 +123,7 @@ class TestParamIntegration:
             content: str
 
         class TestEndpoint(BaseModel):
-            model_config = ConfigDict(populate_by_name=True)
+            model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
             post_id: Annotated[int, Path()]
             expand: Annotated[bool, Query()] = False

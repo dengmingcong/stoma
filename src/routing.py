@@ -42,7 +42,7 @@ class APIRoute[T](BaseModel):
 
     # Ref: https://pydantic.dev/docs/validation/latest/concepts/models/#class-variables
     _dependant: ClassVar[Dependant | None] = None
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
     @classmethod
     def _get_dependant(
