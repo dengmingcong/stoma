@@ -138,12 +138,8 @@ class Client:
     ) -> dict[str, Any]:
         """收集查询参数为 dict（Playwright 自动拼接为 query string）。
 
-        Playwright 的 params 参数自动 str() 转换 int/float/str，
-        但 bool 会输出 Python convention "True"/"False"（HTTP 期望小写 "true"/"false"），
-        None 会被字面量化为 "None"。所以：
-
+        规则：
         - None 值：跳过
-        - 布尔值：手动转为 'true'/'false'（HTTP 约定）
         - 其他类型：直接传递，Playwright 自动转换
         """
         query: dict[str, Any] = {}
@@ -151,8 +147,6 @@ class Client:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
-            if isinstance(value, bool):
-                value = "true" if value else "false"
             query[model_field.alias] = value
         return query
 

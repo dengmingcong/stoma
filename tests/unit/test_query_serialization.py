@@ -102,8 +102,8 @@ def test_serialize_query_params_with_boolean() -> None:
     endpoint = GetUsers(active=True, verified=False)
     query_params = Client(context=None)._collect_query_params(endpoint, endpoint._get_dependant())
 
-    # bool 必须手动转 'true'/'false'（Playwright 会输出 Python "True"/"False"）
-    assert query_params == {"active": "true", "verified": "false"}
+    # bool 直接传递，Playwright 自动转换
+    assert query_params == {"active": True, "verified": False}
 
 
 def test_serialize_query_params_with_default_values() -> None:
