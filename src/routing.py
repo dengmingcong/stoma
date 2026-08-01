@@ -15,7 +15,6 @@ from collections.abc import Callable
 from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from pydantic import BaseModel
-from pydantic.fields import FieldInfo
 
 from src.dependencies import Dependant, ModelField
 from src.params import Param, ParamTypes
@@ -89,7 +88,7 @@ class APIRoute[T](BaseModel):
                 )
 
                 # 1. 检查是否有显式的 Param 标记
-                param_info = cls._get_param_info_from_field(field_name, field_info)
+                param_info = cls._get_param_info_from_field(field_name)
 
                 if param_info is not None:
                     # 如果有显式标记，直接使用标记的类型
@@ -163,18 +162,18 @@ class APIRoute[T](BaseModel):
         return cls._dependant
 
     @classmethod
-    def _get_param_info_from_field(cls, field_name: str, field_info: FieldInfo) -> Param | None:
+    def _get_param_info_from_field(cls, field_name: str) -> Param | None:
         """从字段中提取显式的 Param 标记信息。
 
         从类的 __annotations__ 中检查 Annotated 类型，提取 Param 对象。
 
-        注意：FieldInfo.metadata 不会保存 Param 对象（已被 Pydantic 消费并转换为约束），
-        因此必须从原始类型注解 __annotations__ 中获取。
+        FastAPI 的处理方式：直接分析函数签名的 __annotations__，通过 get_origin()
+        和 get_args() 从 Annotated 中提取 FieldInfo 子类（如 Body/Query/Path）。
+        不依赖 model_fields，因为 Pydantic 会将 FieldInfo 子类的约束提取到普通 FieldInfo 中，
+        而不保留原始的 Body/Query/Path 实例。
 
         :param field_name: 字段名称。
         :type field_name: str
-        :param field_info: Pydantic 字段信息对象（未使用，保留用于接口一致性）。
-        :type field_info: FieldInfo
         :return: 参数标记对象，如果没有找到则返回 None。
         :rtype: Param | None
         """
