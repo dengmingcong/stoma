@@ -213,8 +213,6 @@ class Client:
                 dumped = value.model_dump(exclude_none=True)
             elif is_dataclass(value) and not isinstance(value, type):
                 dumped = asdict(value)
-            elif hasattr(value, "model_dump"):
-                dumped = value.model_dump(exclude_none=True)
             else:
                 dumped = value
 
@@ -235,9 +233,8 @@ class Client:
         explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
         field_type = model_field.field_info.annotation
 
-        should_embed = (
-            (is_explicit_body and explicit_embed)
-            or (is_explicit_body and not field_annotation_is_complex(field_type))
+        should_embed = (is_explicit_body and explicit_embed) or (
+            is_explicit_body and not field_annotation_is_complex(field_type)
         )
 
         if not should_embed:
