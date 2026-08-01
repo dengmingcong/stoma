@@ -201,7 +201,7 @@ class Client:
             if value is None:
                 continue
 
-            param_info = api_route._get_param_info_from_field(model_field.name)
+            param_info = model_field.param_info
             is_explicit_body = isinstance(param_info, Body)
             explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
             is_pydantic_model = isinstance(value, BaseModel)

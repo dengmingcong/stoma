@@ -14,7 +14,7 @@ import re
 from collections.abc import Callable
 from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from src.dependencies import Dependant, ModelField
 from src.params import Param, ParamTypes
@@ -42,6 +42,7 @@ class APIRoute[T](BaseModel):
 
     # Ref: https://pydantic.dev/docs/validation/latest/concepts/models/#class-variables
     _dependant: ClassVar[Dependant | None] = None
+    model_config = ConfigDict(populate_by_name=True)
 
     @classmethod
     def _get_dependant(
@@ -82,16 +83,13 @@ class APIRoute[T](BaseModel):
 
             # 遍历所有字段，自动识别参数类型
             for field_name, field_info in cls.model_fields.items():
-                model_field = ModelField(
-                    name=field_name,
-                    field_info=field_info,
-                )
-
-                # 1. 检查是否有显式的 Param 标记
+                # 从 __annotations__ 获取显式的 Param 标记
                 param_info = cls._get_param_info_from_field(field_name)
 
-                if param_info is not None:
-                    # 如果有显式标记，直接使用标记的类型
+                # 创建 ModelField，保留原始 field_info
+                model_field = ModelField(name=field_name, field_info=field_info, param_info=param_info)
+
+                if isinstance(param_info, Param):
                     if param_info.in_ == ParamTypes.path:
                         path_params.append(model_field)
                     elif param_info.in_ == ParamTypes.query:
