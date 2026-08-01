@@ -6,6 +6,8 @@ from typing import Any
 from pydantic import TypeAdapter
 from pydantic.fields import FieldInfo
 
+from src.params import Param
+
 
 @dataclass(frozen=True)
 class ModelField:
@@ -17,10 +19,13 @@ class ModelField:
     :vartype name: str
     :var field_info: Pydantic 字段信息。
     :vartype field_info: FieldInfo
+    :var param_info: 显式的 Param 标记（如 Body/Query/Path），如果没有则为空。
+    :vartype param_info: Param | None
     """
 
     name: str
     field_info: FieldInfo
+    param_info: Param | None = None
 
     @property
     def alias(self) -> str:
