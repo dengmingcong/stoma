@@ -342,8 +342,9 @@ class Client:
             except Exception as e:
                 msg = f"响应数据验证失败: {e}"
                 errors: list[dict[str, Any]] = []
+                # Pydantic 的 ValidationError 才有 .errors() 方法
                 if hasattr(e, "errors"):
-                    errors = list(e.errors())
+                    errors = list(e.errors())  # type: ignore[no-any-return]
                 raise ValidationError(msg, errors=errors) from e
 
             return Response[T](raw=api_response, validated=validated)
