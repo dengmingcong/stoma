@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from src.dependencies import Dependant
 from src.exceptions import HTTPError, ParseError, ValidationError
+from src.params import Body
 from src.response import Response
 from src.routing import APIRoute
 
@@ -189,8 +190,6 @@ class Client:
         - Body(embed=True)：嵌入
         - 标量 Body()：嵌入
         """
-        from src.params import Body
-
         if not dependant.body_params:
             return None
 
@@ -204,15 +203,11 @@ class Client:
 
             param_info = api_route._get_param_info_from_field(model_field.name)
             is_explicit_body = isinstance(param_info, Body)
-            explicit_embed = (
-                getattr(param_info, "embed", False) if is_explicit_body else False
-            )
+            explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
             is_pydantic_model = isinstance(value, BaseModel)
 
             should_embed = (
-                has_multiple
-                or (is_explicit_body and explicit_embed)
-                or (is_explicit_body and not is_pydantic_model)
+                has_multiple or (is_explicit_body and explicit_embed) or (is_explicit_body and not is_pydantic_model)
             )
 
             if is_pydantic_model:
@@ -303,11 +298,7 @@ class Client:
         dependant = api_route._get_dependant()
 
         # 1. 解析 content-type
-        content_type = (
-            api_response.headers.get("content-type", "")
-            if api_response.headers
-            else ""
-        )
+        content_type = api_response.headers.get("content-type", "") if api_response.headers else ""
         media_type = content_type.split(";")[0].strip().lower()
 
         # 2. 特殊：204 No Content → model = None
@@ -321,9 +312,7 @@ class Client:
             except Exception as e:
                 fallback_text = ""
                 try:
-                    fallback_text = (
-                        api_response.text() if hasattr(api_response, "text") else ""
-                    )
+                    fallback_text = api_response.text() if hasattr(api_response, "text") else ""
                 except Exception:
                     pass
                 msg = f"响应 JSON 解析失败: {e}"

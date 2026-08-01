@@ -14,7 +14,7 @@ import re
 from collections.abc import Callable
 from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from src.dependencies import Dependant, ModelField
 from src.params import Param, ParamTypes
@@ -142,8 +142,6 @@ class APIRoute[T](BaseModel):
                 raise ValueError(msg)
 
             # 创建响应类型验证器
-            from pydantic import TypeAdapter
-
             response_type_adapter: TypeAdapter[Any] | None = None
             if response_type is not type(None):
                 response_type_adapter = TypeAdapter(response_type)
