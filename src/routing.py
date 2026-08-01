@@ -207,7 +207,7 @@ class APIRoute[T](BaseModel):
         return None
 
 
-def api_route_decorator[T: APIRoute[Any]](
+def api_route_decorator[T: APIRoute](
     *,
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"],
     path: str,
@@ -273,7 +273,7 @@ class APIRouter:
             email: str
     """
 
-    def get[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
+    def get[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
         """GET 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
@@ -289,7 +289,7 @@ class APIRouter:
         """
         return api_route_decorator(method="GET", path=path)
 
-    def post[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
+    def post[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
         """POST 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
@@ -306,7 +306,7 @@ class APIRouter:
         """
         return api_route_decorator(method="POST", path=path)
 
-    def put[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
+    def put[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
         """PUT 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
@@ -323,7 +323,7 @@ class APIRouter:
         """
         return api_route_decorator(method="PUT", path=path)
 
-    def patch[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
+    def patch[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
         """PATCH 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
@@ -340,7 +340,7 @@ class APIRouter:
         """
         return api_route_decorator(method="PATCH", path=path)
 
-    def delete[T: APIRoute[Any]](self, path: str) -> Callable[[type[T]], type[T]]:
+    def delete[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
         """DELETE 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。

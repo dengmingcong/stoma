@@ -90,7 +90,7 @@ class Client:
 
     def _extract_request_params(
         self,
-        api_route: APIRoute[Any],
+        api_route: APIRoute,
     ) -> tuple[str, str, dict[str, Any], dict[str, str], dict[str, Any] | None]:
         """从 api_route 提取（method, path, params, headers, body）。
 
@@ -107,7 +107,7 @@ class Client:
 
     def _interpolate_path_params(
         self,
-        api_route: APIRoute[Any],
+        api_route: APIRoute,
         dependant: Dependant,
     ) -> str:
         """插值路径参数（将 {param} 占位符替换为实际值）。
@@ -123,7 +123,7 @@ class Client:
 
     def _collect_query_params(
         self,
-        api_route: APIRoute[Any],
+        api_route: APIRoute,
         dependant: Dependant,
     ) -> dict[str, Any]:
         """收集查询参数为 dict（Playwright 自动拼接为 query string）。
@@ -148,7 +148,7 @@ class Client:
 
     def _serialize_header_params(
         self,
-        api_route: APIRoute[Any],
+        api_route: APIRoute,
         dependant: Dependant,
     ) -> dict[str, str]:
         """序列化请求头参数为 dict。
@@ -177,7 +177,7 @@ class Client:
 
     def _serialize_body_params(
         self,
-        api_route: APIRoute[Any],
+        api_route: APIRoute,
         dependant: Dependant,
     ) -> dict[str, Any] | None:
         """根据 FastAPI Body Multiple Parameters 规则序列化请求体为 JSON 字符串。
