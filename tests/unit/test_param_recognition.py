@@ -8,10 +8,12 @@
 - 缓存机制正确工作（仅首次识别，后续复用）
 """
 
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
+from src.dependencies.utils import field_annotation_is_complex
 from src.params import Header
 from src.routing import APIRoute, APIRouter
 
@@ -336,3 +338,128 @@ def test_basemodel_subclass_recognition() -> None:
     # 注意：Body 参数会被后面的覆盖
     assert params["body"] == nested_req  # 最后一个 Body 参数生效
     assert params["query"] == {"query_param": "default"}
+
+
+def test_sequence_types_recognition() -> None:
+    """测试序列类型（list、dict、set）识别为请求体。"""
+
+    @router.post("/items")
+    class PostItems(APIRoute[dict[str, str]]):
+        items: list[str]  # 序列类型 → body
+        metadata: dict[str, int]  # Mapping 类型 → body
+        tags: set[str]  # 序列类型 → body
+        count: int  # 标量类型 → query
+
+    dependant = PostItems._get_dependant()
+
+    # 序列类型应该在 body_params 中
+    assert len(dependant.body_params) == 3
+    body_names = [f.name for f in dependant.body_params]
+    assert "items" in body_names
+    assert "metadata" in body_names
+    assert "tags" in body_names
+    # 标量类型应该在 query_params 中
+    assert len(dependant.query_params) == 1
+    assert dependant.query_params[0].name == "count"
+
+
+def test_dataclass_recognition() -> None:
+    """测试 dataclass 识别为请求体。"""
+    from dataclasses import dataclass
+
+    @dataclass
+    class ItemData:
+        name: str
+        quantity: int
+
+    @router.post("/dataclass-item")
+    class PostDataclass(APIRoute[dict[str, str]]):
+        item: ItemData  # dataclass → body
+        active: bool  # 标量类型 → query
+
+    dependant = PostDataclass._get_dependant()
+
+    # dataclass 应该在 body_params 中
+    assert len(dependant.body_params) == 1
+    assert dependant.body_params[0].name == "item"
+    # 标量类型应该在 query_params 中
+    assert len(dependant.query_params) == 1
+    assert dependant.query_params[0].name == "active"
+
+
+def test_union_type_recognition() -> None:
+    """测试 Union 类型识别。
+
+    - BaseModel | None → body（BaseModel 是复杂类型）
+    - int | str → query（都不是复杂类型）
+    - BaseModel | int → body（任一复杂类型）
+    """
+
+    @router.post("/union-item")
+    class PostUnion(APIRoute[dict[str, str]]):
+        # BaseModel | None → body
+        optional_data: UserData | None
+        # int | str → query
+        optional_id: int | str = "1"
+        # 标量
+        name: str
+
+    dependant = PostUnion._get_dependant()
+
+    # BaseModel | None 应该在 body_params 中
+    assert len(dependant.body_params) == 1
+    assert dependant.body_params[0].name == "optional_data"
+    # int | str 和 str 应该在 query_params 中
+    assert len(dependant.query_params) == 2
+    query_names = [f.name for f in dependant.query_params]
+    assert "optional_id" in query_names
+    assert "name" in query_names
+
+
+class TestComplexTypeHelpers:
+    """测试复杂类型判断辅助函数。"""
+
+    def test_is_complex_base_model(self) -> None:
+        """测试 BaseModel 子类被识别为复杂类型。"""
+        from src.dependencies.utils import field_annotation_is_complex
+
+        class MyModel(BaseModel):
+            field: str
+
+        assert field_annotation_is_complex(MyModel) is True
+        assert field_annotation_is_complex(MyModel | None) is True
+
+    def test_is_complex_sequence(self) -> None:
+        """测试序列类型被识别为复杂类型。"""
+        from src.dependencies.utils import field_annotation_is_complex
+
+        assert field_annotation_is_complex(list[str]) is True
+        assert field_annotation_is_complex(dict[str, int]) is True
+        assert field_annotation_is_complex(set[int]) is True
+        assert field_annotation_is_complex(tuple[int, ...]) is True
+
+    def test_is_complex_dataclass(self) -> None:
+        """测试 dataclass 被识别为复杂类型。"""
+
+        @dataclass
+        class MyData:
+            name: str
+
+        assert field_annotation_is_complex(MyData) is True
+
+    def test_is_complex_scalar(self) -> None:
+        """测试标量类型不被识别为复杂类型。"""
+        from src.dependencies.utils import field_annotation_is_complex
+
+        assert field_annotation_is_complex(int) is False
+        assert field_annotation_is_complex(str) is False
+        assert field_annotation_is_complex(bool) is False
+        assert field_annotation_is_complex(float) is False
+        assert field_annotation_is_complex(int | str) is False  # Union of scalars
+
+    def test_is_complex_union_with_base_model(self) -> None:
+        """测试 BaseModel | None 被识别为复杂类型。"""
+        from src.dependencies.utils import field_annotation_is_complex
+
+        assert field_annotation_is_complex(UserData | None) is True
+        assert field_annotation_is_complex(int | UserData) is True  # One is complex
