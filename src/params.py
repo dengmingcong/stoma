@@ -27,7 +27,11 @@ class Param:
     """参数标记基类。
 
     只用于标记参数来源（query/header/path/body），不保存其他属性。
-    其他属性使用 Pydantic ``Field()`` 设置：
+    其他属性使用 Pydantic ``Field()`` 设置。
+
+    FastAPI 的 Param 之所以需要继承 FieldInfo，是因为 FastAPI 是以函数的形式定义接口的，
+    而我们是以类的形式定义接口的并且继承了 pydantic BaseModel，所以不需要继承 FieldInfo。
+    这样更简单，而且可以直接使用 Pydantic 的 Field() 来设置其他属性。
 
     Example::
 
