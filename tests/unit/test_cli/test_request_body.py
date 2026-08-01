@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
+from typer.testing import CliRunner
 
 from src.cli import app
 
@@ -32,9 +32,7 @@ paths:
 class TestMakeRequestBody:
     """测试各种 requestBody 场景的生成结果。"""
 
-    def test_request_body_with_ref_schema(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_request_body_with_ref_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用 $ref 引用的 schema 时能正常生成。"""
         spec = _build_spec(
             "/users",
@@ -73,9 +71,7 @@ components:
         # 直接 $ref 引用时，body 字段不需要 Annotated 包装。
         assert "body: User" in content
 
-    def test_request_body_with_inline_object_schema(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_request_body_with_inline_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用内联 object schema 时能正常生成。"""
         spec = _build_spec(
             "/items",
@@ -113,9 +109,7 @@ components:
         assert "name: str" in content
         assert "quantity: int = None" in content
 
-    def test_request_body_with_nested_object_schema(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_request_body_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用嵌套 object schema 时能正常生成。"""
         spec = _build_spec(
             "/orders",
@@ -161,9 +155,7 @@ components:
         assert "createOrder" in content or "create_order" in content
         assert "@router.post" in content
 
-    def test_request_body_with_array_schema(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_request_body_with_array_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 为数组类型时能正常生成。"""
         spec = _build_spec(
             "/batch",
@@ -196,9 +188,7 @@ components:
         assert result.exit_code == 0, result.output
         assert (out_dir / "create_batch.py").exists()
 
-    def test_request_body_with_no_body(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_request_body_with_no_body(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 endpoint 没有 requestBody 时不报错。"""
         spec = """\
 openapi: 3.1.0
@@ -224,9 +214,7 @@ paths:
         content = (out_dir / "health.py").read_text(encoding="utf-8")
         assert "@router.get" in content
 
-    def test_request_body_with_embed_true(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_request_body_with_embed_true(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用 embed=True（单属性 wrapper）时生成 Body(embed=True)。"""
         spec = _build_spec(
             "/users",

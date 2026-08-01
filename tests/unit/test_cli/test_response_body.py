@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
+from typer.testing import CliRunner
 
 from src.cli import app
 
@@ -12,9 +12,7 @@ from src.cli import app
 class TestMakeResponseBody:
     """测试各种 response body 场景的生成结果。"""
 
-    def test_response_with_ref_schema(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_response_with_ref_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 使用 $ref 引用的 schema 时生成对应模型。"""
         spec = """\
 openapi: 3.1.0
@@ -66,9 +64,7 @@ components:
         assert "APIRoute[User]" in content
         assert "class User" in content
 
-    def test_response_with_array_of_ref(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_response_with_array_of_ref(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 为引用类型的数组时生成 list[Model]。"""
         spec = """\
 openapi: 3.1.0
@@ -111,9 +107,7 @@ components:
         assert "APIRoute[list[User]]" in content
         assert "class User" in content
 
-    def test_response_with_nested_object_schema(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_response_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 为嵌套对象时能正常生成。"""
         spec = """\
 openapi: 3.1.0
@@ -164,9 +158,7 @@ paths:
         assert "class GetProfileResponse" in content
         assert "APIRoute[GetProfileResponse]" in content
 
-    def test_response_201_uses_201_status(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_response_201_uses_201_status(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 201 Created 响应也能正确识别。"""
         spec = """\
 openapi: 3.1.0
@@ -204,9 +196,7 @@ components:
         content = (out_dir / "create_user.py").read_text(encoding="utf-8")
         assert "APIRoute[User]" in content
 
-    def test_response_without_content(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_response_without_content(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 只有 description 没有 content 时生成 None 类型。"""
         spec = """\
 openapi: 3.1.0

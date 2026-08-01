@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
+from typer.testing import CliRunner
 
 from src.cli import app
 
@@ -12,9 +12,7 @@ from src.cli import app
 class TestMakeParameters:
     """测试各种 parameter 场景的生成结果。"""
 
-    def test_query_parameters_with_types(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_query_parameters_with_types(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证不同类型的 query 参数被正确映射为 Python 类型。"""
         spec = """\
 openapi: 3.1.0
@@ -65,9 +63,7 @@ paths:
         assert "score: float = None" in content
         assert "active: bool = None" in content
 
-    def test_header_parameter_uses_annotated(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_header_parameter_uses_annotated(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 header 参数使用 Annotated[..., Header(...)] 标记。"""
         spec = """\
 openapi: 3.1.0
@@ -107,9 +103,7 @@ paths:
         assert "from typing import Annotated" in content
         assert "Authorization" not in content or "Annotated" in content
 
-    def test_required_vs_optional_path_param(
-        self, cli_runner: pytest.fixture, tmp_path: Path
-    ) -> None:
+    def test_required_vs_optional_path_param(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 path 参数必填、无默认值。"""
         spec = """\
 openapi: 3.1.0
