@@ -19,16 +19,26 @@ URL/Query 处理说明：
 - 路径只需相对路径（如 /users/123），Playwright 自动拼接 base_url
 """
 
-from typing import Any
+from dataclasses import asdict, is_dataclass
+from typing import Any, NamedTuple
 
 from playwright.sync_api import APIRequestContext, APIResponse
 from pydantic import BaseModel
 
 from src.dependencies import Dependant
+from src.dependencies.utils import field_annotation_is_complex
 from src.exceptions import HTTPError, ParseError, ValidationError
 from src.params import Body
 from src.response import Response
 from src.routing import APIRoute
+
+
+class BodyItem(NamedTuple):
+    """body 项。"""
+
+    alias: str
+    dumped: dict[str, Any] | Any
+    should_embed: bool
 
 
 class Client:
@@ -194,7 +204,7 @@ class Client:
             return None
 
         has_multiple = len(dependant.body_params) > 1
-        body_data: dict[str, Any] = {}
+        body_items: list[BodyItem] = []
 
         for model_field in dependant.body_params:
             value = getattr(api_route, model_field.name)
@@ -204,28 +214,35 @@ class Client:
             param_info = model_field.param_info
             is_explicit_body = isinstance(param_info, Body)
             explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
-            is_pydantic_model = isinstance(value, BaseModel)
+            field_type = model_field.field_info.annotation
 
+            # 判断是否应该嵌入：多参数、显式 embed、显式标量 body
             should_embed = (
-                has_multiple or (is_explicit_body and explicit_embed) or (is_explicit_body and not is_pydantic_model)
+                has_multiple
+                or (is_explicit_body and explicit_embed)
+                or (is_explicit_body and not field_annotation_is_complex(field_type))
             )
 
-            if is_pydantic_model:
+            # 序列化
+            if isinstance(value, BaseModel):
+                dumped = value.model_dump(exclude_none=True)
+            elif is_dataclass(value) and not isinstance(value, type):
+                dumped = asdict(value)
+            elif hasattr(value, "model_dump"):
                 dumped = value.model_dump(exclude_none=True)
             else:
                 dumped = value
 
-            if should_embed:
-                body_data[model_field.alias] = dumped
-            else:
-                if is_pydantic_model:
-                    body_data.update(dumped)
-                else:
-                    body_data[model_field.alias] = dumped
+            body_items.append(BodyItem(model_field.alias, dumped, should_embed))
 
-        if not body_data:
+        # 统一处理
+        if not body_items:
             return None
-        return body_data
+
+        if len(body_items) == 1 and not body_items[0].should_embed:
+            return body_items[0].dumped
+
+        return {item.alias: item.dumped for item in body_items}
 
     # ===== 私有方法：发送请求 =====
 
