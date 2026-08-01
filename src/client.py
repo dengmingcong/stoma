@@ -10,7 +10,7 @@ Client 是 stoma 的运行时入口，封装所有 HTTP 细节：
     ctx = pw.request.new_context(base_url="http://localhost:8000")
     client = Client(context=ctx)
     response = client.send(GetUsers(limit=10))
-    # response: Response[list[UserData]]，T 从 GetUsers 推断
+    # response: Response[T]，T 从 GetUsers 推断
 
 URL/Query 处理说明：
 - base_url 由 Playwright context 管理（new_context 时设置）
@@ -57,7 +57,7 @@ class Client:
         endpoint = GetUsers(limit=10)
         response = client.send(endpoint)
         # IDE: response 类型为 Response[list[UserData]]，T 从 GetUsers 推断
-        # response.data: list[UserData] | None
+        # response.validated: list[UserData] | None
         # response.raw: Playwright APIResponse
     """
 
@@ -69,7 +69,10 @@ class Client:
         """
         self._context = context
 
-    def send[T](self, api_route: APIRoute[T]) -> Response[T]:
+    def send[T](
+        self,
+        api_route: APIRoute[T],
+    ) -> Response[T]:
         """发送 api_route 请求，返回 Response[T]。
 
         T 通过 PEP 695 泛型方法从 api_route 的类型参数自动推断。
@@ -316,11 +319,11 @@ class Client:
         content_type = api_response.headers.get("content-type", "") if api_response.headers else ""
         media_type = content_type.split(";")[0].strip().lower()
 
-        # 2. 特殊：204 No Content → model = None
+        # 2. 特殊：204 No Content → validated = None
         if api_response.status == 204:
-            return Response[T](raw=api_response, data=None)
+            return Response[T](raw=api_response, validated=None)
 
-        # 3. 仅当 content-type 为 JSON 时才解析并填充 model
+        # 3. 仅当 content-type 为 JSON 时才解析并填充 validated
         if media_type.startswith("application/json") or media_type.endswith("+json"):
             try:
                 payload: Any = api_response.json()
@@ -334,7 +337,7 @@ class Client:
                 raise ParseError(msg, response_text=fallback_text) from e
 
             if dependant.response_type is type(None):
-                return Response[T](raw=api_response, data=None)
+                return Response[T](raw=api_response, validated=None)
 
             assert dependant.response_type_adapter is not None
             try:
@@ -346,7 +349,7 @@ class Client:
                     errors = list(e.errors())
                 raise ValidationError(msg, errors=errors) from e
 
-            return Response[T](raw=api_response, data=validated)
+            return Response[T](raw=api_response, validated=validated)
 
-        # 4. 非 JSON 响应：model = None
-        return Response[T](raw=api_response, data=None)
+        # 4. 非 JSON 响应：validated = None
+        return Response[T](raw=api_response, validated=None)

@@ -176,9 +176,9 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert isinstance(response.data, list)
-        assert len(response.data) == 20  # 默认 limit=20
-        assert all(isinstance(u, UserData) for u in response.data)
+        assert isinstance(response.validated, list)
+        assert len(response.validated) == 20  # 默认 limit=20
+        assert all(isinstance(u, UserData) for u in response.validated)
 
     def test_get_users_list_with_params(self, client: Client) -> None:
         """测试 GET /users 带参数。"""
@@ -188,9 +188,9 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert isinstance(response.data, list)
-        assert len(response.data) == 5
-        assert response.data[0].id == 10
+        assert isinstance(response.validated, list)
+        assert len(response.validated) == 5
+        assert response.validated[0].id == 10
 
     def test_get_user_by_id(self, client: Client) -> None:
         """测试 GET /users/{user_id} 路径参数。"""
@@ -200,10 +200,10 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert isinstance(response.data, UserData)
-        assert response.data.id == 42
-        assert response.data.name == "User 42"
-        assert response.data.email == "user42@example.com"
+        assert isinstance(response.validated, UserData)
+        assert response.validated.id == 42
+        assert response.validated.name == "User 42"
+        assert response.validated.email == "user42@example.com"
 
     def test_create_user(self, client: Client) -> None:
         """测试 POST /users 请求体。"""
@@ -213,10 +213,10 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 201
-        assert isinstance(response.data, UserData)
-        assert response.data.id == 999
-        assert response.data.name == "John Doe"
-        assert response.data.email == "john@example.com"
+        assert isinstance(response.validated, UserData)
+        assert response.validated.id == 999
+        assert response.validated.name == "John Doe"
+        assert response.validated.email == "john@example.com"
 
     def test_query_params_filtering(self, client: Client) -> None:
         """测试查询参数过滤 None 值。"""
@@ -226,8 +226,8 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert isinstance(response.data, list)
-        assert len(response.data) == 5
+        assert isinstance(response.validated, list)
+        assert len(response.validated) == 5
 
 
 class TestServersConfiguration:
@@ -239,8 +239,8 @@ class TestServersConfiguration:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert isinstance(response.data, list)
-        assert len(response.data) == 20
+        assert isinstance(response.validated, list)
+        assert len(response.validated) == 20
 
 
 class TestExceptionHandling:
@@ -256,7 +256,7 @@ class TestExceptionHandling:
 
         assert response.raw.status == 404
         # T 是 dict[str, Any]，body 是 JSON，被解析为 dict
-        assert response.data == {"error": "Not found"}
+        assert response.validated == {"error": "Not found"}
 
     def test_parse_error_on_invalid_json(self) -> None:
         """测试响应解析错误。
@@ -284,8 +284,8 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert isinstance(response.data, UserData)
-        assert response.data.id == 1
+        assert isinstance(response.validated, UserData)
+        assert response.validated.id == 1
 
     def test_json_failure_500_returns_envelope(self, client: Client) -> None:
         """HTTP 500 + JSON body：返回 Response（不抛）。"""
@@ -296,7 +296,7 @@ class TestResponseEnvelope:
 
         assert response.raw.status == 500
         # body 是 JSON，T 是 dict[str, Any]，会被验证为 dict
-        assert response.data == {"error": "internal error"}
+        assert response.validated == {"error": "internal error"}
 
     def test_text_plain(self, client: Client) -> None:
         """纯文本：status 200, text/plain → model = None, raw.content 是 UTF-8 字节。"""
@@ -306,7 +306,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert response.data is None  # 非 JSON，model 不填充
+        assert response.validated is None  # 非 JSON，model 不填充
         assert response.raw.body() == b"hello world"
 
     def test_binary_octet_stream(self, client: Client) -> None:
@@ -317,7 +317,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert response.data is None
+        assert response.validated is None
         assert response.raw.body() == b"\x00\x01\x02\x03"
 
     def test_text_500(self, client: Client) -> None:
@@ -328,7 +328,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 500
-        assert response.data is None
+        assert response.validated is None
         assert response.raw.body() == b"internal error"
 
     def test_no_content_type_fallback(self, client: Client) -> None:
@@ -339,7 +339,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert response.data is None
+        assert response.validated is None
         assert response.raw.body() == b"plain text body"
 
     def test_204_no_content(self, client: Client) -> None:
@@ -350,7 +350,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 204
-        assert response.data is None
+        assert response.validated is None
         assert response.raw.body() == b""
 
     def test_problem_json_plus_suffix(self, client: Client) -> None:
@@ -361,7 +361,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert response.data == {"detail": "everything is fine", "status": 200}
+        assert response.validated == {"detail": "everything is fine", "status": 200}
 
     def test_charset_in_content_type(self, client: Client) -> None:
         """application/json; charset=utf-8：strip charset 后走 JSON 路径。"""
@@ -371,11 +371,9 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert response.data == {"hello": "world"}
+        assert response.validated == {"hello": "world"}
 
-    def test_raw_response_has_status_code_and_headers(
-        self, client: Client
-    ) -> None:
+    def test_raw_response_has_status_code_and_headers(self, client: Client) -> None:
         """RawResponse 包含 status_code 和 headers。"""
 
         endpoint = GetUserById(user_id=1)
@@ -411,9 +409,9 @@ class TestBodyMultipleParams:
 
         # 服务端返回 201 表示请求体格式正确（平展）
         assert response.raw.status == 201
-        assert response.data is not None
-        assert response.data.name == "Alice"
-        assert response.data.email == "alice@example.com"
+        assert response.validated is not None
+        assert response.validated.name == "Alice"
+        assert response.validated.email == "alice@example.com"
 
     def test_single_pydantic_body_embed_true(self, client: Client) -> None:
         """Body(embed=True) → data 字段嵌入到顶层：服务端从 data 子对象读取。"""
@@ -424,9 +422,9 @@ class TestBodyMultipleParams:
 
         # 服务端从内嵌的 data 子对象提取，返回的是 dict
         assert response.raw.status == 201
-        assert response.data is not None
-        assert response.data["name"] == "Bob"
-        assert response.data["email"] == "bob@example.com"
+        assert response.validated is not None
+        assert response.validated["name"] == "Bob"
+        assert response.validated["email"] == "bob@example.com"
 
     def test_single_scalar_body_embedded(self, client: Client) -> None:
         """标量 Body() → 嵌入：服务端从 importance 键读取。"""
@@ -436,8 +434,8 @@ class TestBodyMultipleParams:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert response.data is not None
-        assert response.data["received"] == 42
+        assert response.validated is not None
+        assert response.validated["received"] == 42
 
     def test_multiple_body_params_named(self, client: Client) -> None:
         """多 body 参数：item + importance，每个独立命名。"""
@@ -450,9 +448,9 @@ class TestBodyMultipleParams:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert response.data is not None
-        assert response.data["name"] == "Charlie"
-        assert response.data["importance"] == 99
+        assert response.validated is not None
+        assert response.validated["name"] == "Charlie"
+        assert response.validated["importance"] == 99
 
 
 class TestClient:
@@ -469,10 +467,10 @@ class TestClient:
         endpoint = GetUsers(limit=5)
         response = client.send(endpoint)
 
-        # IDE 能推断 response.data 为 list[UserData] | None
+        # IDE 能推断 response.validated 为 list[UserData] | None
         assert response.raw.status == 200
-        assert isinstance(response.data, list)
-        assert len(response.data) == 5
+        assert isinstance(response.validated, list)
+        assert len(response.validated) == 5
 
     def test_send_extracts_path_params(self, client: Client) -> None:
         """路径参数正确插值。"""
@@ -480,7 +478,7 @@ class TestClient:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert response.data.id == 42
+        assert response.validated.id == 42
 
     def test_send_builds_query_params(self, client: Client) -> None:
         """查询参数正确序列化。"""
@@ -488,8 +486,8 @@ class TestClient:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        assert len(response.data) == 3
-        assert response.data[0].id == 10
+        assert len(response.validated) == 3
+        assert response.validated[0].id == 10
 
     def test_send_body_preserves_pydantic_model(self, client: Client) -> None:
         """Pydantic model body 自动反序列化为 T 实例。"""
@@ -497,8 +495,8 @@ class TestClient:
         response = client.send(endpoint)
 
         assert response.raw.status == 201
-        assert isinstance(response.data, UserData)
-        assert response.data.name == "Alice"
+        assert isinstance(response.validated, UserData)
+        assert response.validated.name == "Alice"
 
     def test_client_can_be_reused(self, client: Client) -> None:
         """Client 可复用，发送多个请求。"""
@@ -522,23 +520,23 @@ class TestEndToEndFlow:
         create_endpoint = CreateUser(data=CreateUserRequest(name="Test User", email="test@example.com"))
         create_response = client.send(create_endpoint)
         assert create_response.raw.status == 201
-        assert isinstance(create_response.data, UserData)
-        user_id = create_response.data.id
+        assert isinstance(create_response.validated, UserData)
+        user_id = create_response.validated.id
 
         # 2. 获取用户
         get_endpoint = GetUserById(user_id=user_id)
         get_response = client.send(get_endpoint)
         assert get_response.raw.status == 200
-        assert isinstance(get_response.data, UserData)
+        assert isinstance(get_response.validated, UserData)
         # 注意：服务器返回的 name 是 "User {user_id}"，不是创建时传入的 name
-        assert get_response.data.name == f"User {user_id}"
+        assert get_response.validated.name == f"User {user_id}"
 
         # 3. 列出用户
         list_endpoint = GetUsers(limit=10)
         list_response = client.send(list_endpoint)
         assert list_response.raw.status == 200
-        assert isinstance(list_response.data, list)
-        assert len(list_response.data) <= 10
+        assert isinstance(list_response.validated, list)
+        assert len(list_response.validated) <= 10
 
 
 if __name__ == "__main__":

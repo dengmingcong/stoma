@@ -24,7 +24,11 @@ from src.params import Param, ParamTypes
 class APIRoute[T](BaseModel):
     """接口基类，纯数据类（字段 + 路由元数据）。
 
-    通过泛型 ``T`` 指定响应模型类型。实际请求由 ``Client.send(api_route)`` 发起。
+    通过泛型 ``T`` 指定 JSON 响应校验类型。
+    仅当响应 content-type 为 JSON 时，
+    框架会用 Pydantic ``TypeAdapter`` 按 ``T`` 校验 JSON 内容。
+
+    实际请求由 ``Client.send(api_route)`` 发起。
 
     :var _dependant: 路由元数据和参数依赖定义缓存。
     :vartype _dependant: ClassVar[Dependant | None]
@@ -38,7 +42,7 @@ class APIRoute[T](BaseModel):
         endpoint = GetUsers(limit=10)
         response = client.send(endpoint)  # 类型: Response[list[UserData]]
         if response.raw.status == 200:
-            users = response.model  # 类型: list[UserData] | None
+            users = response.validated  # 类型: list[UserData] | None
     """
 
     # Ref: https://pydantic.dev/docs/validation/latest/concepts/models/#class-variables
@@ -290,7 +294,10 @@ class APIRouter:
         """
         return api_route_decorator(method="POST", path=path)
 
-    def put[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+    def put[T: APIRoute](
+        self,
+        path: str,
+    ) -> Callable[[type[T]], type[T]]:
         """PUT 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
