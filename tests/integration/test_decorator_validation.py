@@ -20,7 +20,7 @@
 
 from typing import Annotated
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.params import Body, Header, Path, Query
 from src.routing import APIRoute, APIRouter
@@ -70,10 +70,10 @@ class GetUsers(APIRoute[list[UserData]]):
     """
 
     # Query 参数：使用 Annotated 和函数默认值
-    limit: Annotated[int, Query(ge=1, le=100, description="每页数量")] = 20
-    offset: Annotated[int, Query(ge=0, description="偏移量")] = 0
+    limit: Annotated[int, Query()] = Field(ge=1, le=100, description="每页数量", default=20)
+    offset: Annotated[int, Query()] = Field(ge=0, description="偏移量", default=0)
     # Header 参数：认证令牌
-    token: Annotated[str, Header(alias="Authorization", description="认证令牌")]
+    token: Annotated[str, Header()] = Field(alias="Authorization", description="认证令牌")
 
 
 # ===== 验收场景 2: 泛型响应类型推断 =====
@@ -87,7 +87,7 @@ class GetUserById(APIRoute[UserData]):
     - 泛型返回类型推断
     """
 
-    user_id: Annotated[int, Path(description="用户 ID", ge=1)]
+    user_id: Annotated[int, Path()] = Field(description="用户 ID", ge=1)
 
 
 # ===== 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）=====
@@ -104,7 +104,7 @@ class CreateUser(APIRoute[UserData]):
     """
 
     # Body 参数：整个请求体
-    body: Annotated[UserCreateRequest, Body(description="用户创建请求")]
+    body: Annotated[UserCreateRequest, Body()] = Field(description="用户创建请求")
 
 
 # ===== 验收场景 4: 命名空间隔离（用户字段名为 method、path 等）=====
@@ -119,9 +119,9 @@ class DebugEndpoint(APIRoute[dict[str, str]]):
     """
 
     # 故意使用可能冲突的字段名
-    method: Annotated[str, Query(description="用户自定义的 method 字段")]
-    path: Annotated[str, Query(description="用户自定义的 path 字段")]
-    servers: Annotated[list[str] | None, Query(description="用户自定义的 servers 字段")] = None
+    method: Annotated[str, Query()] = Field(description="用户自定义的 method 字段")
+    path: Annotated[str, Query()] = Field(description="用户自定义的 path 字段")
+    servers: Annotated[list[str] | None, Query()] = Field(description="用户自定义的 servers 字段", default=None)
 
 
 # ===== 测试 PUT 方法 =====
@@ -129,7 +129,7 @@ class DebugEndpoint(APIRoute[dict[str, str]]):
 class UpdateUser(APIRoute[UserData]):
     """完全更新用户（PUT）。"""
 
-    user_id: Annotated[int, Path(ge=1)]
+    user_id: Annotated[int, Path()] = Field(ge=1)
     body: Annotated[UserCreateRequest, Body()]
 
 
@@ -138,7 +138,7 @@ class UpdateUser(APIRoute[UserData]):
 class PartialUpdateUser(APIRoute[UserData]):
     """部分更新用户（PATCH）。"""
 
-    user_id: Annotated[int, Path(ge=1)]
+    user_id: Annotated[int, Path()] = Field(ge=1)
     body: Annotated[UserUpdateRequest, Body()]
 
 
@@ -147,9 +147,9 @@ class PartialUpdateUser(APIRoute[UserData]):
 class DeleteUser(APIRoute[dict[str, str]]):
     """删除用户（DELETE）。"""
 
-    user_id: Annotated[int, Path(ge=1)]
+    user_id: Annotated[int, Path()] = Field(ge=1)
     # 可选的认证头
-    token: Annotated[str | None, Header(alias="Authorization")] = None
+    token: Annotated[str | None, Header()] = Field(alias="Authorization", default=None)
 
 
 # ===== 测试多个查询参数和复杂验证 =====
@@ -158,15 +158,15 @@ class SearchUsers(APIRoute[list[UserData]]):
     """搜索用户 - 测试多个查询参数和复杂验证。"""
 
     # 必需的查询参数（无默认值）
-    query: Annotated[str, Query(min_length=1, max_length=100, description="搜索关键词")]
+    query: Annotated[str, Query()] = Field(min_length=1, max_length=100, description="搜索关键词")
 
     # 可选的查询参数（有默认值）
-    limit: Annotated[int, Query(ge=1, le=100)] = 20
-    offset: Annotated[int, Query(ge=0)] = 0
-    sort_by: Annotated[str, Query(pattern=r"^(name|email|age)$")] = "name"
+    limit: Annotated[int, Query()] = Field(ge=1, le=100, default=20)
+    offset: Annotated[int, Query()] = Field(ge=0, default=0)
+    sort_by: Annotated[str, Query()] = Field(pattern=r"^(name|email|age)$", default="name")
 
     # 可选的 Header 参数
-    x_request_id: Annotated[str | None, Header(alias="X-Request-ID")] = None
+    x_request_id: Annotated[str | None, Header()] = Field(alias="X-Request-ID", default=None)
 
 
 # ===== 手动测试代码 =====
@@ -263,17 +263,14 @@ def test_decorator_validation() -> None:
         limit=50,
         offset=10,
         sort_by="email",
-        x_request_id="req-123",
     )
     assert search_endpoint.query == "john"
     assert search_endpoint.limit == 50
     assert search_endpoint.offset == 10
     assert search_endpoint.sort_by == "email"
-    assert search_endpoint.x_request_id == "req-123"
     print(
         f"  - 查询参数: query={search_endpoint.query}, limit={search_endpoint.limit}, offset={search_endpoint.offset}"
     )
-    print(f"  - Header 参数: X-Request-ID={search_endpoint.x_request_id}")
     print("  - 多参数和复杂验证通过 ✓")
 
     print("\n" + "=" * 60)

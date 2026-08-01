@@ -13,7 +13,7 @@
 from typing import Annotated, Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.client import Client
 from src.params import Body, Path, Query
@@ -66,7 +66,7 @@ class GetItems(APIRoute[list[dict[str, Any]]]):
     """获取items接口，返回原始字典列表。"""
 
     category: str | None = None
-    limit: Annotated[int, Query(ge=1, le=100)] = 10
+    limit: Annotated[int, Query()] = Field(ge=1, le=100, default=10)
 
 
 @router.post("/echo")
