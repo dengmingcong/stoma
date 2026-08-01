@@ -478,6 +478,7 @@ class TestClient:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
+        assert response.validated
         assert response.validated.id == 42
 
     def test_send_builds_query_params(self, client: Client) -> None:
@@ -486,6 +487,7 @@ class TestClient:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
+        assert response.validated
         assert len(response.validated) == 3
         assert response.validated[0].id == 10
 
