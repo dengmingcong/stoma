@@ -13,7 +13,7 @@
 
 from typing import Annotated, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.client import Client
 from src.params import Body, Header, Path, Query
@@ -114,8 +114,8 @@ def test_collect_header_params() -> None:
 
     @router.get("/users")
     class GetUsers(APIRoute[list[UserData]]):
-        authorization: Annotated[str, Header(alias="Authorization")]
-        x_request_id: Annotated[str, Header(alias="X-Request-ID")]
+        authorization: Annotated[str, Header()] = Field(alias="Authorization")
+        x_request_id: Annotated[str, Header()] = Field(alias="X-Request-ID")
         accept: Annotated[str, Header()] = "application/json"
 
     endpoint = GetUsers(
@@ -160,7 +160,7 @@ def test_collect_mixed_params() -> None:
     class CreateUserPost(APIRoute[dict[str, str]]):
         user_id: Annotated[int, Path()]
         published: Annotated[bool, Query()] = False
-        authorization: Annotated[str, Header(alias="Authorization")]
+        authorization: Annotated[str, Header()] = Field(alias="Authorization")
         body: Annotated[dict[str, str], Body()]
 
     post_data = {"title": "Hello World", "content": "Test content"}
@@ -207,8 +207,8 @@ def test_param_alias() -> None:
     @router.get("/users")
     class GetUsers(APIRoute[list[UserData]]):
         # 使用别名
-        page_size: Annotated[int, Query(alias="pageSize")] = 20
-        page_num: Annotated[int, Query(alias="pageNum")] = 1
+        page_size: Annotated[int, Query()] = Field(alias="pageSize", default=20)
+        page_num: Annotated[int, Query()] = Field(alias="pageNum", default=1)
 
     endpoint = GetUsers(page_size=50, page_num=2)
     params = collect_params(endpoint)
