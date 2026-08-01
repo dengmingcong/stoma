@@ -33,7 +33,7 @@ class APIRoute[T](BaseModel):
 
         @router.get(path="/users")
         class GetUsers(APIRoute[list[UserData]]):
-            limit: Annotated[int, Query(ge=1, le=100)] = 20
+            limit: Annotated[int, Query()] = Field(ge=1, le=100, default=20)
 
         endpoint = GetUsers(limit=10)
         response = client.send(endpoint)  # 类型: Response[list[UserData]]

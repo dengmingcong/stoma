@@ -61,7 +61,7 @@ class Query(Param):
 
     Example::
 
-        limit: Annotated[int, Query(ge=1, le=100)] = 20
+        limit: Annotated[int, Query()] = Field(ge=1, le=100)
     """
 
     in_ = ParamTypes.query
