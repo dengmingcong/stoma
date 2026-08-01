@@ -38,7 +38,6 @@ class BodyItem(NamedTuple):
 
     alias: str
     dumped: dict[str, Any] | Any
-    should_embed: bool
 
 
 class Client:
@@ -206,22 +205,11 @@ class Client:
         has_multiple = len(dependant.body_params) > 1
         body_items: list[BodyItem] = []
 
+        # 循环中只做序列化，不做判断
         for model_field in dependant.body_params:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
-
-            param_info = model_field.param_info
-            is_explicit_body = isinstance(param_info, Body)
-            explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
-            field_type = model_field.field_info.annotation
-
-            # 判断是否应该嵌入：多参数、显式 embed、显式标量 body
-            should_embed = (
-                has_multiple
-                or (is_explicit_body and explicit_embed)
-                or (is_explicit_body and not field_annotation_is_complex(field_type))
-            )
 
             # 序列化
             if isinstance(value, BaseModel):
@@ -233,16 +221,32 @@ class Client:
             else:
                 dumped = value
 
-            body_items.append(BodyItem(model_field.alias, dumped, should_embed))
+            body_items.append(BodyItem(model_field.alias, dumped))
 
         # 统一处理
         if not body_items:
             return None
 
-        if len(body_items) == 1 and not body_items[0].should_embed:
+        # 多个 body 参数：必须嵌入
+        if has_multiple:
+            return {item.alias: item.dumped for item in body_items}
+
+        # 单个 body 参数：根据 Body(embed=...) 或是否为标量类型决定是否嵌入
+        model_field = dependant.body_params[0]
+        param_info = model_field.param_info
+        is_explicit_body = isinstance(param_info, Body)
+        explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
+        field_type = model_field.field_info.annotation
+
+        should_embed = (
+            (is_explicit_body and explicit_embed)
+            or (is_explicit_body and not field_annotation_is_complex(field_type))
+        )
+
+        if not should_embed:
             return body_items[0].dumped
 
-        return {item.alias: item.dumped for item in body_items}
+        return {body_items[0].alias: body_items[0].dumped}
 
     # ===== 私有方法：发送请求 =====
 
