@@ -63,10 +63,10 @@ class Dependant:
     :vartype header_params: list[ModelField]
     :var body_params: 请求体参数字段列表。
     :vartype body_params: list[ModelField]
-    :var response_type: 响应数据类型。
-    :vartype response_type: type | None
-    :var response_type_adapter: 响应类型验证器缓存。
-    :vartype response_type_adapter: TypeAdapter | None
+    :var json_response_schema: JSON 响应校验类型，为 None 时表示不校验响应。
+    :vartype json_response_schema: type | None
+    :var json_response_schema_adapter: JSON 响应校验器缓存。
+    :vartype json_response_schema_adapter: TypeAdapter | None
     """
 
     method: str
@@ -75,5 +75,5 @@ class Dependant:
     query_params: list[ModelField] = field(default_factory=list)
     header_params: list[ModelField] = field(default_factory=list)
     body_params: list[ModelField] = field(default_factory=list)
-    response_type: type | None = None
-    response_type_adapter: TypeAdapter[Any] | None = None
+    json_response_schema: type | None = None
+    json_response_schema_adapter: TypeAdapter[Any] | None = None

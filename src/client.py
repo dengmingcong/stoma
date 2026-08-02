@@ -333,12 +333,12 @@ class Client:
                 msg = f"响应 JSON 解析失败: {e}"
                 raise ParseError(msg, response_text=fallback_text) from e
 
-            if dependant.response_type is type(None):
+            if dependant.json_response_schema is None:
                 return Response[T](raw=api_response, validated=None)
 
-            assert dependant.response_type_adapter is not None
+            assert dependant.json_response_schema_adapter is not None
             try:
-                validated = dependant.response_type_adapter.validate_python(payload)  # type: ignore[no-any-return]
+                validated = dependant.json_response_schema_adapter.validate_python(payload)  # type: ignore[no-any-return]
             except Exception as e:
                 msg = f"响应数据验证失败: {e}"
                 errors: list[dict[str, Any]] = []

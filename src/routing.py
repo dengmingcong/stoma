@@ -118,24 +118,23 @@ class APIRoute[T](BaseModel):
                 else:
                     query_params.append(model_field)
 
-            # 提取响应类型
-            response_type: type | None = None
+            # 提取响应类型（用于 JSON 响应校验）
+            json_response_schema: type | None = None
             for c in cls.mro():
                 name = c.__name__
+                if name == "APIRoute":
+                    # APIRoute 不带泛型参数，无需校验响应
+                    break
                 if name.startswith("APIRoute["):
                     metadata = getattr(c, "__pydantic_generic_metadata__", {})
                     if args := metadata.get("args"):
-                        response_type = args[0]  # 如果泛型有多个参数，取第一个作为响应类型，忽略后续其他参数
+                        json_response_schema = args[0]  # 如果泛型有多个参数，取第一个作为响应类型，忽略后续其他参数
                     break
 
-            if response_type is None:
-                msg = f"无法从 {cls.__name__} 获取响应类型，请确保继承自 APIRoute[ResponseType]"
-                raise ValueError(msg)
-
-            # 创建响应类型验证器
-            response_type_adapter: TypeAdapter[Any] | None = None
-            if response_type is not type(None):
-                response_type_adapter = TypeAdapter(response_type)
+            # 创建 JSON 响应校验器
+            json_response_schema_adapter: TypeAdapter[Any] | None = None
+            if json_response_schema is not None:
+                json_response_schema_adapter = TypeAdapter(json_response_schema)
 
             cls._dependant = Dependant(
                 method=method,
@@ -144,8 +143,8 @@ class APIRoute[T](BaseModel):
                 query_params=query_params,
                 header_params=header_params,
                 body_params=body_params,
-                response_type=response_type,
-                response_type_adapter=response_type_adapter,
+                json_response_schema=json_response_schema,
+                json_response_schema_adapter=json_response_schema_adapter,
             )
 
         return cls._dependant
