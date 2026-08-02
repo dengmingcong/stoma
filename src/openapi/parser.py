@@ -186,6 +186,7 @@ class OpenAPIParser:
                 for method in ("get", "post", "put", "patch", "delete")
                 if (operation := getattr(path_item, method))
             }
+            operation: Operation
             for method, operation in method_to_operation.items():
                 params = self._extract_parameters(operation)
                 endpoint: dict[str, Any] = {
