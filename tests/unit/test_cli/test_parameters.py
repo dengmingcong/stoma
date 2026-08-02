@@ -98,10 +98,13 @@ paths:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "check_auth.py").read_text(encoding="utf-8")
-        # header 参数走 header_params，不出现在 param_fields 中。
+        # header 参数使用 Annotated[..., Header(...)] 标记。
         assert "from stoma import router, APIRoute, Header" in content
         assert "from typing import Annotated" in content
-        assert "Authorization" not in content or "Annotated" in content
+        # required header 参数
+        assert "Authorization: Annotated[str, Header()]" in content
+        # non-required header 参数
+        assert "X-Request-ID: Annotated[str | None, Header()] = None" in content
 
     def test_required_vs_optional_path_param(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 path 参数必填、无默认值。"""

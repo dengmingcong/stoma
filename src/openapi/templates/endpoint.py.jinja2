@@ -48,6 +48,15 @@ class {{ class_name }}(APIRoute[{{ response_type }}]):
     {{ field }}
 {% endfor %}
 {% endif %}
+{% if header_params %}
+{% for param in header_params %}
+{% if param.required %}
+    {{ param.name }}: Annotated[{{ param.type }}, Header()]
+{% else %}
+    {{ param.name }}: Annotated[{{ param.type }} | None, Header()] = None
+{% endif %}
+{% endfor %}
+{% endif %}
 {% if request_body_type %}
     {% if request_body_embed %}
     {{ request_body_field_name }}: Annotated[{{ request_body_type }}, Body(embed=True)]
