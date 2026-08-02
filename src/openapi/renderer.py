@@ -361,8 +361,10 @@ class EndpointRenderer:
                     "alias": name,
                 })
             else:
-                default_str = "" if required else " = None"
-                param_fields.append(f"{name}: {param_type}{default_str}")
+                if required:
+                    param_fields.append(f"{name}: {param_type}")
+                else:
+                    param_fields.append(f"{name}: {param_type} | None = None")
 
         return header_params, param_fields
 

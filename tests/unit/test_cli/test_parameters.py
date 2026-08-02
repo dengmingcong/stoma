@@ -59,9 +59,9 @@ paths:
         content = (out_dir / "search.py").read_text(encoding="utf-8")
         # Python 类型映射正确。
         assert "q: str" in content
-        assert "limit: int = None" in content
-        assert "score: float = None" in content
-        assert "active: bool = None" in content
+        assert "limit: int | None = None" in content
+        assert "score: float | None = None" in content
+        assert "active: bool | None = None" in content
 
     def test_header_parameter_uses_annotated(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 header 参数使用 Annotated[..., Header(...)] 标记。"""
