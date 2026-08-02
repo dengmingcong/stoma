@@ -64,7 +64,10 @@ paths:
         assert "active: bool | None = None" in content
 
     def test_header_parameter_uses_annotated(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 header 参数使用 Annotated[..., Header(...)] 标记。"""
+        """验证 header 参数使用 Annotated[..., Header(...)] 标记。
+
+        非 snake_case 参数会被转为 snake_case 并通过 Field(alias=...) 保留原名。
+        """
         spec = """\
 openapi: 3.1.0
 info:
@@ -99,12 +102,15 @@ paths:
         assert result.exit_code == 0, result.output
         content = (out_dir / "check_auth.py").read_text(encoding="utf-8")
         # header 参数使用 Annotated[..., Header(...)] 标记。
-        assert "from stoma import router, APIRoute, Header" in content
+        assert "from stoma import router, APIRoute, Header, Field" in content
         assert "from typing import Annotated" in content
-        # required header 参数
-        assert "Authorization: Annotated[str, Header()]" in content
-        # non-required header 参数
-        assert "X-Request-ID: Annotated[str | None, Header()] = None" in content
+        # required header 参数：转为 snake_case + Field(alias=...)
+        assert "authorization: Annotated[str, Header()] = Field(alias='Authorization')" in content
+        # non-required header 参数：转为 snake_case + Field(default=None, alias=...)
+        assert (
+            "x_request_id: Annotated[str | None, Header()] = Field(default=None, alias='X-Request-ID')"
+            in content
+        )
 
     def test_required_vs_optional_path_param(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 path 参数必填、无默认值。"""
