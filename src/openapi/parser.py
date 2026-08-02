@@ -182,7 +182,7 @@ class OpenAPIParser:
 
         for path, path_item in paths.items():
             for method in ["get", "post", "put", "patch", "delete"]:
-                operation = getattr(path_item, method, None)
+                operation: Operation | None = getattr(path_item, method, None)
                 if operation is None:
                     continue
 
