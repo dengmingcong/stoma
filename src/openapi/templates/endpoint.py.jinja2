@@ -25,13 +25,13 @@ from __future__ import annotations
 {{ model }}
 {% endfor %}
 {% endif %}
-{% if header_params or (request_body_type and request_body_embed) %}
+{% if header_fields or (request_body_type and request_body_embed) %}
 from typing import Annotated
 {% endif %}
-{% if header_params and request_body_type %}
-from stoma import router, APIRoute, Body, Header
-{% elif header_params %}
-from stoma import router, APIRoute, Header
+{% if header_fields and request_body_type %}
+from stoma import router, APIRoute, Body, Header, Field
+{% elif header_fields %}
+from stoma import router, APIRoute, Header, Field
 {% elif request_body_type and (request_body_embed or not request_body_is_model_ref) %}
 from stoma import router, APIRoute, Body
 {% else %}
@@ -48,13 +48,9 @@ class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type }}]{% end
     {{ field }}
 {% endfor %}
 {% endif %}
-{% if header_params %}
-{% for param in header_params %}
-{% if param.required %}
-    {{ param.name }}: Annotated[{{ param.type }}, Header()]
-{% else %}
-    {{ param.name }}: Annotated[{{ param.type }} | None, Header()] = None
-{% endif %}
+{% if header_fields %}
+{% for field in header_fields %}
+    {{ field }}
 {% endfor %}
 {% endif %}
 {% if request_body_type %}

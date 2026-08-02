@@ -5,11 +5,13 @@
 
 from __future__ import annotations
 
+import keyword
 import re
 from pathlib import Path
 from typing import Any, TypedDict
 
 from jinja2 import Environment, FileSystemLoader, Template
+from pydantic.alias_generators import to_snake
 
 
 class ParameterInfo(TypedDict):
@@ -19,15 +21,6 @@ class ParameterInfo(TypedDict):
     location: str
     required: bool | None
     schema: dict[str, Any] | None
-
-
-class HeaderParamInfo(TypedDict):
-    """头参数信息。"""
-
-    name: str
-    type: str
-    required: bool | None
-    alias: str
 
 
 class RequestBodyInfo(TypedDict):
@@ -57,6 +50,76 @@ def map_json_schema_type(json_type: str) -> str:
     :return: Python 类型字符串。
     """
     return _JSON_SCHEMA_TYPE_TO_PYTHON.get(json_type, json_type)
+
+
+def _is_snake_case(name: str) -> bool:
+    """检测 name 是否已经是合法的 snake_case（且不是 Python 关键字）。
+
+    :param name: 候选名字。
+    :return: 是否为合法 snake_case。
+    """
+    if not name:
+        return False
+    if keyword.iskeyword(name):
+        return False
+    return bool(re.fullmatch(r"[a-z][a-z0-9_]*", name))
+
+
+def _to_field_name(name: str) -> str:
+    """将 OpenAPI 参数名转为合法的 snake_case field 名。
+
+    注意：仅在非 snake_case 时调用。
+
+    :param name: 原始 OpenAPI 参数名。
+    :return: 合法的 snake_case field 名。
+    """
+    # 非字母数字字符（含 - 和 .）统一替换为下划线
+    cleaned = re.sub(r"[^a-zA-Z0-9_]", "_", name)
+    cleaned = re.sub(r"_+", "_", cleaned).strip("_") or "param"
+
+    if cleaned[0].isdigit():
+        cleaned = f"n_{cleaned}"
+
+    if keyword.iskeyword(cleaned):
+        cleaned = f"p_{cleaned}"
+
+    return to_snake(cleaned)
+
+
+def _build_field(
+    name: str,
+    param_type: str,
+    required: bool,
+    location: str,
+) -> str:
+    """构建字段声明字符串。
+
+    规则：
+    - 只有 Header 参数使用 ``Annotated[..., Header()]``
+    - 只有不是 snake_case 时才需要 ``Field(alias=...)``
+    - 只有非 required 才需要 ``| None``
+
+    :param name: 原始 OpenAPI 参数名。
+    :param param_type: Python 类型字符串。
+    :param required: 是否必需。
+    :param location: 参数位置（"header" 或 "query"/"path"）。
+    :return: 字段声明字符串。
+    """
+    is_header = location == "header"
+    is_snake = _is_snake_case(name)
+    field_name = name if is_snake else _to_field_name(name)
+
+    base_type = param_type if required else f"{param_type} | None"
+    annotation = f"Annotated[{base_type}, Header()]" if is_header else base_type
+
+    if is_snake:
+        default = "" if required else " = None"
+    elif required:
+        default = f" = Field(alias={name!r})"
+    else:
+        default = f" = Field(default=None, alias={name!r})"
+
+    return f"{field_name}: {annotation}{default}"
 
 
 class EndpointRenderer:
@@ -121,7 +184,7 @@ class EndpointRenderer:
             request_body_embed=request_body_info["embed"],
             request_body_field_name=request_body_info["field_name"] or "body",
             request_body_is_model_ref=request_body_info["is_model_ref"],
-            header_params=header_params,
+            header_fields=header_params,
             param_fields=param_fields,
         )
 
@@ -336,37 +399,31 @@ class EndpointRenderer:
 
     def _extract_params(
         self, parameters: list[ParameterInfo]
-    ) -> tuple[list[HeaderParamInfo], list[str]]:
+    ) -> tuple[list[str], list[str]]:
         """提取参数信息。
 
         :param parameters: 参数列表。
-        :return: (头参数列表, 参数字段声明列表)。
+        :return: (Header 字段声明列表, Query/Path 字段声明列表)。
         """
-        header_params: list[HeaderParamInfo] = []
+        header_fields: list[str] = []
         param_fields: list[str] = []
 
         for param in parameters:
-            name = param.get("name", "") or ""
-            param_location = param.get("location", "") or ""
-            required = param.get("required", False) or False
+            name = param.get("name", "")
+            param_location = param.get("location", "")
+            required = param.get("required", False)
             schema = param.get("schema") or {}
             json_type = schema.get("type", "Any")
             param_type = map_json_schema_type(str(json_type))
 
-            if param_location == "header":
-                header_params.append({
-                    "name": name,
-                    "type": param_type,
-                    "required": required,
-                    "alias": name,
-                })
-            else:
-                if required:
-                    param_fields.append(f"{name}: {param_type}")
-                else:
-                    param_fields.append(f"{name}: {param_type} | None = None")
+            field_decl = _build_field(name, param_type, required, param_location)
 
-        return header_params, param_fields
+            if param_location == "header":
+                header_fields.append(field_decl)
+            else:
+                param_fields.append(field_decl)
+
+        return header_fields, param_fields
 
 
 def operation_id_to_class_name(operation_id: str) -> str:
