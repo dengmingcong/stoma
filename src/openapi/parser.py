@@ -181,8 +181,9 @@ class OpenAPIParser:
             return endpoints
 
         for path, path_item in paths.items():
-            for method in ["get", "post", "put", "patch", "delete"]:
-                operation: Operation | None = getattr(path_item, method, None)
+            http_methods = type(path_item).model_fields.keys() & {"get", "post", "put", "patch", "delete"}
+            for method in http_methods:
+                operation: Operation | None = getattr(path_item, method)
                 if operation is None:
                     continue
 
