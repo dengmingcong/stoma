@@ -226,5 +226,5 @@ paths:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "delete_item.py").read_text(encoding="utf-8")
-        # 响应类型默认为 None。
-        assert "APIRoute[None]" in content
+        # 无 content-type 为 json 的响应，不生成泛型参数。
+        assert "APIRoute)" in content

@@ -40,7 +40,7 @@ from stoma import router, APIRoute
 
 
 @router.{{ method }}("{{ path }}")
-class {{ class_name }}(APIRoute[{{ response_type }}]):
+class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type }}]{% endif %}):
     """{{ summary | default(operation_id) }}。{{ "\n    " + description if description else "" }}
     """
 {% if param_fields %}

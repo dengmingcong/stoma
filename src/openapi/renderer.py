@@ -135,19 +135,19 @@ class EndpointRenderer:
         :return: (响应类型, 内嵌模型列表)。
         """
         if not responses:
-            return "None", []
+            return "", []
 
         # 查找 200/201 响应。
         response_200 = responses.get("200") or responses.get("201")
         if not response_200:
-            return "None", []
+            return "", []
 
         content = response_200.get("content") or {}
         json_content = content.get("application/json", {})
         schema = json_content.get("schema")
 
         if not schema:
-            return "None", []
+            return "", []
 
         default_name = f"{class_name}Response" if class_name else ""
         type_name, models = self._resolve_schema_to_type(schema, default_name)
