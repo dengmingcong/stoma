@@ -301,3 +301,21 @@ def test_multiple_body_pydantic_and_scalar() -> None:
         "item": {"name": "Charlie", "email": "charlie@example.com"},
         "importance": 10,
     }
+
+
+def test_api_route_without_generic() -> None:
+    """测试 APIRoute 不带泛型参数的情况。"""
+
+    router2 = APIRouter()
+
+    @router2.get("/health")
+    class HealthCheck(APIRoute):
+        status: str = "ok"
+
+    dependant = HealthCheck._get_dependant()
+    # json_response_schema 为 None，不校验响应
+    assert dependant.json_response_schema is None
+    assert dependant.json_response_schema_adapter is None
+    # 但参数收集正常
+    assert len(dependant.query_params) == 1
+    assert dependant.query_params[0].name == "status"

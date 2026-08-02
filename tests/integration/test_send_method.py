@@ -147,6 +147,16 @@ class CreateItemMulti(APIRoute[dict[str, Any]]):
     importance: Annotated[int, Body()]
 
 
+# ===== APIRoute 不带泛型参数测试端点 =====
+
+
+@router.get("/health")
+class HealthCheck(APIRoute):
+    """健康检查端点，不校验响应。"""
+
+    status: str = "ok"
+
+
 @pytest.fixture
 def api_context(mock_server: Any) -> Any:
     """创建 Playwright APIRequestContext（使用 mock_server 提供 base_url）。"""
@@ -539,6 +549,36 @@ class TestEndToEndFlow:
         assert list_response.raw.status == 200
         assert isinstance(list_response.validated, list)
         assert len(list_response.validated) <= 10
+
+
+class TestAPIRouteWithoutGeneric:
+    """测试 APIRoute 不带泛型参数。"""
+
+    def test_send_without_generic(self, client: Client) -> None:
+        """测试发送不带泛型参数的 APIRoute。
+
+        不校验响应，validated 始终为 None。
+        """
+        endpoint = HealthCheck(status="healthy")
+        response = client.send(endpoint)
+
+        # 状态码正确
+        assert response.raw.status == 200
+        # 不校验响应，validated 始终为 None
+        assert response.validated is None
+        # query 参数正确发送
+        assert "status=healthy" in response.raw.url
+
+    def test_dependant_has_no_response_schema(self) -> None:
+        """验证 _get_dependant 中 json_response_schema 为 None。"""
+        dependant = HealthCheck._get_dependant()
+        assert dependant.json_response_schema is None
+        assert dependant.json_response_schema_adapter is None
+        # 参数收集正常
+        assert dependant.method == "GET"
+        assert dependant.path == "/health"
+        assert len(dependant.query_params) == 1
+        assert dependant.query_params[0].name == "status"
 
 
 if __name__ == "__main__":

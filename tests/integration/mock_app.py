@@ -81,6 +81,12 @@ def echo(body: dict[str, Any]) -> dict[str, Any]:
 # ===== 内容类型派发（覆盖原 HTTPHandler 各种 content-type）=====
 
 
+@app.get("/health")
+def health_check(status: str = "ok") -> dict[str, str]:
+    """GET /health：返回 status 字段。"""
+    return {"status": status}
+
+
 @app.get("/text")
 def get_text() -> Response:
     """GET /text：text/plain utf-8 "hello world"。
