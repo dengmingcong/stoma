@@ -104,11 +104,11 @@ paths:
         # header 参数使用 Annotated[..., Header(...)] 标记。
         assert "from stoma import router, APIRoute, Header, Field" in content
         assert "from typing import Annotated" in content
-        # required header 参数：转为 snake_case + Field(alias=...)
-        assert "authorization: Annotated[str, Header()] = Field(alias='Authorization')" in content
-        # non-required header 参数：转为 snake_case + Field(default=None, alias=...)
+        # required header 参数：转为 snake_case + Field(serialization_alias=...)
+        assert "authorization: Annotated[str, Header()] = Field(serialization_alias='Authorization')" in content
+        # non-required header 参数：转为 snake_case + Field(default=None, serialization_alias=...)
         assert (
-            "x_request_id: Annotated[str | None, Header()] = Field(default=None, alias='X-Request-ID')"
+            "x_request_id: Annotated[str | None, Header()] = Field(default=None, serialization_alias='X-Request-ID')"
             in content
         )
 

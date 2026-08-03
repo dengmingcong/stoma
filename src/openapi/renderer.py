@@ -115,9 +115,9 @@ def _build_field(
     if is_snake:
         default = "" if required else " = None"
     elif required:
-        default = f" = Field(alias={name!r})"
+        default = f" = Field(serialization_alias={name!r})"
     else:
-        default = f" = Field(default=None, alias={name!r})"
+        default = f" = Field(default=None, serialization_alias={name!r})"
 
     return f"{field_name}: {annotation}{default}"
 

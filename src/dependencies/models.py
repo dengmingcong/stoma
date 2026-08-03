@@ -29,18 +29,15 @@ class ModelField:
 
     @property
     def alias(self) -> str:
-        """获取字段别名。
+        """获取字段别名（用于序列化 HTTP 请求参数）。
 
-        优先级：field_info.alias > name
+        优先级：serialization_alias > name
 
         :return: 字段别名，用于序列化和请求参数名称。
         :rtype: str
         """
-        # 使用 field_info 中的 alias
-        if self.field_info.alias:
-            return self.field_info.alias
-
-        # 最后使用字段名称
+        if self.field_info.serialization_alias:
+            return self.field_info.serialization_alias
         return self.name
 
 
