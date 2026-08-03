@@ -66,7 +66,7 @@ paths:
     def test_header_parameter_uses_annotated(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 header 参数使用 Annotated[..., Header(...)] 标记。
 
-        非 snake_case 参数会被转为 snake_case 并通过 Field(alias=...) 保留原名。
+        非 snake_case 参数会被转为 snake_case 并通过 Field(serialization_alias=...) 保留原名。
         """
         spec = """\
 openapi: 3.1.0

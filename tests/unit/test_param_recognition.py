@@ -145,8 +145,8 @@ def test_explicit_header_params() -> None:
 
     @router.get("/users")
     class GetUsers(APIRoute[list[UserData]]):
-        authorization: Annotated[str, Header()] = Field(alias="Authorization")  # 显式标记为头参数
-        x_request_id: Annotated[str, Header()] = Field(alias="X-Request-ID")  # 显式标记为头参数
+        authorization: Annotated[str, Header()] = Field(serialization_alias="Authorization")  # 显式标记为头参数
+        x_request_id: Annotated[str, Header()] = Field(serialization_alias="X-Request-ID")  # 显式标记为头参数
         limit: int = 20  # 自动识别为查询参数
 
     dependant = GetUsers._get_dependant()
@@ -209,7 +209,7 @@ def test_complex_mixed_params() -> None:
         user_id: int  # 路径参数
         post_id: int  # 路径参数
         published: bool = False  # 查询参数
-        token: Annotated[str, Header()] = Field(alias="Authorization")  # 头参数
+        token: Annotated[str, Header()] = Field(serialization_alias="Authorization")  # 头参数
         data: UserCreateRequest  # 请求体
 
     dependant = UpdateUserPost._get_dependant()

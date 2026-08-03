@@ -74,7 +74,7 @@ class TestHeader:
         class TestModel(BaseModel):
             model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
-            authorization: Annotated[str, Header()] = Field(alias="Authorization")
+            authorization: Annotated[str, Header()] = Field(serialization_alias="Authorization")
             user_agent: Annotated[str | None, Header()] = None
 
         instance = TestModel(authorization="Bearer token")
@@ -127,7 +127,7 @@ class TestParamIntegration:
 
             post_id: Annotated[int, Path()]
             expand: Annotated[bool, Query()] = False
-            authorization: Annotated[str, Header()] = Field(alias="Authorization")
+            authorization: Annotated[str, Header()] = Field(serialization_alias="Authorization")
             body: Annotated[RequestBody, Body()]
 
         request_body = RequestBody(title="Test", content="Content")

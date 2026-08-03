@@ -73,7 +73,7 @@ class GetUsers(APIRoute[list[UserData]]):
     limit: Annotated[int, Query()] = Field(ge=1, le=100, description="每页数量", default=20)
     offset: Annotated[int, Query()] = Field(ge=0, description="偏移量", default=0)
     # Header 参数：认证令牌
-    token: Annotated[str, Header()] = Field(alias="Authorization", description="认证令牌")
+    token: Annotated[str, Header()] = Field(serialization_alias="Authorization", description="认证令牌")
 
 
 # ===== 验收场景 2: 泛型响应类型推断 =====
@@ -149,7 +149,7 @@ class DeleteUser(APIRoute[dict[str, str]]):
 
     user_id: Annotated[int, Path()] = Field(ge=1)
     # 可选的认证头
-    token: Annotated[str | None, Header()] = Field(alias="Authorization", default=None)
+    token: Annotated[str | None, Header()] = Field(serialization_alias="Authorization", default=None)
 
 
 # ===== 测试多个查询参数和复杂验证 =====
@@ -166,7 +166,7 @@ class SearchUsers(APIRoute[list[UserData]]):
     sort_by: Annotated[str, Query()] = Field(pattern=r"^(name|email|age)$", default="name")
 
     # 可选的 Header 参数
-    x_request_id: Annotated[str | None, Header()] = Field(alias="X-Request-ID", default=None)
+    x_request_id: Annotated[str | None, Header()] = Field(serialization_alias="X-Request-ID", default=None)
 
 
 # ===== 手动测试代码 =====

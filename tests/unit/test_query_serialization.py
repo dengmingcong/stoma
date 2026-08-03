@@ -79,8 +79,8 @@ def test_serialize_query_params_with_alias() -> None:
 
     @router.get("/users")
     class GetUsers(APIRoute[list[UserData]]):
-        page_size: Annotated[int, Query()] = Field(alias="pageSize", default=20)
-        page_num: Annotated[int, Query()] = Field(alias="pageNum", default=1)
+        page_size: Annotated[int, Query()] = Field(serialization_alias="pageSize", default=20)
+        page_num: Annotated[int, Query()] = Field(serialization_alias="pageNum", default=1)
 
     # 创建实例并测试查询参数序列化
     endpoint = GetUsers(page_size=50, page_num=2)
