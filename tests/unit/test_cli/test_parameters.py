@@ -102,7 +102,8 @@ paths:
         assert result.exit_code == 0, result.output
         content = (out_dir / "check_auth.py").read_text(encoding="utf-8")
         # header 参数使用 Annotated[..., Header(...)] 标记。
-        assert "from stoma import router, APIRoute, Header, Field" in content
+        assert "from stoma import router, APIRoute, Header" in content
+        assert "from pydantic import Field" in content
         assert "from typing import Annotated" in content
         # required header 参数：转为 snake_case + Field(serialization_alias=...)
         assert "authorization: Annotated[str, Header()] = Field(serialization_alias='Authorization')" in content
