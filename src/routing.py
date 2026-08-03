@@ -83,8 +83,8 @@ class APIRoute[T](BaseModel):
             header_params: list[ModelField] = []
             body_params: list[ModelField] = []
 
-            # 使用正则表达式提取路径参数名
-            path_param_names = set(re.findall(r"\{(\w+)\}", path))
+            # 使用正则表达式提取路径参数名（参考 FastAPI loose regex，支持 kebab-case 等）
+            path_param_names = set(re.findall(r"\{(.*?)\}", path))
 
             # 遍历所有字段，自动识别参数类型
             for field_name, field_info in cls.model_fields.items():
@@ -105,8 +105,8 @@ class APIRoute[T](BaseModel):
                         body_params.append(model_field)
                     continue
 
-                # 2. 检查是否是路径参数（字段名出现在路径中）
-                if field_name in path_param_names:
+                # 2. 检查是否是路径参数（alias 出现在路径占位符中）
+                if model_field.alias in path_param_names:
                     path_params.append(model_field)
                     continue
 

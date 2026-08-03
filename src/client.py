@@ -130,7 +130,7 @@ class Client:
         path = dependant.path
         for model_field in dependant.path_params:
             value = getattr(api_route, model_field.name)
-            placeholder = f"{{{model_field.name}}}"
+            placeholder = f"{{{model_field.alias}}}"
             path = path.replace(placeholder, str(value))
         return path
 
@@ -176,10 +176,7 @@ class Client:
             else:
                 value = str(value)
 
-            alias = model_field.alias
-            if alias == model_field.name:
-                alias = alias.replace("_", "-")
-            headers[alias] = value
+            headers[model_field.alias] = value
         return headers
 
     def _serialize_body_params(
@@ -210,7 +207,7 @@ class Client:
 
             # 序列化
             if isinstance(value, BaseModel):
-                dumped = value.model_dump(exclude_none=True)
+                dumped = value.model_dump(by_alias=True, exclude_none=True)
             elif is_dataclass(value) and not isinstance(value, type):
                 dumped = asdict(value)
             else:
