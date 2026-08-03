@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from openapi_pydantic.v3.v3_0 import (
     Parameter as Parameter30,
 )
@@ -34,7 +32,7 @@ class Endpoint(BaseModel):
     """单个接口的完整信息（IR - Intermediate Representation）。"""
 
     operation_id: str
-    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
+    method: str
     path: str
     summary: str | None
     description: str | None
