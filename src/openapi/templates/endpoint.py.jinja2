@@ -29,16 +29,18 @@ from __future__ import annotations
 from typing import Annotated
 {% endif %}
 {% if header_fields and request_body_type %}
-from stoma import router, APIRoute, Body, Header
+from stoma import APIRouter, APIRoute, Body, Header
 from pydantic import Field
 {% elif header_fields %}
-from stoma import router, APIRoute, Header
+from stoma import APIRouter, APIRoute, Header
 from pydantic import Field
 {% elif request_body_type and (request_body_embed or not request_body_is_model_ref) %}
-from stoma import router, APIRoute, Body
+from stoma import APIRouter, APIRoute, Body
 {% else %}
-from stoma import router, APIRoute
+from stoma import APIRouter, APIRoute
 {% endif %}
+
+router = APIRouter()
 
 
 @router.{{ method }}("{{ path }}")

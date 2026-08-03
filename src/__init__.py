@@ -4,11 +4,17 @@
 """
 
 from src.client import Client
+from src.params import Body, Header
 from src.response import Response
+from src.routing import APIRoute, APIRouter
 
 __all__ = [
     "__version__",
+    "APIRoute",
+    "APIRouter",
+    "Body",
     "Client",
+    "Header",
     "Response",
 ]
 

@@ -253,5 +253,5 @@ components:
         content = (out_dir / "create_user_embed.py").read_text(encoding="utf-8")
         # embed=True 时，字段名是 wrapper 的 key，类型是内嵌的 $ref 模型。
         assert "data: Annotated[User, Body(embed=True)]" in content
-        assert "from stoma import router, APIRoute, Body" in content
+        assert "from stoma import APIRouter, APIRoute, Body" in content
         assert "from typing import Annotated" in content
