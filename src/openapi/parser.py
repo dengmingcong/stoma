@@ -259,8 +259,8 @@ class OpenAPIParser:
         # 规范化内嵌的 MediaType 结构。
         content = dumped.get("content")
         if isinstance(content, dict):
-            for media_type in content.values():
-                self._normalize_media_type(media_type)
+            for media_type_obj in content.values():
+                self._normalize_media_type_obj(media_type_obj)
         return dumped
 
     def _extract_responses(self, operation: Operation) -> dict[str, Any] | None:
@@ -280,10 +280,10 @@ class OpenAPIParser:
             else:
                 result[status_code] = dict(response)
         # 规范化：把 MediaType 嵌套结构（media_type_schema）转为标准 schema 字段。
-        self._normalize_media_types(result)
+        self._normalize_media_type_objs(result)
         return result
 
-    def _normalize_media_types(self, responses: dict[str, Any]) -> None:
+    def _normalize_media_type_objs(self, responses: dict[str, Any]) -> None:
         """将 MediaType 嵌套结构展开为标准的 schema/$ref 字段。
 
         openapi-pydantic 序列化后使用 media_type_schema 字段，需转换为 schema 字段。
@@ -297,10 +297,10 @@ class OpenAPIParser:
             content = response.get("content")
             if not isinstance(content, dict):
                 continue
-            for media_type in content.values():
-                self._normalize_media_type(media_type)
+            for media_type_obj in content.values():
+                self._normalize_media_type_obj(media_type_obj)
 
-    def _normalize_media_type(self, media_type: dict[str, Any]) -> None:
+    def _normalize_media_type_obj(self, media_type: dict[str, Any]) -> None:
         """将单个 MediaType 字典展开为标准 schema 字段。
 
         同时递归处理嵌套的 items、properties 中的 Reference。
