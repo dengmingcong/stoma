@@ -176,22 +176,22 @@ class EndpointRenderer:
         content = request_body.content or {}
         json_content = content.get("application/json", {})
         # MediaType 的 media_type_schema 是 Schema | Reference。
-        schema = getattr(json_content, "media_type_schema", None)
-        if not schema or not isinstance(schema, Schema):
+        media_type_schema = getattr(json_content, "media_type_schema", None)
+        if not media_type_schema or not isinstance(media_type_schema, Schema):
             return {"type": "", "models": [], "embed": False, "field_name": None}
 
         # 情况1：object + 有 title。
-        if schema.title:
-            model_code = self._render_object_schema(schema.title, schema)
+        if media_type_schema.title:
+            model_code = self._render_object_schema(media_type_schema.title, media_type_schema)
             return {
-                "type": schema.title,
+                "type": media_type_schema.title,
                 "models": [model_code],
                 "embed": False,
                 "field_name": None,
             }
 
         # 情况2：embed wrapper（1 property）。
-        embed, field_name, inner_schema = _detect_embed_wrapper(schema)
+        embed, field_name, inner_schema = _detect_embed_wrapper(media_type_schema)
         if embed and field_name and inner_schema:
             type_name = inner_schema.title or f"{class_name}Request"
             model_code = self._render_object_schema(type_name, inner_schema)
@@ -203,7 +203,7 @@ class EndpointRenderer:
             }
 
         # 情况3：object + 无 title（fallback）。
-        model_code = self._render_object_schema(f"{class_name}Request", schema)
+        model_code = self._render_object_schema(f"{class_name}Request", media_type_schema)
         return {
             "type": f"{class_name}Request",
             "models": [model_code],

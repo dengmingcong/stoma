@@ -107,7 +107,7 @@ components:
         assert "body: CreateItemRequest" in content
         # 内联对象的属性映射为 Python 类型。
         assert "name: str" in content
-        assert "quantity: int = None" in content
+        assert "quantity: int | None = None" in content
 
     def test_request_body_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用嵌套 object schema 时能正常生成。"""
