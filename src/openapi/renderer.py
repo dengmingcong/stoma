@@ -159,12 +159,12 @@ class EndpointRenderer:
             json_type = schema_dict.get("type", "Any")
             param_type = map_json_schema_type(str(json_type))
 
-            field_decl = _build_field(name, param_type, required, location)
+            field_line = _build_field(name, param_type, required, location)
 
             if location == "header":
-                header_fields.append(field_decl)
+                header_fields.append(field_line)
             else:
-                param_fields.append(field_decl)
+                param_fields.append(field_line)
 
         return header_fields, param_fields
 
