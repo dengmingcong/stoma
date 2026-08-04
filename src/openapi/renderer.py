@@ -175,7 +175,12 @@ class EndpointRenderer:
     ) -> dict[str, Any]:
         """提取请求体信息。
 
-        检测 embed=True 模式：schema 是 type:object，有且仅有一个 required property。
+        情况1：object + 有 title → body: <title>
+        情况2：object + 无 title + components 有匹配 → body: <matched_name>
+        情况3：embed wrapper + inner 有 title → field: Annotated[<inner.title>, Body(embed=True)]
+        情况4：embed wrapper + inner 无 title + components 有匹配 → field: Annotated[<matched_name>, Body(embed=True)]
+        情况5：embed wrapper + inner 找不到匹配 → body: <class_name>Request
+        情况6：普通内联 object → body: <class_name>Request
 
         :param request_body: openapi_pydantic RequestBody 对象。
         :param class_name: 接口类名，用于生成内联 body 模型名。
@@ -191,71 +196,49 @@ class EndpointRenderer:
         if not schema or not isinstance(schema, Schema):
             return {"type": "", "models": [], "embed": False, "field_name": None}
 
-        # 检测 embed=True 模式。
-        embed, field_name, inner_schema = _detect_embed_wrapper(schema)
-
-        if embed and field_name and inner_schema:
-            inner_title = inner_schema.title
-            if inner_title:
-                type_name = inner_title
-            else:
-                inner_name = self._find_schema_name(inner_schema)
-                type_name = inner_name or f"{class_name}Request"
-            model_code = self._render_object_schema(type_name, inner_schema)
+        # 情况1：object + 有 title。
+        if schema.title:
+            model_code = self._render_object_schema(schema.title, schema)
             return {
-                "type": type_name,
-                "models": [model_code],
-                "embed": True,
-                "field_name": field_name,
-                "is_ref": False,
-            }
-
-        # 非 embed：标准处理。
-        is_ref = bool(getattr(schema, "$ref", None))
-
-        # 如果 schema 有 title（来自 $ref 解析），用 title 生成类。
-        schema_title = schema.title
-        if schema_title and schema.properties:
-            model_code = self._render_object_schema(schema_title, schema)
-            return {
-                "type": schema_title,
+                "type": schema.title,
                 "models": [model_code],
                 "embed": False,
                 "field_name": None,
-                "is_ref": is_ref,
             }
 
-        # 尝试在 components.schemas 中查找匹配的 schema 名称。
+        # 尝试在 components.schemas 中查找匹配。
         schema_name = self._find_schema_name(schema)
-        if schema_name and schema.properties:
+        if schema_name:
             model_code = self._render_object_schema(schema_name, schema)
             return {
                 "type": schema_name,
                 "models": [model_code],
                 "embed": False,
                 "field_name": None,
-                "is_ref": is_ref,
             }
 
-        type_name, models = self._resolve_schema_to_type(schema, default_name=f"{class_name}Request")
-
-        # 内联对象需要生成模型类。
-        if schema.type == "object" and not is_ref and schema.properties:
-            model_code = self._render_object_schema(f"{class_name}Request", schema)
+        # 情况3：embed wrapper（1 property）。
+        embed, field_name, inner_schema = _detect_embed_wrapper(schema)
+        if embed and field_name and inner_schema:
+            if inner_schema.title:
+                type_name = inner_schema.title
+            else:
+                type_name = self._find_schema_name(inner_schema) or f"{class_name}Request"
+            model_code = self._render_object_schema(type_name, inner_schema)
             return {
-                "type": f"{class_name}Request",
+                "type": type_name,
                 "models": [model_code],
-                "embed": False,
-                "field_name": None,
-                "is_ref": False,
+                "embed": True,
+                "field_name": field_name,
             }
 
+        # 情况2：object + 无 title + 找不到匹配（包含 embed wrapper + inner 无 title 的退化）。
+        model_code = self._render_object_schema(f"{class_name}Request", schema)
         return {
-            "type": type_name,
-            "models": models,
+            "type": f"{class_name}Request",
+            "models": [model_code],
             "embed": False,
             "field_name": None,
-            "is_ref": is_ref,
         }
 
     def _extract_response_info(
@@ -468,7 +451,10 @@ class EndpointRenderer:
             parent_model_code = ""
             if parent_props:
                 parent_schema = Schema.model_validate(
-                    {"properties": {k: v.model_dump() for k, v in parent_props.items()}, "required": [r for r in required_fields if r in parent_props]}
+                    {
+                        "properties": {k: v.model_dump() for k, v in parent_props.items()},
+                        "required": [r for r in required_fields if r in parent_props],
+                    }
                 )
                 parent_model_code = self._render_object_schema(f"_{model_name}Base", parent_schema) + "\n\n"
 
