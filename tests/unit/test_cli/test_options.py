@@ -30,5 +30,8 @@ class TestMakeOptions:
         result = cli_runner.invoke(app, ["--help"])
 
         assert result.exit_code == 0
-        assert "OpenAPI" in result.output
-        assert "--out" in result.output
+        # 去除 ANSI 颜色代码后检查。
+        import re
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+        assert "OpenAPI" in clean
+        assert "--out" in clean

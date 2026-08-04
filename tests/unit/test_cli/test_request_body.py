@@ -69,7 +69,7 @@ components:
         assert "class User" in content
         assert "BaseModel" in content
         # 直接 $ref 引用时，body 字段不需要 Annotated 包装。
-        assert "body: User" in content
+        assert "body: Annotated[User, Body()]" in content
 
     def test_request_body_with_inline_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用内联 object schema 时能正常生成。"""
