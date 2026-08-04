@@ -89,7 +89,7 @@ class EndpointRenderer:
 
     def __init__(
         self,
-        components: Components,
+        components: Components | None,
         template_path: str | Path | None = None,
     ) -> None:
         """初始化渲染器。
