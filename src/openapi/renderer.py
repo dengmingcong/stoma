@@ -188,23 +188,20 @@ class EndpointRenderer:
         json_content = content.get("application/json", {})
         # MediaType 的 media_type_schema 是 Schema | Reference。
         schema = getattr(json_content, "media_type_schema", None)
-        if not schema:
+        if not schema or not isinstance(schema, Schema):
             return {"type": "", "models": [], "embed": False, "field_name": None}
 
-        schema_dict = schema.model_dump(mode="json")
-
         # 检测 embed=True 模式。
-        embed, field_name, inner_schema_dict = _detect_embed_wrapper(schema_dict)
+        embed, field_name, inner_schema = _detect_embed_wrapper(schema)
 
-        if embed and field_name and inner_schema_dict:
-            # 尝试查找内嵌 schema 在 components 中的原始名称。
-            inner_title = inner_schema_dict.get("title")
+        if embed and field_name and inner_schema:
+            inner_title = inner_schema.title
             if inner_title:
                 type_name = inner_title
             else:
-                inner_name = self._find_schema_name(inner_schema_dict)
+                inner_name = self._find_schema_name(inner_schema)
                 type_name = inner_name or f"{class_name}Request"
-            model_code = self._render_object_schema(type_name, inner_schema_dict)
+            model_code = self._render_object_schema(type_name, inner_schema)
             return {
                 "type": type_name,
                 "models": [model_code],
@@ -214,12 +211,12 @@ class EndpointRenderer:
             }
 
         # 非 embed：标准处理。
-        is_ref = "ref" in schema_dict or "$ref" in schema_dict
+        is_ref = bool(getattr(schema, "$ref", None))
 
         # 如果 schema 有 title（来自 $ref 解析），用 title 生成类。
-        schema_title = schema_dict.get("title")
-        if schema_title and schema_dict.get("properties"):
-            model_code = self._render_object_schema(schema_title, schema_dict)
+        schema_title = schema.title
+        if schema_title and schema.properties:
+            model_code = self._render_object_schema(schema_title, schema)
             return {
                 "type": schema_title,
                 "models": [model_code],
@@ -229,9 +226,9 @@ class EndpointRenderer:
             }
 
         # 尝试在 components.schemas 中查找匹配的 schema 名称。
-        schema_name = self._find_schema_name(schema_dict)
-        if schema_name and schema_dict.get("properties"):
-            model_code = self._render_object_schema(schema_name, schema_dict)
+        schema_name = self._find_schema_name(schema)
+        if schema_name and schema.properties:
+            model_code = self._render_object_schema(schema_name, schema)
             return {
                 "type": schema_name,
                 "models": [model_code],
@@ -240,12 +237,11 @@ class EndpointRenderer:
                 "is_ref": is_ref,
             }
 
-        type_name, models = self._resolve_schema_to_type(schema_dict, default_name=f"{class_name}Request")
+        type_name, models = self._resolve_schema_to_type(schema, default_name=f"{class_name}Request")
 
         # 内联对象需要生成模型类。
-        schema_type = schema_dict.get("type", "")
-        if schema_type == "object" and not is_ref and "properties" in schema_dict:
-            model_code = self._render_object_schema(f"{class_name}Request", schema_dict)
+        if schema.type == "object" and not is_ref and schema.properties:
+            model_code = self._render_object_schema(f"{class_name}Request", schema)
             return {
                 "type": f"{class_name}Request",
                 "models": [model_code],
@@ -285,144 +281,127 @@ class EndpointRenderer:
             return "", []
 
         schema = getattr(json_content, "media_type_schema", None)
-        if not schema:
+        if not schema or not isinstance(schema, Schema):
             return "", []
 
-        schema_dict = schema.model_dump(mode="json")
         default_name = f"{class_name}Response" if class_name else ""
 
         # 如果 schema 有 title（来自 $ref 解析），生成以 title 为名的类。
-        schema_title = schema_dict.get("title")
-        if schema_title and schema_dict.get("properties"):
-            model_code = self._render_object_schema(schema_title, schema_dict)
+        schema_title = schema.title
+        if schema_title and schema.properties:
+            model_code = self._render_object_schema(schema_title, schema)
             return schema_title, [model_code]
 
         # 尝试在 components.schemas 中查找匹配的 schema 名称。
-        schema_name = self._find_schema_name(schema_dict)
-        if schema_name and schema_dict.get("properties"):
-            model_code = self._render_object_schema(schema_name, schema_dict)
+        schema_name = self._find_schema_name(schema)
+        if schema_name and schema.properties:
+            model_code = self._render_object_schema(schema_name, schema)
             return schema_name, [model_code]
 
-        type_name, models = self._resolve_schema_to_type(schema_dict, default_name)
+        type_name, models = self._resolve_schema_to_type(schema, default_name)
 
         # 内联对象需要额外生成模型类。
-        schema_type = schema_dict.get("type", "")
-        if schema_type == "object" and "properties" in schema_dict and class_name:
-            model_code = self._render_object_schema(default_name, schema_dict)
+        if schema.type == "object" and schema.properties and class_name:
+            model_code = self._render_object_schema(default_name, schema)
             return default_name, [model_code]
         return type_name, models
 
     def _resolve_schema_to_type(
         self,
-        schema: dict[str, Any],
+        schema: Schema,
         default_name: str = "",
     ) -> tuple[str, list[str]]:
-        """将 JSON Schema 字典转换为 Python 类型表达式。
+        """将 Schema 对象转换为 Python 类型表达式。
 
         处理 $ref（查 components）、allOf（继承）、oneOf/anyOf（联合类型）。
 
-        :param schema: JSON Schema 字典。
+        :param schema: Schema 对象。
         :param default_name: 内联对象使用的默认模型名。
         :return: (类型表达式, 内嵌模型列表)。
         """
-        # 处理 $ref：从 components.schemas 查找并递归解析。
-        ref = schema.get("ref") or schema.get("$ref")
-        if ref:
-            schema_name = _get_ref_name(ref)
+        # 处理 $ref。
+        schema_ref = getattr(schema, "$ref", None)
+        if schema_ref:
+            schema_name = _get_ref_name(schema_ref)
             resolved = self._resolve_schema_ref(schema_name)
             if resolved is not None:
-                resolved_dict = resolved.model_dump(mode="json")
-                return self._resolve_schema_to_type(resolved_dict, schema_name)
+                return self._resolve_schema_to_type(resolved, schema_name)
             return schema_name, []
 
-        # 处理 oneOf / anyOf：生成联合类型。
-        one_of = schema.get("oneOf") or schema.get("anyOf")
+        # 处理 oneOf / anyOf。
+        one_of = schema.oneOf or schema.anyOf
         if one_of:
             member_types: list[str] = []
             member_models: list[str] = []
             for item in one_of:
-                item_dict = item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
-                member_type, models = self._resolve_schema_to_type(item_dict, default_name)
+                if not isinstance(item, Schema):
+                    continue
+                member_type, models = self._resolve_schema_to_type(item, default_name)
                 if member_type:
                     member_types.append(member_type)
                 member_models.extend(models)
-            union_type = " | ".join(member_types)
-            return union_type, member_models
+            return " | ".join(member_types), member_models
 
-        # 处理 allOf：生成继承类。
-        all_of = schema.get("allOf")
+        # 处理 allOf。
+        all_of = schema.allOf
         if all_of:
             base_names: list[str] = []
-            all_properties: dict[str, Any] = {}
+            all_properties: dict[str, Schema] = {}
             required_fields: list[str] = []
             all_models: list[str] = []
 
             for item in all_of:
-                item_dict = item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
-                item_ref = item_dict.get("ref") or item_dict.get("$ref")
-                if item_ref:
-                    base_schema_name = _get_ref_name(item_ref)
+                if not isinstance(item, Schema):
+                    continue
+                if getattr(item, "$ref", None):
+                    base_schema_name = _get_ref_name(getattr(item, "$ref"))
                     base_names.append(base_schema_name)
                     base_resolved = self._resolve_schema_ref(base_schema_name)
                     if base_resolved:
-                        base_dict = base_resolved.model_dump(mode="json")
-                        base_props = base_dict.get("properties", {})
-                        all_properties.update(base_props)
-                        base_required = base_dict.get("required", [])
-                        required_fields.extend(base_required)
-                        # 递归处理嵌套的 allOf
-                        if base_dict.get("allOf"):
-                            nested_type, nested_models = self._resolve_schema_to_type(base_dict, base_schema_name)
+                        all_properties.update(base_resolved.properties or {})
+                        required_fields.extend(base_resolved.required or [])
+                        # 递归处理嵌套的 allOf。
+                        if base_resolved.allOf:
+                            nested_type, nested_models = self._resolve_schema_to_type(base_resolved, base_schema_name)
                             all_models.extend(nested_models)
                 else:
-                    # 内联 schema
-                    item_type, item_models = self._resolve_schema_to_type(item_dict, default_name)
+                    item_type, item_models = self._resolve_schema_to_type(item, default_name)
                     all_models.extend(item_models)
-                    item_props = item_dict.get("properties", {})
-                    all_properties.update(item_props)
-                    item_required = item_dict.get("required", [])
-                    required_fields.extend(item_required)
+                    all_properties.update(item.properties or {})
+                    required_fields.extend(item.required or [])
 
-            # 渲染当前类的属性
-            current_model_code = self._render_object_schema(
-                default_name, {"properties": all_properties, "required": required_fields}
+            # 渲染当前类的属性。
+            current_schema = Schema.model_validate(
+                {"properties": {k: v.model_dump() for k, v in all_properties.items()}, "required": required_fields}
             )
+            current_model_code = self._render_object_schema(default_name, current_schema)
             all_models.append(current_model_code)
 
-            # 生成继承类型表达式
-            if base_names:
-                inherits = ", ".join(base_names)
-                return default_name, all_models
             return default_name, all_models
 
         # 处理 array。
-        if schema.get("type") == "array":
-            items = schema.get("items") or {}
-            items_dict = items.model_dump(mode="json") if hasattr(items, "model_dump") else dict(items)
-
-            # 尝试查找 items schema 在 components 中的原始名称。
-            items_name = self._find_schema_name(items_dict)
+        if schema.type == "array" and schema.items:
+            items_schema = schema.items
+            if not isinstance(items_schema, Schema):
+                return "list[Any]", []
+            items_name = self._find_schema_name(items_schema)
             if items_name:
-                # 查找原始 schema 并生成模型。
-                items_schema = self._resolve_schema_ref(items_name)
-                if items_schema:
-                    schema_dict = items_schema.model_dump(mode="json")
-                    model_code = self._render_object_schema(items_name, schema_dict)
+                items_resolved = self._resolve_schema_ref(items_name)
+                if items_resolved and items_resolved.properties:
+                    model_code = self._render_object_schema(items_name, items_resolved)
                     return f"list[{items_name}]", [model_code]
                 return f"list[{items_name}]", []
-
-            items_type, items_models = self._resolve_schema_to_type(items_dict, default_name)
+            items_type, items_models = self._resolve_schema_to_type(items_schema, default_name)
             return f"list[{items_type}]", items_models
 
         # 处理内联对象。
-        if schema.get("type") == "object":
-            if "properties" in schema:
+        if schema.type == "object":
+            if schema.properties:
                 return default_name, []
             return "dict[str, Any]", []
 
         # 基础类型。
-        json_type = schema.get("type", "Any")
-        return map_json_schema_type(str(json_type)), []
+        return map_json_schema_type(schema.type.value if schema.type else "Any"), []
 
     def _resolve_schema_ref(self, schema_name: str) -> Schema | None:
         """从 components.schemas 解析 schema 引用。
@@ -437,94 +416,69 @@ class EndpointRenderer:
             return schemas[schema_name]
         return None
 
-    def _find_schema_name(self, schema: dict[str, Any]) -> str | None:
+    def _find_schema_name(self, schema: Schema) -> str | None:
         """在 components.schemas 中查找匹配 schema 内容的名称。
 
-        prance 展开 $ref 后，schema 内容与 components.schemas 中的定义相同，
-        通过内容匹配找到原始 schema 名称。
+        prance 展开 $ref 后，通过 Schema 对象相等性比较找到原始名称。
 
-        :param schema: 已展开的 schema 字典（无 $ref）。
+        :param schema: Schema 对象。
         :return: schema 名称，未找到返回 None。
         """
         if not self.components or not self.components.schemas:
             return None
-        schemas: dict[str, Schema] = self.components.schemas
-        if not schemas:
-            return None
-
-        # 提取非 None 的关键字段用于匹配。
-        match_keys = {"type", "properties", "required", "items", "allOf", "oneOf", "anyOf"}
-
-        def normalize(s: dict[str, Any]) -> dict[str, Any]:
-            """去除 None 值，提取关键字段用于匹配。"""
-            return {k: v for k, v in s.items() if k in match_keys and v is not None}
-
-        norm_target = normalize(schema)
-
+        schemas = self.components.schemas
         for name, schema_obj in schemas.items():
-            if hasattr(schema_obj, "model_dump"):
-                other = schema_obj.model_dump(mode="json")
-            else:
-                other = dict(schema_obj)
-            if normalize(other) == norm_target:
+            if schema_obj == schema:
                 return name
         return None
 
-    def _render_object_schema(self, model_name: str, schema: dict[str, Any]) -> str:
+    def _render_object_schema(self, model_name: str, schema: Schema) -> str:
         """将内联 object schema 渲染为 Pydantic 模型类定义。
 
         处理 allOf 继承（父类属性作为基类）。
 
         :param model_name: 模型类名。
-        :param schema: JSON Schema 字典。
+        :param schema: Schema 对象。
         :return: Python 类定义代码字符串。
         """
-        all_of = schema.get("allOf")
+        all_of = schema.allOf
         if all_of:
-            # allOf 处理：从 allOf 中提取父类名列表
             base_names: list[str] = []
-            all_properties: dict[str, Any] = {}
+            all_properties: dict[str, Schema] = {}
             required_fields: list[str] = []
 
             for item in all_of:
-                item_dict = item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
-                item_ref = item_dict.get("ref") or item_dict.get("$ref")
-                if item_ref:
-                    base_name = _get_ref_name(item_ref)
+                if getattr(item, "$ref", None):
+                    base_name = _get_ref_name(getattr(item, "$ref"))
                     base_names.append(base_name)
                     base_resolved = self._resolve_schema_ref(base_name)
                     if base_resolved:
-                        base_dict = base_resolved.model_dump(mode="json")
-                        all_properties.update(base_dict.get("properties", {}))
-                        required_fields.extend(base_dict.get("required", []))
+                        all_properties.update(base_resolved.properties or {})
+                        required_fields.extend(base_resolved.required or [])
                 else:
-                    all_properties.update(item_dict.get("properties", {}))
-                    required_fields.extend(item_dict.get("required", []))
+                    all_properties.update(item.properties or {})
+                    required_fields.extend(item.required or [])
 
-            # 渲染当前类的属性（只渲染自己新增的属性，不含父类属性）
-            own_properties = schema.get("properties", {})
-            own_required = schema.get("required", [])
-            # 从 all_properties 中去掉 own_properties 的 key，得到只有父类属性的 dict
+            # 渲染当前类的属性（只渲染自己新增的属性，不含父类属性）。
+            own_properties: dict[str, Schema] = schema.properties or {}
+            own_required = schema.required or []
             parent_props = {k: v for k, v in all_properties.items() if k not in own_properties}
 
-            # 生成父类属性代码（如果有的话）
+            # 生成父类属性代码（如果有的话）。
             parent_model_code = ""
             if parent_props:
-                parent_model_code = (
-                    self._render_object_schema(
-                        f"_{model_name}Base",
-                        {"properties": parent_props, "required": [r for r in required_fields if r in parent_props]},
-                    )
-                    + "\n\n"
+                parent_schema = Schema.model_validate(
+                    {"properties": {k: v.model_dump() for k, v in parent_props.items()}, "required": [r for r in required_fields if r in parent_props]}
                 )
+                parent_model_code = self._render_object_schema(f"_{model_name}Base", parent_schema) + "\n\n"
 
-            # 生成当前类（只包含自己的属性）
+            # 生成当前类（只包含自己的属性）。
             current_lines = [f"class {model_name}({', '.join(base_names)}):"]
             if not own_properties:
                 current_lines.append("    pass")
             else:
                 for prop_name, prop_schema in own_properties.items():
-                    if not isinstance(prop_schema, dict):
+                    if not isinstance(prop_schema, Schema):
                         continue
                     prop_type, _ = self._resolve_schema_to_type(
                         prop_schema, default_name=f"{model_name}{prop_name.capitalize()}"
@@ -537,15 +491,15 @@ class EndpointRenderer:
 
         # 普通对象
         lines = [f"class {model_name}(BaseModel):"]
-        properties = schema.get("properties") or {}
-        required_list = schema.get("required") or []
+        properties = schema.properties or {}
+        required_list = schema.required or []
 
         if not properties:
             lines.append("    pass")
             return "\n".join(lines)
 
         for prop_name, prop_schema in properties.items():
-            if not isinstance(prop_schema, dict):
+            if not isinstance(prop_schema, Schema):
                 continue
             prop_type, _ = self._resolve_schema_to_type(
                 prop_schema, default_name=f"{model_name}{prop_name.capitalize()}"
@@ -557,7 +511,7 @@ class EndpointRenderer:
         return "\n".join(lines)
 
 
-def _detect_embed_wrapper(schema: dict[str, Any]) -> tuple[bool, str | None, dict[str, Any] | None]:
+def _detect_embed_wrapper(schema: Schema) -> tuple[bool, str | None, Schema | None]:
     """检测是否是 embed=True 的单属性 wrapper。
 
     embed=True 的 OpenAPI 特征：
@@ -565,24 +519,24 @@ def _detect_embed_wrapper(schema: dict[str, Any]) -> tuple[bool, str | None, dic
     - 有且仅有一个 property
     - 该 property 的 key 在 required 列表中
 
-    :param schema: JSON Schema 字典。
+    :param schema: Schema 对象。
     :return: (is_embed, field_name, inner_schema)。
     """
-    if schema.get("type") != "object":
+    if schema.type != "object":
         return False, None, None
 
-    properties = schema.get("properties") or {}
+    properties = schema.properties or {}
     if len(properties) != 1:
         return False, None, None
 
-    required = schema.get("required") or []
+    required = schema.required or []
     field_name = list(properties.keys())[0]
 
     if field_name not in required:
         return False, None, None
 
     inner_schema = properties[field_name]
-    if not isinstance(inner_schema, dict):
+    if not isinstance(inner_schema, Schema):
         return False, None, None
 
     return True, field_name, inner_schema
