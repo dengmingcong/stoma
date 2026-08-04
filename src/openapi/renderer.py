@@ -117,7 +117,6 @@ class EndpointRenderer:
             request_body_type=request_body_info["type"],
             request_body_embed=request_body_info["embed"],
             request_body_field_name=request_body_info["field_name"] or "body",
-            request_body_is_model_ref=request_body_info.get("is_ref", False),
             header_fields=header_fields,
             param_fields=param_fields,
         )
@@ -144,7 +143,7 @@ class EndpointRenderer:
             json_type = schema_dict.get("type", "Any")
             param_type = map_json_schema_type(str(json_type))
 
-            field_line = _build_field(name, param_type, required, location)
+            field_line = _build_param_field_line(name, param_type, required, location)
 
             if location == "header":
                 header_fields.append(field_line)
@@ -386,8 +385,7 @@ class EndpointRenderer:
                         prop_schema, default_name=f"{model_name}{prop_name.capitalize()}"
                     )
                     required = prop_name in own_required
-                    default_str = "" if required else " = None"
-                    current_lines.append(f"    {prop_name}: {prop_type}{default_str}")
+                    current_lines.append(f"    {_build_schema_field_line(prop_name, prop_type, required)}")
 
             return parent_model_code + "\n".join(current_lines)
 
@@ -407,8 +405,7 @@ class EndpointRenderer:
                 prop_schema, default_name=f"{model_name}{prop_name.capitalize()}"
             )
             required = prop_name in required_list
-            default_str = "" if required else " = None"
-            lines.append(f"    {prop_name}: {prop_type}{default_str}")
+            lines.append(f"    {_build_schema_field_line(prop_name, prop_type, required)}")
 
         return "\n".join(lines)
 
@@ -444,13 +441,44 @@ def _detect_embed_wrapper(schema: Schema) -> tuple[bool, str | None, Schema | No
     return True, field_name, inner_schema
 
 
-def _build_field(
+def _build_schema_field_line(
+    prop_name: str,
+    prop_type: str,
+    required: bool,
+) -> str:
+    """构建 schema 字段声明字符串。
+
+    规则：
+    - 只有不是 snake_case 时才需要 ``Field(serialization_alias=...)``
+    - 只有非 required 才需要 ``| None``
+
+    :param prop_name: 原始 OpenAPI 属性名。
+    :param prop_type: Python 类型字符串。
+    :param required: 是否必需。
+    :return: 字段声明字符串。
+    """
+    is_snake = _is_snake_case(prop_name)
+    field_name = prop_name if is_snake else _to_field_name(prop_name)
+
+    base_type = prop_type if required else f"{prop_type} | None"
+
+    if is_snake:
+        default = "" if required else " = None"
+    elif required:
+        default = f" = Field(serialization_alias={prop_name!r})"
+    else:
+        default = f" = Field(default=None, serialization_alias={prop_name!r})"
+
+    return f"{field_name}: {base_type}{default}"
+
+
+def _build_param_field_line(
     name: str,
     param_type: str,
     required: bool,
     location: str,
 ) -> str:
-    """构建字段声明字符串。
+    """构建参数字段声明字符串。
 
     规则：
     - 只有 Header 参数使用 ``Annotated[..., Header()]``
