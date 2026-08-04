@@ -11,9 +11,16 @@ from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, Template
+from openapi_pydantic.v3.v3_0 import Components as Components30
+from openapi_pydantic.v3.v3_0 import Schema as Schema30
+from openapi_pydantic.v3.v3_1 import Components as Components31
+from openapi_pydantic.v3.v3_1 import Schema as Schema31
 from pydantic.alias_generators import to_snake
 
 from src.openapi.models import Endpoint, Parameter, RequestBody, Response
+
+Components = Components30 | Components31
+Schema = Schema30 | Schema31
 
 _JSON_SCHEMA_TYPE_TO_PYTHON: dict[str, str] = {
     "string": "str",
@@ -82,7 +89,7 @@ class EndpointRenderer:
 
     def __init__(
         self,
-        components: Any,
+        components: Components,
         template_path: str | Path | None = None,
     ) -> None:
         """初始化渲染器。
@@ -417,7 +424,7 @@ class EndpointRenderer:
         json_type = schema.get("type", "Any")
         return map_json_schema_type(str(json_type)), []
 
-    def _resolve_schema_ref(self, schema_name: str) -> Any | None:
+    def _resolve_schema_ref(self, schema_name: str) -> Schema | None:
         """从 components.schemas 解析 schema 引用。
 
         :param schema_name: schema 名称。
@@ -425,7 +432,7 @@ class EndpointRenderer:
         """
         if not self.components or not self.components.schemas:
             return None
-        schemas = self.components.schemas
+        schemas: dict[str, Schema] = self.components.schemas
         if schema_name in schemas:
             return schemas[schema_name]
         return None
@@ -441,7 +448,7 @@ class EndpointRenderer:
         """
         if not self.components or not self.components.schemas:
             return None
-        schemas = self.components.schemas
+        schemas: dict[str, Schema] = self.components.schemas
         if not schemas:
             return None
 
