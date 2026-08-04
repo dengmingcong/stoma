@@ -1,7 +1,5 @@
 """OpenAPI 生成器的中间表示（IR）模型。"""
 
-from __future__ import annotations
-
 from openapi_pydantic.v3.v3_0 import (
     Parameter as Parameter30,
 )

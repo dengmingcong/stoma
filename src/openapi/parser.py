@@ -4,8 +4,6 @@
 提取路径、方法、参数、schema 等信息，供代码生成器使用。
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import Any
