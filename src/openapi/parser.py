@@ -20,6 +20,45 @@ from src.openapi.models import Endpoint
 Operation = Operation30 | Operation31
 
 
+def _fill_schema_titles(spec: dict[str, Any]) -> None:
+    """给 components.schemas 补全 title，并递归处理嵌套的 schema。
+
+    在 prance 展开之前调用，用 schema 的 key 作为 title。
+    同时递归处理 properties、items、allOf、oneOf、anyOf 中的嵌套 schema。
+    这样展开后的 schema 会保留 title，renderer 不需要再查 components。
+
+    :param spec: OpenAPI 规范字典。
+    """
+    schemas = spec.get("components", {}).get("schemas", {})
+    if not isinstance(schemas, dict):
+        return
+
+    def fill_title(schema: dict[str, Any]) -> None:
+        if not isinstance(schema, dict):
+            return
+        # 递归处理 allOf/oneOf/anyOf
+        for key in ("allOf", "oneOf", "anyOf"):
+            items = schema.get(key)
+            if isinstance(items, list):
+                for item in items:
+                    fill_title(item)
+        # 递归处理 items（array 的 items）
+        items = schema.get("items")
+        if isinstance(items, dict):
+            fill_title(items)
+        # 递归处理 properties
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            for prop in properties.values():
+                fill_title(prop)
+
+    for name, schema in schemas.items():
+        if isinstance(schema, dict) and not schema.get("title"):
+            schema["title"] = name
+        if isinstance(schema, dict):
+            fill_title(schema)
+
+
 class OpenAPISchemaError(Exception):
     """OpenAPI schema 校验失败。"""
 
@@ -75,8 +114,13 @@ class OpenAPIParser:
             msg = f"Unsupported OpenAPI version: {openapi_version}. Only 3.0.x and 3.1.x are supported."
             raise ValueError(msg)
 
+        # 在 prance 展开之前，给 components.schemas 补全 title。
+        # 这样展开后的 schema 会保留 title，renderer 不需要再查 components。
+        _fill_schema_titles(raw_dict)
+
         try:
-            parser = ResolvingParser(spec_string=content, validation=False)
+            modified_content = yaml.dump(raw_dict) if suffix in {".yaml", ".yml"} else json.dumps(raw_dict)
+            parser = ResolvingParser(spec_string=modified_content, validation=False)
             parser.parse()
             self._spec_dict = parser.specification
         except Exception as e:

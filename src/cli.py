@@ -51,10 +51,8 @@ def make(
 
     # 获取所有 endpoint 并渲染。
     endpoints = parser.get_endpoints()
-    components = parser.spec.components
-
     generated_files: list[Path] = []
-    renderer = EndpointRenderer(components=components)
+    renderer = EndpointRenderer()
     for endpoint in endpoints:
         rendered = renderer.render(endpoint)
         file_path = render_to_file(

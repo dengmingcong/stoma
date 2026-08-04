@@ -11,15 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, Template
-from openapi_pydantic.v3.v3_0 import Components as Components30
 from openapi_pydantic.v3.v3_0 import Schema as Schema30
-from openapi_pydantic.v3.v3_1 import Components as Components31
 from openapi_pydantic.v3.v3_1 import Schema as Schema31
 from pydantic.alias_generators import to_snake
 
 from src.openapi.models import Endpoint, Parameter, RequestBody, Response
 
-Components = Components30 | Components31
 Schema = Schema30 | Schema31
 
 _JSON_SCHEMA_TYPE_TO_PYTHON: dict[str, str] = {
@@ -75,29 +72,17 @@ def _to_field_name(name: str) -> str:
     return to_snake(cleaned)
 
 
-def _get_ref_name(ref: str) -> str:
-    """从 $ref 字符串中提取 schema 名称。
-
-    :param ref: $ref 字符串，格式为 #/components/schemas/Name。
-    :return: schema 名称。
-    """
-    return ref.rsplit("/", 1)[-1]
-
-
 class EndpointRenderer:
     """Endpoint 代码渲染器。"""
 
     def __init__(
         self,
-        components: Components | None,
         template_path: str | Path | None = None,
     ) -> None:
         """初始化渲染器。
 
-        :param components: openapi_pydantic Components 对象，用于解析 $ref。
         :param template_path: 模板目录路径，默认为 openapi/templates/。
         """
-        self.components = components
         if template_path is None:
             template_path = Path(__file__).parent / "templates"
         self.template_dir = Path(template_path)
@@ -206,24 +191,10 @@ class EndpointRenderer:
                 "field_name": None,
             }
 
-        # 尝试在 components.schemas 中查找匹配。
-        schema_name = self._find_schema_name(schema)
-        if schema_name:
-            model_code = self._render_object_schema(schema_name, schema)
-            return {
-                "type": schema_name,
-                "models": [model_code],
-                "embed": False,
-                "field_name": None,
-            }
-
-        # 情况3：embed wrapper（1 property）。
+        # 情况2：embed wrapper（1 property）。
         embed, field_name, inner_schema = _detect_embed_wrapper(schema)
         if embed and field_name and inner_schema:
-            if inner_schema.title:
-                type_name = inner_schema.title
-            else:
-                type_name = self._find_schema_name(inner_schema) or f"{class_name}Request"
+            type_name = inner_schema.title or f"{class_name}Request"
             model_code = self._render_object_schema(type_name, inner_schema)
             return {
                 "type": type_name,
@@ -232,7 +203,7 @@ class EndpointRenderer:
                 "field_name": field_name,
             }
 
-        # 情况2：object + 无 title + 找不到匹配（包含 embed wrapper + inner 无 title 的退化）。
+        # 情况3：object + 无 title（fallback）。
         model_code = self._render_object_schema(f"{class_name}Request", schema)
         return {
             "type": f"{class_name}Request",
@@ -275,12 +246,6 @@ class EndpointRenderer:
             model_code = self._render_object_schema(schema_title, schema)
             return schema_title, [model_code]
 
-        # 尝试在 components.schemas 中查找匹配的 schema 名称。
-        schema_name = self._find_schema_name(schema)
-        if schema_name and schema.properties:
-            model_code = self._render_object_schema(schema_name, schema)
-            return schema_name, [model_code]
-
         type_name, models = self._resolve_schema_to_type(schema, default_name)
 
         # 内联对象需要额外生成模型类。
@@ -296,21 +261,12 @@ class EndpointRenderer:
     ) -> tuple[str, list[str]]:
         """将 Schema 对象转换为 Python 类型表达式。
 
-        处理 $ref（查 components）、allOf（继承）、oneOf/anyOf（联合类型）。
+        处理 allOf（继承）、oneOf/anyOf（联合类型）。
 
         :param schema: Schema 对象。
         :param default_name: 内联对象使用的默认模型名。
         :return: (类型表达式, 内嵌模型列表)。
         """
-        # 处理 $ref。
-        schema_ref = getattr(schema, "$ref", None)
-        if schema_ref:
-            schema_name = _get_ref_name(schema_ref)
-            resolved = self._resolve_schema_ref(schema_name)
-            if resolved is not None:
-                return self._resolve_schema_to_type(resolved, schema_name)
-            return schema_name, []
-
         # 处理 oneOf / anyOf。
         one_of = schema.oneOf or schema.anyOf
         if one_of:
@@ -336,22 +292,15 @@ class EndpointRenderer:
             for item in all_of:
                 if not isinstance(item, Schema):
                     continue
-                if getattr(item, "$ref", None):
-                    base_schema_name = _get_ref_name(getattr(item, "$ref"))
-                    base_names.append(base_schema_name)
-                    base_resolved = self._resolve_schema_ref(base_schema_name)
-                    if base_resolved:
-                        all_properties.update(base_resolved.properties or {})
-                        required_fields.extend(base_resolved.required or [])
-                        # 递归处理嵌套的 allOf。
-                        if base_resolved.allOf:
-                            nested_type, nested_models = self._resolve_schema_to_type(base_resolved, base_schema_name)
-                            all_models.extend(nested_models)
-                else:
-                    item_type, item_models = self._resolve_schema_to_type(item, default_name)
-                    all_models.extend(item_models)
-                    all_properties.update(item.properties or {})
-                    required_fields.extend(item.required or [])
+                # allOf item 已经有 title（_fill_schema_titles 处理过）。
+                item_title = getattr(item, "title", None)
+                if item_title:
+                    base_names.append(item_title)
+                # 递归处理（可能还有嵌套的 allOf/oneOf/anyOf）。
+                item_type, item_models = self._resolve_schema_to_type(item, default_name)
+                all_models.extend(item_models)
+                all_properties.update(item.properties or {})
+                required_fields.extend(item.required or [])
 
             # 渲染当前类的属性。
             current_schema = Schema.model_validate(
@@ -367,13 +316,10 @@ class EndpointRenderer:
             items_schema = schema.items
             if not isinstance(items_schema, Schema):
                 return "list[Any]", []
-            items_name = self._find_schema_name(items_schema)
-            if items_name:
-                items_resolved = self._resolve_schema_ref(items_name)
-                if items_resolved and items_resolved.properties:
-                    model_code = self._render_object_schema(items_name, items_resolved)
-                    return f"list[{items_name}]", [model_code]
-                return f"list[{items_name}]", []
+            items_name = items_schema.title
+            if items_name and items_schema.properties:
+                model_code = self._render_object_schema(items_name, items_schema)
+                return f"list[{items_name}]", [model_code]
             items_type, items_models = self._resolve_schema_to_type(items_schema, default_name)
             return f"list[{items_type}]", items_models
 
@@ -385,35 +331,6 @@ class EndpointRenderer:
 
         # 基础类型。
         return map_json_schema_type(schema.type.value if schema.type else "Any"), []
-
-    def _resolve_schema_ref(self, schema_name: str) -> Schema | None:
-        """从 components.schemas 解析 schema 引用。
-
-        :param schema_name: schema 名称。
-        :return: 解析后的 Schema 对象。
-        """
-        if not self.components or not self.components.schemas:
-            return None
-        schemas: dict[str, Schema] = self.components.schemas
-        if schema_name in schemas:
-            return schemas[schema_name]
-        return None
-
-    def _find_schema_name(self, schema: Schema) -> str | None:
-        """在 components.schemas 中查找匹配 schema 内容的名称。
-
-        prance 展开 $ref 后，通过 Schema 对象相等性比较找到原始名称。
-
-        :param schema: Schema 对象。
-        :return: schema 名称，未找到返回 None。
-        """
-        if not self.components or not self.components.schemas:
-            return None
-        schemas = self.components.schemas
-        for name, schema_obj in schemas.items():
-            if schema_obj == schema:
-                return name
-        return None
 
     def _render_object_schema(self, model_name: str, schema: Schema) -> str:
         """将内联 object schema 渲染为 Pydantic 模型类定义。
@@ -431,25 +348,23 @@ class EndpointRenderer:
             required_fields: list[str] = []
 
             for item in all_of:
-                if getattr(item, "$ref", None):
-                    base_name = _get_ref_name(getattr(item, "$ref"))
-                    base_names.append(base_name)
-                    base_resolved = self._resolve_schema_ref(base_name)
-                    if base_resolved:
-                        all_properties.update(base_resolved.properties or {})
-                        required_fields.extend(base_resolved.required or [])
-                else:
-                    all_properties.update(item.properties or {})
-                    required_fields.extend(item.required or [])
+                if not isinstance(item, Schema):
+                    continue
+                # allOf item 已经有 title（_fill_schema_titles 处理过）。
+                if item.title:
+                    base_names.append(item.title)
+                # 递归收集属性。
+                all_properties.update(item.properties or {})
+                required_fields.extend(item.required or [])
 
-            # 渲染当前类的属性（只渲染自己新增的属性，不含父类属性）。
+            # 当前类新增的属性（不含父类的）。
             own_properties: dict[str, Schema] = schema.properties or {}
             own_required = schema.required or []
             parent_props = {k: v for k, v in all_properties.items() if k not in own_properties}
 
-            # 生成父类属性代码（如果有的话）。
+            # 生成父类属性代码。
             parent_model_code = ""
-            if parent_props:
+            if parent_props and base_names:
                 parent_schema = Schema.model_validate(
                     {
                         "properties": {k: v.model_dump() for k, v in parent_props.items()},
@@ -458,8 +373,9 @@ class EndpointRenderer:
                 )
                 parent_model_code = self._render_object_schema(f"_{model_name}Base", parent_schema) + "\n\n"
 
-            # 生成当前类（只包含自己的属性）。
-            current_lines = [f"class {model_name}({', '.join(base_names)}):"]
+            # 生成当前类。
+            inherits = ", ".join(base_names)
+            current_lines = [f"class {model_name}({inherits}):"]
             if not own_properties:
                 current_lines.append("    pass")
             else:
@@ -475,7 +391,7 @@ class EndpointRenderer:
 
             return parent_model_code + "\n".join(current_lines)
 
-        # 普通对象
+        # 普通对象。
         lines = [f"class {model_name}(BaseModel):"]
         properties = schema.properties or {}
         required_list = schema.required or []
