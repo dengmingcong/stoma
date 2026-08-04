@@ -68,8 +68,8 @@ components:
         # 生成的代码应该包含 User 模型（作为内嵌 BaseModel）。
         assert "class User" in content
         assert "BaseModel" in content
-        # 直接 $ref 引用时，body 字段不需要 Annotated 包装。
-        assert "body: Annotated[User, Body()]" in content
+        # $ref 指向的 schema 有 title，render 为 case 1：body: <title>
+        assert "body: User" in content
 
     def test_request_body_with_inline_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用内联 object schema 时能正常生成。"""
@@ -103,8 +103,8 @@ components:
         assert "@router.post" in content
         # 内联对象生成 CreateItemRequest 模型。
         assert "class CreateItemRequest" in content
-        # body 字段类型为生成的模型。
-        assert "body: Annotated[CreateItemRequest, Body()]" in content
+        # 内联 object 无 title，render 为 case 3：body: <class_name>Request
+        assert "body: CreateItemRequest" in content
         # 内联对象的属性映射为 Python 类型。
         assert "name: str" in content
         assert "quantity: int = None" in content
