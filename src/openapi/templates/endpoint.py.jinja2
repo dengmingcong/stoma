@@ -5,16 +5,6 @@ Generated from OpenAPI: {{ operation_id }}{{ "\n" + description if description e
 
 from __future__ import annotations
 
-{% if request_body_models %}
-{% for model in request_body_models %}
-{{ model }}
-{% endfor %}
-{% endif %}
-{% if response_models %}
-{% for model in response_models %}
-{{ model }}
-{% endfor %}
-{% endif %}
 {% if header_fields or request_body_type %}
 from typing import Annotated
 {% endif %}
@@ -30,6 +20,17 @@ from pydantic import BaseModel, Field
 {% else %}
 from stoma import APIRouter, APIRoute
 from pydantic import BaseModel
+{% endif %}
+
+{% if request_body_models %}
+{% for model in request_body_models %}
+{{ model }}
+{% endfor %}
+{% endif %}
+{% if response_models %}
+{% for model in response_models %}
+{{ model }}
+{% endfor %}
 {% endif %}
 
 router = APIRouter()

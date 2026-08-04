@@ -182,10 +182,10 @@ class EndpointRenderer:
 
         # 情况1：object + 有 title。
         if media_type_schema.title:
-            model_code = self._render_object_schema(media_type_schema.title, media_type_schema)
+            model_code, nested = self._render_object_schema(media_type_schema.title, media_type_schema)
             return {
                 "type": media_type_schema.title,
-                "models": [model_code],
+                "models": nested + [model_code],
                 "embed": False,
                 "field_name": None,
             }
@@ -194,19 +194,19 @@ class EndpointRenderer:
         embed, field_name, inner_schema = _detect_embed_wrapper(media_type_schema)
         if embed and field_name and inner_schema:
             type_name = inner_schema.title or f"{class_name}Request"
-            model_code = self._render_object_schema(type_name, inner_schema)
+            model_code, nested = self._render_object_schema(type_name, inner_schema)
             return {
                 "type": type_name,
-                "models": [model_code],
+                "models": nested + [model_code],
                 "embed": True,
                 "field_name": field_name,
             }
 
         # 情况3：object + 无 title（fallback）。
-        model_code = self._render_object_schema(f"{class_name}Request", media_type_schema)
+        model_code, nested = self._render_object_schema(f"{class_name}Request", media_type_schema)
         return {
             "type": f"{class_name}Request",
-            "models": [model_code],
+            "models": nested + [model_code],
             "embed": False,
             "field_name": None,
         }
@@ -242,15 +242,15 @@ class EndpointRenderer:
         # 如果 schema 有 title（来自 $ref 解析），生成以 title 为名的类。
         schema_title = schema.title
         if schema_title and schema.properties:
-            model_code = self._render_object_schema(schema_title, schema)
-            return schema_title, [model_code]
+            model_code, nested = self._render_object_schema(schema_title, schema)
+            return schema_title, nested + [model_code]
 
         type_name, models = self._resolve_schema_to_type(schema, default_name)
 
         # 内联对象需要额外生成模型类。
         if schema.type == "object" and schema.properties and class_name:
-            model_code = self._render_object_schema(default_name, schema)
-            return default_name, [model_code]
+            model_code, nested = self._render_object_schema(default_name, schema)
+            return default_name, nested + [model_code]
         return type_name, models
 
     def _resolve_schema_to_type(
@@ -305,8 +305,9 @@ class EndpointRenderer:
             current_schema = Schema.model_validate(
                 {"properties": {k: v.model_dump() for k, v in all_properties.items()}, "required": required_fields}
             )
-            current_model_code = self._render_object_schema(default_name, current_schema)
+            current_model_code, current_nested = self._render_object_schema(default_name, current_schema)
             all_models.append(current_model_code)
+            all_models.extend(current_nested)
 
             return default_name, all_models
 
@@ -317,8 +318,8 @@ class EndpointRenderer:
                 return "list[Any]", []
             items_name = items_schema.title
             if items_name and items_schema.properties:
-                model_code = self._render_object_schema(items_name, items_schema)
-                return f"list[{items_name}]", [model_code]
+                model_code, nested = self._render_object_schema(items_name, items_schema)
+                return f"list[{items_name}]", [model_code] + nested
             items_type, items_models = self._resolve_schema_to_type(items_schema, default_name)
             return f"list[{items_type}]", items_models
 
@@ -331,20 +332,22 @@ class EndpointRenderer:
         # 基础类型。
         return map_json_schema_type(schema.type.value if schema.type else "Any"), []
 
-    def _render_object_schema(self, model_name: str, schema: Schema) -> str:
+    def _render_object_schema(self, model_name: str, schema: Schema) -> tuple[str, list[str]]:
         """将内联 object schema 渲染为 Pydantic 模型类定义。
 
         处理 allOf 继承（父类属性作为基类）。
+        内嵌的 inline object/array items 会生成独立模型类，类名为属性名的 PascalCase。
 
         :param model_name: 模型类名。
         :param schema: Schema 对象。
-        :return: Python 类定义代码字符串。
+        :return: (Python 类定义代码字符串, 内嵌模型列表)。
         """
         all_of = schema.allOf
         if all_of:
             base_names: list[str] = []
             all_properties: dict[str, Schema] = {}
             required_fields: list[str] = []
+            all_models: list[str] = []
 
             for item in all_of:
                 if not isinstance(item, Schema):
@@ -355,6 +358,9 @@ class EndpointRenderer:
                 # 递归收集属性。
                 all_properties.update(item.properties or {})
                 required_fields.extend(item.required or [])
+                # 递归处理（可能还有嵌套的 allOf/oneOf/anyOf）。
+                item_type, item_models = self._resolve_schema_to_type(item, default_name="")
+                all_models.extend(item_models)
 
             # 当前类新增的属性（不含父类的）。
             own_properties: dict[str, Schema] = schema.properties or {}
@@ -370,7 +376,9 @@ class EndpointRenderer:
                         "required": [r for r in required_fields if r in parent_props],
                     }
                 )
-                parent_model_code = self._render_object_schema(f"_{model_name}Base", parent_schema) + "\n\n"
+                parent_model_code, parent_nested = self._render_object_schema(f"_{model_name}Base", parent_schema)
+                parent_model_code += "\n\n"
+                all_models.extend(parent_nested)
 
             # 生成当前类。
             inherits = ", ".join(base_names)
@@ -381,33 +389,64 @@ class EndpointRenderer:
                 for prop_name, prop_schema in own_properties.items():
                     if not isinstance(prop_schema, Schema):
                         continue
-                    prop_type, _ = self._resolve_schema_to_type(
+                    prop_type, nested = self._resolve_schema_to_type(
                         prop_schema, default_name=f"{model_name}{prop_name.capitalize()}"
                     )
+                    all_models.extend(nested)
                     required = prop_name in own_required
                     current_lines.append(f"    {_build_schema_field_line(prop_name, prop_type, required)}")
 
-            return parent_model_code + "\n".join(current_lines)
+            class_code = parent_model_code + "\n".join(current_lines)
+            return class_code, all_models
 
         # 普通对象。
         lines = [f"class {model_name}(BaseModel):"]
         properties = schema.properties or {}
         required_list = schema.required or []
+        nested_models: list[str] = []
 
         if not properties:
             lines.append("    pass")
-            return "\n".join(lines)
+            return "\n".join(lines), []
 
         for prop_name, prop_schema in properties.items():
             if not isinstance(prop_schema, Schema):
                 continue
+
+            # 内嵌 inline object：生成 PascalCase 名称的模型
+            if prop_schema.type == "object" and prop_schema.properties:
+                nested_name = _to_pascal_case(prop_name)
+                nested_code, nested_nested = self._render_object_schema(nested_name, prop_schema)
+                nested_models.extend(nested_nested)
+                nested_models.append(nested_code)
+                required = prop_name in required_list
+                lines.append(f"    {_build_schema_field_line(prop_name, nested_name, required)}")
+                continue
+
+            # 内嵌 array items 是 inline object：生成 PascalCase + "Item" 名称的模型
+            items_schema = prop_schema.items
+            if (
+                prop_schema.type == "array"
+                and isinstance(items_schema, Schema)
+                and items_schema.type == "object"
+                and items_schema.properties
+            ):
+                item_name = f"{_to_pascal_case(prop_name)}Item"
+                item_code, item_nested = self._render_object_schema(item_name, items_schema)
+                nested_models.extend(item_nested)
+                nested_models.append(item_code)
+                required = prop_name in required_list
+                lines.append(f"    {_build_schema_field_line(prop_name, f'list[{item_name}]', required)}")
+                continue
+
+            # 其他类型
             prop_type, _ = self._resolve_schema_to_type(
                 prop_schema, default_name=f"{model_name}{prop_name.capitalize()}"
             )
             required = prop_name in required_list
             lines.append(f"    {_build_schema_field_line(prop_name, prop_type, required)}")
 
-        return "\n".join(lines)
+        return "\n".join(lines), nested_models
 
 
 def _detect_embed_wrapper(schema: Schema) -> tuple[bool, str | None, Schema | None]:
