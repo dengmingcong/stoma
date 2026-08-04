@@ -10,6 +10,7 @@ dependencies = [
     "pytest>=8.4.2",
     # OpenAPI handling and typing
     "openapi-schema-pydantic>=1.2.4",
+    "prance>=26.0.0",
     "pydantic>=2.6.0",
     "pyyaml>=6.0.2",
     "jsonschema>=4.0.0",
@@ -76,5 +77,5 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [project.scripts]
-stoma = "src.cli.main:app"
+stoma = "src.cli:app"
 

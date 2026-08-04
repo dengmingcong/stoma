@@ -14,7 +14,7 @@ pip install -e .
 ## 生成代码
 
 ```bash
-stoma make --spec specs/001-generate-api/contracts/openapi.yaml --out src/example --feature users
+stoma make --spec specs/001-generate-api/contracts/openapi.yaml --out src/example
 ```
 
 ## 运行测试（占位）

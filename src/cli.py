@@ -50,24 +50,16 @@ def make(
         raise typer.BadParameter(str(e)) from e
 
     # 获取所有 endpoint 并渲染。
-    renderer = EndpointRenderer()
     endpoints = parser.get_endpoints()
+    components = parser.spec.components
 
     generated_files: list[Path] = []
+    renderer = EndpointRenderer(components=components)
     for endpoint in endpoints:
-        rendered = renderer.render(
-            operation_id=endpoint["operation_id"],
-            method=endpoint["method"],
-            path=endpoint["path"],
-            parameters=endpoint["parameters"],
-            request_body=endpoint["request_body"],
-            responses=endpoint["responses"],
-            summary=endpoint["summary"],
-            description=endpoint["description"],
-        )
+        rendered = renderer.render(endpoint)
         file_path = render_to_file(
             output_dir=out,
-            operation_id=endpoint["operation_id"],
+            operation_id=endpoint.operation_id,
             rendered_code=rendered,
         )
         generated_files.append(file_path)

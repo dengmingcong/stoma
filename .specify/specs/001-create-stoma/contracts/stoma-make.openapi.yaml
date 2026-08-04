@@ -9,14 +9,14 @@ paths:
     post:
       operationId: stoma_make
       summary: 将 OpenAPI 规范生成 Stoma 接口与模型代码
-      description: 接收 OpenAPI 规范路径、输出目录与 feature 名称，生成 FastAPI 风格分层的 Python 代码。
+      description: 接收 OpenAPI 规范路径和输出目录，生成 FastAPI 风格分层的 Python 代码。
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [spec, out, feature]
+              required: [spec, out]
               properties:
                 spec:
                   type: string
@@ -24,13 +24,6 @@ paths:
                 out:
                   type: string
                   description: 生成代码输出目录。
-                feature:
-                  type: string
-                  description: 生成代码所在的 feature 包名。
-                clean:
-                  type: boolean
-                  default: false
-                  description: 是否清理输出目录后再生成。
       responses:
         "200":
           description: 生成成功
