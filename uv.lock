@@ -1101,6 +1101,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "allure-pytest" },
+    { name = "fastapi" },
     { name = "jsonschema" },
     { name = "openapi-schema-pydantic" },
     { name = "playwright" },
@@ -1126,6 +1127,7 @@ dev = [
 requires-dist = [
     { name = "allure-pytest", specifier = ">=2.15.2" },
     { name = "commitizen", marker = "extra == 'dev'", specifier = ">=3.0.0" },
+    { name = "fastapi", specifier = ">=0.141.1" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.100.0" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "jsonschema", specifier = ">=4.0.0" },
