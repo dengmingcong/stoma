@@ -20,22 +20,6 @@ app = typer.Typer(
 )
 
 
-def _has_any_payloads(endpoints: list) -> bool:
-    """检查是否任何 endpoint 需要模型生成（request body 或 JSON 响应）。"""
-    for endpoint in endpoints:
-        if endpoint.request_body is not None:
-            return True
-        if endpoint.responses:
-            for status in ("200", "201"):
-                resp = endpoint.responses.get(status)
-                if resp is None:
-                    continue
-                content = getattr(resp, "content", None) or {}
-                if "application/json" in content:
-                    return True
-    return False
-
-
 @app.command()
 def make(
     spec: Annotated[Path, typer.Argument(help="OpenAPI 规范文件路径（YAML 或 JSON）")],
@@ -67,12 +51,13 @@ def make(
     except (FileNotFoundError, ValueError, OpenAPISchemaError) as e:
         raise typer.BadParameter(str(e)) from e
 
-    # 获取 endpoints；spec_dict 是 parser 内部状态（pre-transform，含 title）。
-    endpoints = parser.get_endpoints()
+    # 决定是否生成 models.py：有 components.schemas 或 paths 中有 payload 即可。
     spec_dict = parser._spec_dict
+    has_payloads = parser.has_payloads
+    endpoints = parser.get_endpoints()
     if spec_dict is not None and endpoints:
         schemas = (spec_dict.get("components") or {}).get("schemas") or {}
-        if schemas or _has_any_payloads(endpoints):
+        if schemas or has_payloads:
             generate_models(spec_dict, out / "models.py")
 
     # 渲染每个 endpoint 的 route.py。

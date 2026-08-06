@@ -116,8 +116,8 @@ def _inject_title_into_response_schema(schema: dict[str, Any] | None, pascal: st
         schema["title"] = f"{pascal}Response"
 
 
-def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> None:
-    """为所有 schema 注入 title。
+def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> bool:
+    """为所有 schema 注入 title，返回是否在 paths 中找到任何 payload。
 
     在 prance 展开之前调用，三段处理：
 
@@ -132,6 +132,8 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> None:
     已带 title 的 schema 跳过，避免覆盖正确的类名。
 
     :param raw_spec_dict: OpenAPI 规范字典（修改入参——prance 展开后 title 仍在）。
+    :return: 是否在 paths 中找到任何 ``application/json`` 的 request body 或
+        200/201 响应。cli 据此判断是否要生成 ``models.py``。
     """
     # Pass 1：components.schemas.X → title = X
     components_schemas = raw_spec_dict.get("components", {}).get("schemas", {})
@@ -141,9 +143,10 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> None:
                 json_media_type_schema["title"] = name
 
     # Pass 2 / 3：paths[*][*] 的 inline object 注入 title
+    has_payload = False
     paths = raw_spec_dict.get("paths", {})
     if not isinstance(paths, dict):
-        return
+        return False
     for path_item in paths.values():
         if not isinstance(path_item, dict):
             continue
@@ -162,7 +165,9 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> None:
                 json_media_type_obj = content.get("application/json", {})
                 if isinstance(json_media_type_obj, dict):
                     json_media_type_schema = json_media_type_obj.get("schema")
-                    _inject_title_into_request_body_schema(json_media_type_schema, pascal)
+                    if json_media_type_schema is not None:
+                        _inject_title_into_request_body_schema(json_media_type_schema, pascal)
+                        has_payload = True
 
             # 响应 200/201
             responses = op.get("responses", {})
@@ -175,7 +180,11 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> None:
                     json_media_type_obj = content.get("application/json", {})
                     if isinstance(json_media_type_obj, dict):
                         json_media_type_schema = json_media_type_obj.get("schema")
-                        _inject_title_into_response_schema(json_media_type_schema, pascal)
+                        if json_media_type_schema is not None:
+                            _inject_title_into_response_schema(json_media_type_schema, pascal)
+                            has_payload = True
+
+    return has_payload
 
 
 class OpenAPISchemaError(Exception):
@@ -202,6 +211,15 @@ class OpenAPIParser:
         self.spec_path = Path(spec_path)
         self._spec_dict: dict[str, Any] | None = None
         self._spec: OpenAPI | OpenAPI30 | None = None
+        self._has_payloads: bool = False
+
+    @property
+    def has_payloads(self) -> bool:
+        """``load()`` 后：paths 中是否找到任何 request body 或 200/201 响应的 ``application/json``。
+
+        由 :func:`_fill_schema_titles` 在遍历 paths 时设置，避免 cli 重复 walk。
+        """
+        return self._has_payloads
 
     def load(self) -> None:
         """加载 OpenAPI 规范文件，并展开所有内部 $ref。
@@ -236,7 +254,7 @@ class OpenAPIParser:
         # 给 components.schemas 补全 title，让 prance 展开后的内联副本
         # 也带 title；这是 datamodel-codegen 跨 components 和 paths 做
         # 去重时的关键标识（仅靠 dict key 不够，必须 title 也一致）。
-        _fill_schema_titles(raw_spec_dict)
+        self._has_payloads = _fill_schema_titles(raw_spec_dict)
 
         try:
             modified_content = yaml.dump(raw_spec_dict) if suffix in {".yaml", ".yml"} else json.dumps(raw_spec_dict)
