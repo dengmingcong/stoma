@@ -127,7 +127,7 @@ class EndpointRenderer:
         :return: 渲染后的 Python 源码字符串。
         """
         class_name = _to_pascal_case(endpoint.operation_id)
-        response_type, response_imports = self._extract_response_info(endpoint.responses, class_name)
+        response_type = self._extract_response_info(endpoint.responses, class_name)
         request_body_info = self._extract_request_body_info(endpoint.request_body, class_name, endpoint.operation_id)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
 
@@ -234,32 +234,31 @@ class EndpointRenderer:
         self,
         responses: dict[str, Response] | None,
         class_name: str,
-    ) -> tuple[str, list[str]]:
-        """提取响应信息（类名引用 + 需导入的模型名列表）。
+    ) -> str:
+        """提取响应的模型名字符串。
 
         :param responses: OpenAPI 响应字典。
         :param class_name: 接口类名，做 fallback。
-        :return: ``(响应类型字符串, 需导入的模型名列表)``。
+        :return: 响应类型字符串（如 ``"User"`` / ``"list[User]"`` / ``""``）。
         """
         if not responses:
-            return "", []
+            return ""
 
         response_200 = responses.get("200") or responses.get("201")
         if not response_200:
-            return "", []
+            return ""
 
         content = response_200.content or {}
         json_content = content.get("application/json")
         if not json_content:
-            return "", []
+            return ""
 
         schema = getattr(json_content, "media_type_schema", None)
         if not isinstance(schema, Schema):
-            return "", []
+            return ""
 
         default_name = f"{class_name}Response" if class_name else ""
-        type_name = _resolve_model_name(schema, default_name)
-        return type_name, [type_name] if type_name else []
+        return _resolve_model_name(schema, default_name)
 
 
 def _map_json_schema_type(json_type: str) -> str:
