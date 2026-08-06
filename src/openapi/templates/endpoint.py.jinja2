@@ -5,32 +5,25 @@ Generated from OpenAPI: {{ operation_id }}{{ "\n" + description if description e
 
 from __future__ import annotations
 
+{% if imported_models %}
+from .models import {{ imported_models | join(', ') }}
+{% endif %}
 {% if header_fields or request_body_type %}
 from typing import Annotated
 {% endif %}
-{% if header_fields and request_body_type %}
+{% if header_fields and request_body_embed %}
 from stoma import APIRouter, APIRoute, Body, Header
-from pydantic import BaseModel, Field
+from pydantic import Field
+{% elif header_fields and request_body_type %}
+from stoma import APIRouter, APIRoute, Body, Header
+from pydantic import Field
 {% elif header_fields %}
 from stoma import APIRouter, APIRoute, Header
-from pydantic import BaseModel, Field
+from pydantic import Field
+{% elif request_body_embed %}
+from stoma import APIRouter, APIRoute, Body
 {% elif request_body_type %}
 from stoma import APIRouter, APIRoute, Body
-from pydantic import BaseModel, Field
-{% else %}
-from stoma import APIRouter, APIRoute
-from pydantic import BaseModel
-{% endif %}
-
-{% if request_body_models %}
-{% for model in request_body_models %}
-{{ model }}
-{% endfor %}
-{% endif %}
-{% if response_models %}
-{% for model in response_models %}
-{{ model }}
-{% endfor %}
 {% endif %}
 
 router = APIRouter()

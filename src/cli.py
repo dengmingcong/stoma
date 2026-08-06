@@ -80,7 +80,8 @@ def make(
 
     # 渲染每个 endpoint 的 route.py。
     generated_files: list[Path] = []
-    renderer = EndpointRenderer()
+    embed_infos_by_op = {info.operation_id: info for info in embed_infos}
+    renderer = EndpointRenderer(embed_infos=embed_infos_by_op)
     for endpoint in endpoints:
         rendered = renderer.render(endpoint)
         file_path = render_to_file(

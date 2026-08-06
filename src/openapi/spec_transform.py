@@ -107,8 +107,14 @@ def _find_response_schema(
 
 
 def _is_inline_object(schema: dict[str, Any]) -> bool:
-    """检测是否是「需要注入 title」的内联 object。"""
+    """检测是否是「需要注入 title」的内联 object。
+
+    已带 ``title`` 的 schema（来自 ``$ref`` 解析后的命名 schema）跳过，
+    避免覆盖正确的类名。
+    """
     if "$ref" in schema:
+        return False
+    if schema.get("title"):
         return False
     if schema.get("type") != "object":
         return False

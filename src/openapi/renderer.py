@@ -1,6 +1,17 @@
-"""OpenAPI 模板渲染器。
+"""Endpoint 路由文件渲染器。
 
-使用 Jinja2 渲染 endpoint 生成模板。
+把 OpenAPI 端点（:class:`src.openapi.models.Endpoint`）渲染成 ``route.py``
+文件。**模型类由 ``datamodel-code-generator`` 在前置阶段生成**，本模块
+只负责：
+
+- 解析路径 / 查询 / 头部参数并渲染为 Pydantic 字段声明
+- 解析请求体引用哪个模型（名字符串）
+- 解析响应引用哪个模型（名字符串）
+- 渲染 ``Annotated[..., Body(embed=True)]`` 装饰
+- 输出 ``from .models import ...`` 导入
+
+所有 schema → model 转换都在 spec pre-process 阶段完成（见
+:mod:`src.openapi.spec_transform`），本模块不写 Pydantic 类定义。
 """
 
 from __future__ import annotations
@@ -16,34 +27,13 @@ from openapi_pydantic.v3.v3_1 import Schema as Schema31
 from pydantic.alias_generators import to_snake
 
 from src.openapi.models import Endpoint, Parameter, RequestBody, Response
+from src.openapi.spec_transform import EmbedInfo
 
 Schema = Schema30 | Schema31
 
-_JSON_SCHEMA_TYPE_TO_PYTHON: dict[str, str] = {
-    "string": "str",
-    "integer": "int",
-    "number": "float",
-    "boolean": "bool",
-    "array": "list",
-    "object": "dict",
-}
-
-
-def map_json_schema_type(json_type: str) -> str:
-    """将 JSON Schema 类型映射为 Python 类型。
-
-    :param json_type: JSON Schema 类型（如 "string"、"integer"）。
-    :return: Python 类型字符串。
-    """
-    return _JSON_SCHEMA_TYPE_TO_PYTHON.get(json_type, json_type)
-
 
 def _is_snake_case(name: str) -> bool:
-    """检测 name 是否已经是合法的 snake_case（且不是 Python 关键字）。
-
-    :param name: 候选名字。
-    :return: 是否为合法 snake_case。
-    """
+    """检测 name 是否已经是合法的 snake_case（且不是 Python 关键字）。"""
     if not name:
         return False
     if keyword.iskeyword(name):
@@ -52,36 +42,73 @@ def _is_snake_case(name: str) -> bool:
 
 
 def _to_field_name(name: str) -> str:
-    """将 OpenAPI 参数名转为合法的 snake_case field 名。
-
-    注意：仅在非 snake_case 时调用。
-
-    :param name: 原始 OpenAPI 参数名。
-    :return: 合法的 snake_case field 名。
-    """
-    # 非字母数字字符（含 - 和 .）统一替换为下划线
+    """将 OpenAPI 参数名转为合法的 snake_case field 名。"""
     cleaned = re.sub(r"[^a-zA-Z0-9_]", "_", name)
     cleaned = re.sub(r"_+", "_", cleaned).strip("_") or "param"
-
     if cleaned[0].isdigit():
         cleaned = f"n_{cleaned}"
-
     if keyword.iskeyword(cleaned):
         cleaned = f"p_{cleaned}"
-
     return to_snake(cleaned)
 
 
+def _to_pascal_case(operation_id: str) -> str:
+    """将 operationId 转换为 PascalCase 类名。"""
+    normalized = operation_id.replace("-", "_")
+    words = re.split(r"[_-]+|(?<=[a-z0-9])(?=[A-Z])", normalized)
+    return "".join(word.capitalize() for word in words if word)
+
+
+def _resolve_model_name(schema: Schema, default_name: str) -> str:
+    """从 Schema 对象解析出模型名字符串（已经是 ``models.py`` 中将出现的类名）。
+
+    规则：
+
+    - ``$ref`` → 取 ref 末段 schema 名
+    - 有 ``title`` → 直接返回（spec pre-process 已经为 inline object 注入 title）
+    - inline object（无 title）→ 返回 ``default_name``
+    - array → ``list[<items_model_name>]``
+    - 标量 → ``dict[str, Any]``（无法建模）
+    """
+    if schema.title:
+        return schema.title
+    if schema.type == "array" and schema.items is not None and isinstance(schema.items, Schema):
+        items_name = schema.items.title if schema.items.title else default_name
+        return f"list[{items_name}]"
+    if schema.type == "object" and not schema.properties:
+        return "dict[str, Any]"
+    return default_name
+
+
+def _unwrap_model_name(type_expr: str) -> str:
+    """从类型表达式（如 ``list[User]``、``User``）提取需要 import 的模型名。
+
+    - ``User`` → ``User``
+    - ``list[User]`` → ``User``
+    - ``dict[str, Any]`` → 空字符串（不导入）
+    - ``""`` → 空字符串
+    """
+    if not type_expr:
+        return ""
+    if type_expr.startswith("list[") and type_expr.endswith("]"):
+        return type_expr[5:-1]
+    return type_expr
+
+
 class EndpointRenderer:
-    """Endpoint 代码渲染器。"""
+    """Endpoint 路由文件渲染器。"""
 
     def __init__(
         self,
         template_path: str | Path | None = None,
+        embed_infos: dict[str, EmbedInfo] | None = None,
     ) -> None:
         """初始化渲染器。
 
-        :param template_path: 模板目录路径，默认为 openapi/templates/。
+        :param template_path: 模板目录路径，默认为 ``openapi/templates/``。
+        :param embed_infos: 按 ``operation_id`` 索引的 embed wrapper 信息。
+            用于在 ``route.py`` 中渲染 ``Body(embed=True)`` 并使用 wrapper
+            字段名作为接口类字段名。
         """
         if template_path is None:
             template_path = Path(__file__).parent / "templates"
@@ -91,17 +118,29 @@ class EndpointRenderer:
             trim_blocks=True,
             lstrip_blocks=True,
         )
+        self.embed_infos: dict[str, EmbedInfo] = embed_infos or {}
 
     def render(self, endpoint: Endpoint) -> str:
-        """渲染 endpoint 代码。
+        """渲染 endpoint 的 route.py 内容。
 
-        :param endpoint: Endpoint IR 对象。
-        :return: 渲染后的 Python 代码。
+        :param endpoint: :class:`Endpoint` IR 对象。
+        :return: 渲染后的 Python 源码字符串。
         """
-        class_name = operation_id_to_class_name(endpoint.operation_id)
-        response_type, response_models = self._extract_response_info(endpoint.responses, class_name)
-        request_body_info = self._extract_request_body_info(endpoint.request_body, class_name)
+        class_name = _to_pascal_case(endpoint.operation_id)
+        response_type, response_imports = self._extract_response_info(
+            endpoint.responses, class_name
+        )
+        request_body_info = self._extract_request_body_info(
+            endpoint.request_body, class_name, endpoint.operation_id
+        )
         header_fields, param_fields = self._extract_params(endpoint.parameters)
+
+        imported_models: list[str] = []
+        if response_type and response_type != "dict[str, Any]":
+            imported_models.append(_unwrap_model_name(response_type))
+        if request_body_info["type"]:
+            imported_models.append(_unwrap_model_name(request_body_info["type"]))
+        imported_models = [m for m in imported_models if m]
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
         return template.render(
@@ -112,20 +151,22 @@ class EndpointRenderer:
             summary=endpoint.summary,
             description=endpoint.description,
             response_type=response_type,
-            response_models=response_models,
-            request_body_models=request_body_info["models"],
             request_body_type=request_body_info["type"],
             request_body_embed=request_body_info["embed"],
             request_body_field_name=request_body_info["field_name"] or "body",
             header_fields=header_fields,
             param_fields=param_fields,
+            imported_models=imported_models,
         )
 
-    def _extract_params(self, parameters: list[Parameter]) -> tuple[list[str], list[str]]:
-        """提取参数信息。
+    def _extract_params(
+        self,
+        parameters: list[Parameter],
+    ) -> tuple[list[str], list[str]]:
+        """提取参数信息（query/header/path），仍由 renderer 渲染为字段声明。
 
-        :param parameters: 参数列表（openapi_pydantic Parameter 对象）。
-        :return: (Header 字段声明列表, Query/Path 字段声明列表)。
+        :param parameters: OpenAPI 参数列表。
+        :return: ``(Header 字段声明列表, Query/Path 字段声明列表)``。
         """
         header_fields: list[str] = []
         param_fields: list[str] = []
@@ -133,15 +174,13 @@ class EndpointRenderer:
         for param in parameters:
             name = param.name or ""
             param_in = param.param_in
-            # param_in 是 ParameterLocation 枚举。
             location = param_in.value if param_in else "query"
             required = param.required or False
             schema = param.param_schema
 
-            # 将 schema 转为 dict 以便复用已有逻辑。
             schema_dict = schema.model_dump(mode="json") if schema else {}
             json_type = schema_dict.get("type", "Any")
-            param_type = map_json_schema_type(str(json_type))
+            param_type = _map_json_schema_type(str(json_type))
 
             field_line = _build_param_field_line(name, param_type, required, location)
 
@@ -156,74 +195,61 @@ class EndpointRenderer:
         self,
         request_body: RequestBody | None,
         class_name: str,
+        operation_id: str,
     ) -> dict[str, Any]:
         """提取请求体信息。
 
-        情况1：object + 有 title → body: <title>
-        情况2：object + 无 title + components 有匹配 → body: <matched_name>
-        情况3：embed wrapper + inner 有 title → field: Annotated[<inner.title>, Body(embed=True)]
-        情况4：embed wrapper + inner 无 title + components 有匹配 → field: Annotated[<matched_name>, Body(embed=True)]
-        情况5：embed wrapper + inner 找不到匹配 → body: <class_name>Request
-        情况6：普通内联 object → body: <class_name>Request
+        行为：
 
-        :param request_body: openapi_pydantic RequestBody 对象。
-        :param class_name: 接口类名，用于生成内联 body 模型名。
-        :return: 包含 type、models、embed、field_name 的字典。
+        - 引用 ``components.schemas`` 或有 ``title`` 的 schema → ``type`` 等于
+          schema 名（``models.py`` 中已有同名类）。
+        - embed wrapper（已由 :func:`unwrap_embed_wrappers` 在 spec 预处理
+          阶段解开）→ 通过 ``self.embed_infos[operation_id]`` 拿 wrapper
+          字段名，渲染 ``Body(embed=True)``。
+        - 未匹配 → ``type`` 为空字符串（不生成 body 字段）。
+
+        :param request_body: :class:`RequestBody` 对象。
+        :param class_name: 接口类名，做 fallback。
+        :param operation_id: 用于查找 embed_info。
+        :return: ``{"type": str, "embed": bool, "field_name": str | None}``。
         """
         if not request_body:
-            return {"type": "", "models": [], "embed": False, "field_name": None}
+            return {"type": "", "embed": False, "field_name": None}
 
+        embed_info = self.embed_infos.get(operation_id)
         content = request_body.content or {}
         json_content = content.get("application/json", {})
-        # MediaType 的 media_type_schema 是 Schema | Reference。
-        media_type_schema = getattr(json_content, "media_type_schema", None)
-        if not media_type_schema or not isinstance(media_type_schema, Schema):
-            return {"type": "", "models": [], "embed": False, "field_name": None}
+        schema = getattr(json_content, "media_type_schema", None)
+        if not isinstance(schema, Schema):
+            return {"type": "", "embed": False, "field_name": None}
 
-        # 情况1：object + 有 title。
-        if media_type_schema.title:
-            model_code, nested = self._render_object_schema(media_type_schema.title, media_type_schema)
-            return {
-                "type": media_type_schema.title,
-                "models": nested + [model_code],
-                "embed": False,
-                "field_name": None,
-            }
+        default_name = (
+            embed_info.model_name if embed_info else f"{class_name}Request"
+        )
+        type_name = _resolve_model_name(schema, default_name)
 
-        # 情况2：embed wrapper（1 property）。
-        embed, field_name, inner_schema = _detect_embed_wrapper(media_type_schema)
-        if embed and field_name and inner_schema:
-            type_name = inner_schema.title or f"{class_name}Request"
-            model_code, nested = self._render_object_schema(type_name, inner_schema)
+        if embed_info:
             return {
                 "type": type_name,
-                "models": nested + [model_code],
                 "embed": True,
-                "field_name": field_name,
+                "field_name": embed_info.field_name,
             }
-
-        # 情况3：object + 无 title（fallback）。
-        model_code, nested = self._render_object_schema(f"{class_name}Request", media_type_schema)
-        return {
-            "type": f"{class_name}Request",
-            "models": nested + [model_code],
-            "embed": False,
-            "field_name": None,
-        }
+        return {"type": type_name, "embed": False, "field_name": None}
 
     def _extract_response_info(
-        self, responses: dict[str, Response] | None, class_name: str = ""
+        self,
+        responses: dict[str, Response] | None,
+        class_name: str,
     ) -> tuple[str, list[str]]:
-        """提取响应信息。
+        """提取响应信息（类名引用 + 需导入的模型名列表）。
 
-        :param responses: 响应字典（openapi_pydantic Response 对象）。
-        :param class_name: 接口类名，用于生成内联响应模型名。
-        :return: (响应类型, 内嵌模型列表)。
+        :param responses: OpenAPI 响应字典。
+        :param class_name: 接口类名，做 fallback。
+        :return: ``(响应类型字符串, 需导入的模型名列表)``。
         """
         if not responses:
             return "", []
 
-        # 查找 200/201 响应。
         response_200 = responses.get("200") or responses.get("201")
         if not response_200:
             return "", []
@@ -234,281 +260,24 @@ class EndpointRenderer:
             return "", []
 
         schema = getattr(json_content, "media_type_schema", None)
-        if not schema or not isinstance(schema, Schema):
+        if not isinstance(schema, Schema):
             return "", []
 
         default_name = f"{class_name}Response" if class_name else ""
-
-        # 如果 schema 有 title（来自 $ref 解析），生成以 title 为名的类。
-        schema_title = schema.title
-        if schema_title and schema.properties:
-            model_code, nested = self._render_object_schema(schema_title, schema)
-            return schema_title, nested + [model_code]
-
-        type_name, models = self._resolve_schema_to_type(schema, default_name)
-
-        # 内联对象需要额外生成模型类。
-        if schema.type == "object" and schema.properties and class_name:
-            model_code, nested = self._render_object_schema(default_name, schema)
-            return default_name, nested + [model_code]
-        return type_name, models
-
-    def _resolve_schema_to_type(
-        self,
-        schema: Schema,
-        default_name: str = "",
-    ) -> tuple[str, list[str]]:
-        """将 Schema 对象转换为 Python 类型表达式。
-
-        处理 allOf（继承）、oneOf/anyOf（联合类型）。
-
-        :param schema: Schema 对象。
-        :param default_name: 内联对象使用的默认模型名。
-        :return: (类型表达式, 内嵌模型列表)。
-        """
-        # 处理 oneOf / anyOf。
-        one_of = schema.oneOf or schema.anyOf
-        if one_of:
-            member_types: list[str] = []
-            member_models: list[str] = []
-            for item in one_of:
-                if not isinstance(item, Schema):
-                    continue
-                member_type, models = self._resolve_schema_to_type(item, default_name)
-                if member_type:
-                    member_types.append(member_type)
-                member_models.extend(models)
-            return " | ".join(member_types), member_models
-
-        # 处理 allOf。
-        all_of = schema.allOf
-        if all_of:
-            base_names: list[str] = []
-            all_properties: dict[str, Schema] = {}
-            required_fields: list[str] = []
-            all_models: list[str] = []
-
-            for item in all_of:
-                if not isinstance(item, Schema):
-                    continue
-                # allOf item 已经有 title（_fill_schema_titles 处理过）。
-                item_title = getattr(item, "title", None)
-                if item_title:
-                    base_names.append(item_title)
-                # 递归处理（可能还有嵌套的 allOf/oneOf/anyOf）。
-                item_type, item_models = self._resolve_schema_to_type(item, default_name)
-                all_models.extend(item_models)
-                all_properties.update(item.properties or {})
-                required_fields.extend(item.required or [])
-
-            # 渲染当前类的属性。
-            current_schema = Schema.model_validate(
-                {"properties": {k: v.model_dump() for k, v in all_properties.items()}, "required": required_fields}
-            )
-            current_model_code, current_nested = self._render_object_schema(default_name, current_schema)
-            all_models.append(current_model_code)
-            all_models.extend(current_nested)
-
-            return default_name, all_models
-
-        # 处理 array。
-        if schema.type == "array" and schema.items:
-            items_schema = schema.items
-            if not isinstance(items_schema, Schema):
-                return "list[Any]", []
-            items_name = items_schema.title
-            if items_name and items_schema.properties:
-                model_code, nested = self._render_object_schema(items_name, items_schema)
-                return f"list[{items_name}]", [model_code] + nested
-            items_type, items_models = self._resolve_schema_to_type(items_schema, default_name)
-            return f"list[{items_type}]", items_models
-
-        # 处理内联对象。
-        if schema.type == "object":
-            if schema.properties:
-                return default_name, []
-            return "dict[str, Any]", []
-
-        # 基础类型。
-        return map_json_schema_type(schema.type.value if schema.type else "Any"), []
-
-    def _render_object_schema(self, model_name: str, schema: Schema) -> tuple[str, list[str]]:
-        """将内联 object schema 渲染为 Pydantic 模型类定义。
-
-        处理 allOf 继承（父类属性作为基类）。
-        内嵌的 inline object/array items 会生成独立模型类，类名为属性名的 PascalCase。
-
-        :param model_name: 模型类名。
-        :param schema: Schema 对象。
-        :return: (Python 类定义代码字符串, 内嵌模型列表)。
-        """
-        all_of = schema.allOf
-        if all_of:
-            base_names: list[str] = []
-            all_properties: dict[str, Schema] = {}
-            required_fields: list[str] = []
-            all_models: list[str] = []
-
-            for item in all_of:
-                if not isinstance(item, Schema):
-                    continue
-                # allOf item 已经有 title（_fill_schema_titles 处理过）。
-                if item.title:
-                    base_names.append(item.title)
-                # 递归收集属性。
-                all_properties.update(item.properties or {})
-                required_fields.extend(item.required or [])
-                # 递归处理（可能还有嵌套的 allOf/oneOf/anyOf）。
-                item_type, item_models = self._resolve_schema_to_type(item, default_name="")
-                all_models.extend(item_models)
-
-            # 当前类新增的属性（不含父类的）。
-            own_properties: dict[str, Schema] = schema.properties or {}
-            own_required = schema.required or []
-            parent_props = {k: v for k, v in all_properties.items() if k not in own_properties}
-
-            # 生成父类属性代码。
-            parent_model_code = ""
-            if parent_props and base_names:
-                parent_schema = Schema.model_validate(
-                    {
-                        "properties": {k: v.model_dump() for k, v in parent_props.items()},
-                        "required": [r for r in required_fields if r in parent_props],
-                    }
-                )
-                parent_model_code, parent_nested = self._render_object_schema(f"_{model_name}Base", parent_schema)
-                parent_model_code += "\n\n"
-                all_models.extend(parent_nested)
-
-            # 生成当前类。
-            inherits = ", ".join(base_names)
-            current_lines = [f"class {model_name}({inherits}):"]
-            if not own_properties:
-                current_lines.append("    pass")
-            else:
-                for prop_name, prop_schema in own_properties.items():
-                    if not isinstance(prop_schema, Schema):
-                        continue
-                    prop_type, nested = self._resolve_schema_to_type(
-                        prop_schema, default_name=f"{model_name}{prop_name.capitalize()}"
-                    )
-                    all_models.extend(nested)
-                    required = prop_name in own_required
-                    current_lines.append(f"    {_build_schema_field_line(prop_name, prop_type, required)}")
-
-            class_code = parent_model_code + "\n".join(current_lines)
-            return class_code, all_models
-
-        # 普通对象。
-        lines = [f"class {model_name}(BaseModel):"]
-        properties = schema.properties or {}
-        required_list = schema.required or []
-        nested_models: list[str] = []
-
-        if not properties:
-            lines.append("    pass")
-            return "\n".join(lines), []
-
-        for prop_name, prop_schema in properties.items():
-            if not isinstance(prop_schema, Schema):
-                continue
-
-            # 内嵌 inline object：生成 PascalCase 名称的模型
-            if prop_schema.type == "object" and prop_schema.properties:
-                nested_name = _to_pascal_case(prop_name)
-                nested_code, nested_nested = self._render_object_schema(nested_name, prop_schema)
-                nested_models.extend(nested_nested)
-                nested_models.append(nested_code)
-                required = prop_name in required_list
-                lines.append(f"    {_build_schema_field_line(prop_name, nested_name, required)}")
-                continue
-
-            # 内嵌 array items 是 inline object：生成 PascalCase + "Item" 名称的模型
-            items_schema = prop_schema.items
-            if (
-                prop_schema.type == "array"
-                and isinstance(items_schema, Schema)
-                and items_schema.type == "object"
-                and items_schema.properties
-            ):
-                item_name = f"{_to_pascal_case(prop_name)}Item"
-                item_code, item_nested = self._render_object_schema(item_name, items_schema)
-                nested_models.extend(item_nested)
-                nested_models.append(item_code)
-                required = prop_name in required_list
-                lines.append(f"    {_build_schema_field_line(prop_name, f'list[{item_name}]', required)}")
-                continue
-
-            # 其他类型
-            prop_type, _ = self._resolve_schema_to_type(
-                prop_schema, default_name=f"{model_name}{prop_name.capitalize()}"
-            )
-            required = prop_name in required_list
-            lines.append(f"    {_build_schema_field_line(prop_name, prop_type, required)}")
-
-        return "\n".join(lines), nested_models
+        type_name = _resolve_model_name(schema, default_name)
+        return type_name, [type_name] if type_name else []
 
 
-def _detect_embed_wrapper(schema: Schema) -> tuple[bool, str | None, Schema | None]:
-    """检测是否是 embed=True 的单属性 wrapper。
-
-    embed=True 的 OpenAPI 特征：
-    - type: object
-    - 有且仅有一个 property
-    - 该 property 的 key 在 required 列表中
-
-    :param schema: Schema 对象。
-    :return: (is_embed, field_name, inner_schema)。
-    """
-    if schema.type != "object":
-        return False, None, None
-
-    properties = schema.properties or {}
-    if len(properties) != 1:
-        return False, None, None
-
-    required = schema.required or []
-    field_name = list(properties.keys())[0]
-
-    if field_name not in required:
-        return False, None, None
-
-    inner_schema = properties[field_name]
-    if not isinstance(inner_schema, Schema):
-        return False, None, None
-
-    return True, field_name, inner_schema
-
-
-def _build_schema_field_line(
-    prop_name: str,
-    prop_type: str,
-    required: bool,
-) -> str:
-    """构建 schema 字段声明字符串。
-
-    规则：
-    - 只有不是 snake_case 时才需要 ``Field(serialization_alias=...)``
-    - 只有非 required 才需要 ``| None``
-
-    :param prop_name: 原始 OpenAPI 属性名。
-    :param prop_type: Python 类型字符串。
-    :param required: 是否必需。
-    :return: 字段声明字符串。
-    """
-    is_snake = _is_snake_case(prop_name)
-    field_name = prop_name if is_snake else _to_field_name(prop_name)
-
-    base_type = prop_type if required else f"{prop_type} | None"
-
-    if is_snake:
-        default = "" if required else " = None"
-    elif required:
-        default = f" = Field(serialization_alias={prop_name!r})"
-    else:
-        default = f" = Field(default=None, serialization_alias={prop_name!r})"
-
-    return f"{field_name}: {base_type}{default}"
+def _map_json_schema_type(json_type: str) -> str:
+    """把 JSON Schema 类型映射为 Python 类型。"""
+    return {
+        "string": "str",
+        "integer": "int",
+        "number": "float",
+        "boolean": "bool",
+        "array": "list",
+        "object": "dict",
+    }.get(json_type, json_type)
 
 
 def _build_param_field_line(
@@ -517,17 +286,15 @@ def _build_param_field_line(
     required: bool,
     location: str,
 ) -> str:
-    """构建参数字段声明字符串。
+    """构建参数（query / path / header）字段声明字符串。
 
-    规则：
-    - 只有 Header 参数使用 ``Annotated[..., Header()]``
-    - 只有不是 snake_case 时才需要 ``Field(serialization_alias=...)``
-    - 只有非 required 才需要 ``| None``
+    Header 字段使用 ``Annotated[..., Header()]``；非 snake_case 参数名
+    转 snake_case 后保留原名作为 ``serialization_alias``。
 
     :param name: 原始 OpenAPI 参数名。
     :param param_type: Python 类型字符串。
     :param required: 是否必需。
-    :param location: 参数位置（"header" 或 "query"/"path"）。
+    :param location: ``"header"`` / ``"query"`` / ``"path"``。
     :return: 字段声明字符串。
     """
     is_header = location == "header"
@@ -547,61 +314,24 @@ def _build_param_field_line(
     return f"{field_name}: {annotation}{default}"
 
 
-def operation_id_to_class_name(operation_id: str) -> str:
-    """将 operationId 转换为类名。
-
-    支持 snake_case（list_users）和 camelCase（listUsers）两种格式。
-
-    :param operation_id: operationId 字符串。
-    :return: 类名字符串。
-    """
-    return _to_pascal_case(operation_id)
-
-
-def operation_id_to_snake_case(operation_id: str) -> str:
-    """将 operationId 转换为 snake_case。
-
-    支持 snake_case（list_users）和 camelCase（listUsers）两种格式。
-
-    :param operation_id: operationId 字符串。
-    :return: snake_case 字符串。
-    """
-    # 统一分隔符：连字符转下划线。
-    normalized = operation_id.replace("-", "_")
-    # 在小写字母/数字与大写字母之间插入下划线（处理 camelCase）。
-    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", normalized).split("_")
-    return "_".join(word.lower() for word in words if word)
-
-
-def _to_pascal_case(operation_id: str) -> str:
-    """将 operationId 转换为 PascalCase。
-
-    :param operation_id: operationId 字符串。
-    :return: PascalCase 字符串。
-    """
-    normalized = operation_id.replace("-", "_")
-    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", normalized).split("_")
-    return "".join(word.capitalize() for word in words if word)
-
-
 def render_to_file(
     output_dir: str | Path,
     operation_id: str,
     rendered_code: str,
 ) -> Path:
-    """将渲染后的代码写入文件。
-
-    文件名基于 operationId 转换为 snake_case（如 listUsers → list_users.py）。
+    """将渲染后的代码写入文件（snake_case operation_id → ``<op>.py``）。
 
     :param output_dir: 输出目录。
-    :param operation_id: operationId，用于生成文件名。
-    :param rendered_code: 渲染后的代码。
-    :return: 生成的文件路径。
+    :param operation_id: operationId。
+    :param rendered_code: 渲染后的 Python 代码。
+    :return: 写入的文件路径。
     """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    file_name = f"{operation_id_to_snake_case(operation_id)}.py"
+    snake_name = _to_pascal_case(operation_id)
+    snake_name = re.sub(r"([A-Z])", r"_\1", snake_name).lower().lstrip("_")
+    file_name = f"{snake_name}.py"
     file_path = output_path / file_name
     file_path.write_text(rendered_code, encoding="utf-8")
     return file_path

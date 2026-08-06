@@ -60,9 +60,9 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "get_user.py").read_text(encoding="utf-8")
-        # response 类型为 User，类生成包含 User 模型定义。
+        # response 类型为 User，从 .models 导入。
         assert "APIRoute[User]" in content
-        assert "class User" in content
+        assert "from .models import User" in content
 
     def test_response_with_array_of_ref(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 为引用类型的数组时生成 list[Model]。"""
@@ -105,7 +105,7 @@ components:
         assert result.exit_code == 0, result.output
         content = (out_dir / "list_users.py").read_text(encoding="utf-8")
         assert "APIRoute[list[User]]" in content
-        assert "class User" in content
+        assert "from .models import User" in content
 
     def test_response_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 为嵌套对象时能正常生成。"""
@@ -154,8 +154,8 @@ paths:
         assert (out_dir / "get_profile.py").exists()
         content = (out_dir / "get_profile.py").read_text(encoding="utf-8")
         assert "@router.get" in content
-        # 嵌套对象响应也生成对应的模型类。
-        assert "class GetProfileResponse" in content
+        # 嵌套对象响应也生成对应的模型（从 .models 导入）。
+        assert "from .models import GetProfileResponse" in content
         assert "APIRoute[GetProfileResponse]" in content
 
     def test_response_201_uses_201_status(self, cli_runner: CliRunner, tmp_path: Path) -> None:

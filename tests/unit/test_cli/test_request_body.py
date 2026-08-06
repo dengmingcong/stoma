@@ -65,9 +65,8 @@ components:
         assert result.exit_code == 0, result.output
         assert (out_dir / "create_user.py").exists()
         content = (out_dir / "create_user.py").read_text(encoding="utf-8")
-        # 生成的代码应该包含 User 模型（作为内嵌 BaseModel）。
-        assert "class User" in content
-        assert "BaseModel" in content
+        # 生成的代码应该从 .models 导入 User（不再内联模型）。
+        assert "from .models import User" in content
         # $ref 指向的 schema 有 title，render 为 case 1：body: <title>
         assert "body: User" in content
 
@@ -101,13 +100,10 @@ components:
         assert (out_dir / "create_item.py").exists()
         content = (out_dir / "create_item.py").read_text(encoding="utf-8")
         assert "@router.post" in content
-        # 内联对象生成 CreateItemRequest 模型。
-        assert "class CreateItemRequest" in content
+        # 内联对象生成 CreateItemRequest 模型，从 .models 导入。
+        assert "from .models import CreateItemRequest" in content
         # 内联 object 无 title，render 为 case 3：body: <class_name>Request
         assert "body: CreateItemRequest" in content
-        # 内联对象的属性映射为 Python 类型。
-        assert "name: str" in content
-        assert "quantity: int | None = None" in content
 
     def test_request_body_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用嵌套 object schema 时能正常生成。"""
@@ -251,7 +247,9 @@ components:
         assert result.exit_code == 0, result.output
         assert (out_dir / "create_user_embed.py").exists()
         content = (out_dir / "create_user_embed.py").read_text(encoding="utf-8")
-        # embed=True 时，字段名是 wrapper 的 key，类型是内嵌的 $ref 模型。
+        # embed=True 时，spec pre-process 已经把 wrapper 解包，route.py 引用
+        # 被解包出来的模型（这里就是 User）+ Body(embed=True) 装饰。
         assert "data: Annotated[User, Body(embed=True)]" in content
         assert "from stoma import APIRouter, APIRoute, Body" in content
         assert "from typing import Annotated" in content
+        assert "from .models import User" in content
