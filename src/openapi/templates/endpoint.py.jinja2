@@ -35,9 +35,5 @@ class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type }}]{% end
 {% endfor %}
 {% endif %}
 {% if request_body_type %}
-    {% if request_body_embed %}
-    {{ request_body_field_name }}: Annotated[{{ request_body_type }}, Body(embed=True)]
-    {% else %}
-    {{ request_body_field_name }}: {{ request_body_type }}
-    {% endif %}
+    body: {{ request_body_type }}
 {% endif %}

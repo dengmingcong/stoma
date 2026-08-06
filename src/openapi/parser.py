@@ -53,81 +53,22 @@ def _is_inline_object(schema: dict[str, Any] | None) -> bool:
     return isinstance(properties, dict) and len(properties) > 0
 
 
-def _unwrap_single_property_to(json_media_type_schema: dict[str, Any]) -> dict[str, Any]:
-    """如果是单属性 wrapper（embed wrapper），返回内层 schema；否则返回原 schema。
-
-    embed wrapper 的特征：
-
-    - ``type: object``
-    - 有且仅有一个 property
-
-    注：是否在 ``required`` 列表中**不**作为判断条件——OpenAPI 规范不强
-    制 embed 字段必须 required，部分 spec 省略此字段。
-    """
-    if not isinstance(json_media_type_schema, dict) or json_media_type_schema.get("type") != "object":
-        return json_media_type_schema
-    properties = json_media_type_schema.get("properties")
-    if not isinstance(properties, dict) or len(properties) != 1:
-        return json_media_type_schema
-    inner = next(iter(properties.values()))
-    if not isinstance(inner, dict):
-        return json_media_type_schema
-    return inner
-
-
-def _inject_title_into_request_body_schema(json_media_type_schema: dict[str, Any] | None, pascal: str) -> None:
-    """给请求体 schema 注入 title。
-
-    三种合法形态：
-
-    - ``$ref`` → 不动（ref 名已经是 title）
-    - 普通 inline object → 在 schema 上设 ``title = Pascal + Request``
-    - embed wrapper（单属性 required） →
-
-      - 内层是 ``$ref`` → 不动（ref 名已是 title）
-      - 内层是 inline object → 在内层上设 ``title = Pascal + Request``（unwrap 后内层变顶层）
-    """
-    if not isinstance(json_media_type_schema, dict):
-        return
-    if "$ref" in json_media_type_schema:
-        return
-    inner = _unwrap_single_property_to(json_media_type_schema)
-    if inner is not json_media_type_schema:
-        # 是 embed wrapper；只在 inner 是 inline object 时设 title
-        if _is_inline_object(inner):
-            inner["title"] = f"{pascal}Request"
-        return
-    if _is_inline_object(json_media_type_schema):
-        json_media_type_schema["title"] = f"{pascal}Request"
-
-
-def _inject_title_into_response_schema(schema: dict[str, Any] | None, pascal: str) -> None:
-    """给响应 schema 注入 title（语义同 :func:`_inject_title_into_request_body_schema`）。"""
-    if not isinstance(schema, dict):
-        return
-    if "$ref" in schema:
-        return
-    inner = _unwrap_single_property_to(schema)
-    if inner is not schema:
-        if _is_inline_object(inner):
-            inner["title"] = f"{pascal}Response"
-        return
-    if _is_inline_object(schema):
-        schema["title"] = f"{pascal}Response"
-
-
 def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> bool:
     """为所有 schema 注入 title，返回是否在 paths 中找到任何 payload。
 
-    在 prance 展开之前调用，三段处理：
+    在 prance 展开之前调用：
 
     1. ``components.schemas.X`` → ``title = X``（让 prance 复制时保留 title，
        datamodel-codegen 跨 components + paths 做去重）
     2. ``paths[*][*].requestBody.content["application/json"].schema``（inline）
-       → ``title = {OperationId}Request``，如果 schema 是 embed wrapper 则
-       穿透 wrapper 设置在**内层**上，避免 unwrap 之后丢 title
+       → ``title = {OperationId}Request``
     3. ``paths[*][*].responses[200/201].content["application/json"].schema``
        → ``title = {OperationId}Response``
+
+    **不**做 embed wrapper 检测。OpenAPI 单属性 wrapper（如
+    ``{data: User}``）让 datamodel-codegen 直接按 wrapper 形态生成
+    ``class CreateXRequest { data: User }``，runtime 用 ``body: CreateXRequest``
+    直接发——body 形态由 spec 自然决定，不做猜测。
 
     已带 title 的 schema 跳过，避免覆盖正确的类名。
 
@@ -165,8 +106,8 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> bool:
                 json_media_type_obj = content.get("application/json", {})
                 if isinstance(json_media_type_obj, dict):
                     json_media_type_schema = json_media_type_obj.get("schema")
-                    if json_media_type_schema is not None:
-                        _inject_title_into_request_body_schema(json_media_type_schema, pascal)
+                    if _is_inline_object(json_media_type_schema):
+                        json_media_type_schema["title"] = f"{pascal}Request"
                         has_payload = True
 
             # 响应 200/201
@@ -180,8 +121,8 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> bool:
                     json_media_type_obj = content.get("application/json", {})
                     if isinstance(json_media_type_obj, dict):
                         json_media_type_schema = json_media_type_obj.get("schema")
-                        if json_media_type_schema is not None:
-                            _inject_title_into_response_schema(json_media_type_schema, pascal)
+                        if _is_inline_object(json_media_type_schema):
+                            json_media_type_schema["title"] = f"{pascal}Response"
                             has_payload = True
 
     return has_payload

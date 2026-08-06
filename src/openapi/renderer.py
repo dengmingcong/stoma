@@ -22,7 +22,6 @@ import keyword
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, Template
 from openapi_pydantic.v3.v3_0 import Schema as Schema30
@@ -125,12 +124,12 @@ class EndpointRenderer:
         """
         class_name = _to_pascal_case(endpoint.operation_id)
         response_resolved = self._extract_response_info(endpoint.responses, class_name)
-        request_body_info = self._extract_request_body_info(endpoint.request_body, class_name)
+        request_body_resolved = self._extract_request_body_info(endpoint.request_body, class_name)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
 
         imported_models: list[str] = []
         imported_models.extend(response_resolved.imports)
-        imported_models.extend(request_body_info["imports"])
+        imported_models.extend(request_body_resolved.imports)
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
         return template.render(
@@ -141,9 +140,7 @@ class EndpointRenderer:
             summary=endpoint.summary,
             description=endpoint.description,
             response_type=response_resolved.type_expr,
-            request_body_type=request_body_info["type"],
-            request_body_embed=request_body_info["embed"],
-            request_body_field_name=request_body_info["field_name"] or "body",
+            request_body_type=request_body_resolved.type_expr,
             header_fields=header_fields,
             param_fields=param_fields,
             imported_models=imported_models,
@@ -185,79 +182,28 @@ class EndpointRenderer:
         self,
         request_body: RequestBody | None,
         class_name: str,
-    ) -> dict[str, Any]:
-        """提取请求体信息。
+    ) -> ResolvedType:
+        """提取请求体的 :class:`ResolvedType`（类型表达式 + import 列表）。
 
-        行为：
-
-        - 引用 ``components.schemas`` 或有 ``title`` 的 schema → ``type`` 等于
-          schema 名（``models.py`` 中已有同名类），``imports`` 包含它。
-        - embed wrapper（最外层是单属性 required object）→ ``embed=True``，
-          ``field_name`` 用 wrapper 字段名，``type`` / ``imports`` 用内层 schema。
-        - 未匹配 → ``type`` 为空字符串，``imports`` 为空（不生成 body 字段）。
+        不做 embed wrapper 特殊处理。OpenAPI 规范里写 ``{data: User}``
+        时，datamodel-codegen 直接生成 ``class CreateXRequest { data: User }``，
+        runtime 用 ``body: CreateXRequest`` 引用——body 形态由 spec 自然
+        决定，不做特殊判断。
 
         :param request_body: :class:`RequestBody` 对象。
         :param class_name: 接口类名，做 fallback。
-        :return: ``{"type": str, "embed": bool, "field_name": str | None, "imports": tuple[str, ...]}``。
+        :return: 请求体的 :class:`ResolvedType`。
         """
         if not request_body:
-            return {"type": "", "embed": False, "field_name": None, "imports": ()}
+            return ResolvedType(type_expr="")
 
         content = request_body.content or {}
-        json_media_type_obj = content.get("application/json", {})
-        json_media_type_schema = getattr(json_media_type_obj, "media_type_schema", None)
-        if not isinstance(json_media_type_schema, Schema):
-            return {"type": "", "embed": False, "field_name": None, "imports": ()}
+        json_content = content.get("application/json", {})
+        schema = getattr(json_content, "media_type_schema", None)
+        if not isinstance(schema, Schema):
+            return ResolvedType(type_expr="")
 
-        embed = self._detect_embed(json_media_type_schema)
-        if embed:
-            return {
-                "type": embed["type_expr"],
-                "embed": True,
-                "field_name": embed["field_name"],
-                "imports": embed["imports"],
-            }
-
-        resolved = _resolve_model_name(json_media_type_schema, f"{class_name}Request")
-        return {
-            "type": resolved.type_expr,
-            "embed": False,
-            "field_name": None,
-            "imports": resolved.imports,
-        }
-
-    def _detect_embed(self, json_media_type_schema: Schema) -> dict[str, Any] | None:
-        """检测 schema 是否是最外层 embed wrapper。
-
-        embed wrapper 的特征（OpenAPI 单属性 + required 的约定）：
-
-        - ``type: object``
-        - 有且仅有一个 property
-        - 这个 property 在 ``required`` 列表中
-
-        只检测最外层——runtime 也只用最外层 ``field_name`` 构造 body，中间层
-        wrapper 对 runtime 无意义。
-
-        :param json_media_type_schema: 待检测的 JSON Media Type Schema 对象。
-        :return: ``{"field_name", "type_expr", "imports"}`` 或 ``None``。
-        """
-        if not isinstance(json_media_type_schema, Schema) or json_media_type_schema.type != "object":
-            return None
-        properties = json_media_type_schema.properties
-        if not isinstance(properties, dict) or len(properties) != 1:
-            return None
-        required = json_media_type_schema.required or []
-        if not isinstance(required, list):
-            return None
-        field_name, inner = next(iter(properties.items()))
-        if field_name not in required or not isinstance(inner, Schema):
-            return None
-        resolved = _resolve_model_name(inner, "")
-        return {
-            "field_name": field_name,
-            "type_expr": resolved.type_expr,
-            "imports": resolved.imports,
-        }
+        return _resolve_model_name(schema, f"{class_name}Request")
 
     def _extract_response_info(
         self,

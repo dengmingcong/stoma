@@ -247,9 +247,9 @@ components:
         assert result.exit_code == 0, result.output
         assert (out_dir / "create_user_embed.py").exists()
         content = (out_dir / "create_user_embed.py").read_text(encoding="utf-8")
-        # embed=True 时，spec pre-process 已经把 wrapper 解包，route.py 引用
-        # 被解包出来的模型（这里就是 User）+ Body(embed=True) 装饰。
-        assert "data: Annotated[User, Body(embed=True)]" in content
+        # 不做 embed wrapper 特殊处理。datamodel-codegen 直接按 wrapper 形态
+        # 生成 `class CreateUserEmbedRequest: data: User`，runtime 用
+        # `body: CreateUserEmbedRequest` 引用——body 形态由 spec 决定。
+        assert "body: CreateUserEmbedRequest" in content
+        assert "from .models import CreateUserEmbedRequest" in content
         assert "from stoma import APIRouter, APIRoute, Body" in content
-        assert "from typing import Annotated" in content
-        assert "from .models import User" in content
