@@ -13,8 +13,9 @@ from typing import Annotated
 {% endif -%}
 {% if header_fields -%}
 from pydantic import Field
-{% endif -%}
+{% endif %}
 from stoma import APIRouter, APIRoute{% if header_fields %}, Header{% endif %}{% if request_body_type %}, Body{% endif %}
+
 
 router = APIRouter()
 
