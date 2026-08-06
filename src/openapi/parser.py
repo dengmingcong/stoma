@@ -53,7 +53,7 @@ def _is_inline_object(schema: dict[str, Any] | None) -> bool:
     return isinstance(properties, dict) and len(properties) > 0
 
 
-def _unwrap_single_property_to(schema: dict[str, Any]) -> dict[str, Any]:
+def _unwrap_single_property_to(json_media_type_schema: dict[str, Any]) -> dict[str, Any]:
     """如果是单属性 wrapper（embed wrapper），返回内层 schema；否则返回原 schema。
 
     embed wrapper 的特征：
@@ -62,18 +62,18 @@ def _unwrap_single_property_to(schema: dict[str, Any]) -> dict[str, Any]:
     - 有且仅有一个 property
     - 这个 property 在 ``required`` 列表中
     """
-    if not isinstance(schema, dict) or schema.get("type") != "object":
-        return schema
-    properties = schema.get("properties")
+    if not isinstance(json_media_type_schema, dict) or json_media_type_schema.get("type") != "object":
+        return json_media_type_schema
+    properties = json_media_type_schema.get("properties")
     if not isinstance(properties, dict) or len(properties) != 1:
-        return schema
-    required = schema.get("required") or []
+        return json_media_type_schema
+    required = json_media_type_schema.get("required") or []
     if not isinstance(required, list):
-        return schema
+        return json_media_type_schema
     inner = next(iter(properties.values()))
     key = next(iter(properties))
     if key not in required or not isinstance(inner, dict):
-        return schema
+        return json_media_type_schema
     return inner
 
 
