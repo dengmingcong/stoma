@@ -32,6 +32,7 @@ class TestMakeOptions:
         assert result.exit_code == 0
         # 去除 ANSI 颜色代码后检查。
         import re
+
         clean = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
         assert "OpenAPI" in clean
         assert "--out" in clean

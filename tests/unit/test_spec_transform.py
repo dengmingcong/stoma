@@ -149,11 +149,7 @@ class TestInjectInlineTitles:
                 "/users": {
                     "post": {
                         "requestBody": {
-                            "content": {
-                                "application/json": {
-                                    "schema": {"$ref": "#/components/schemas/User"}
-                                }
-                            }
+                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/User"}}}
                         }
                     }
                 }
@@ -169,17 +165,7 @@ class TestInjectInlineTitles:
         """无 ``properties`` 的 object 不被注入 title。"""
         spec: dict[str, Any] = {
             "paths": {
-                "/items": {
-                    "post": {
-                        "requestBody": {
-                            "content": {
-                                "application/json": {
-                                    "schema": {"type": "object"}
-                                }
-                            }
-                        }
-                    }
-                }
+                "/items": {"post": {"requestBody": {"content": {"application/json": {"schema": {"type": "object"}}}}}}
             }
         }
         endpoint = _make_endpoint("createItem", path="/items")
@@ -235,9 +221,7 @@ class TestUnwrapEmbedWrappers:
                                     "schema": {
                                         "type": "object",
                                         "required": ["data"],
-                                        "properties": {
-                                            "data": {"$ref": "#/components/schemas/User"}
-                                        },
+                                        "properties": {"data": {"$ref": "#/components/schemas/User"}},
                                     }
                                 }
                             }
@@ -251,9 +235,7 @@ class TestUnwrapEmbedWrappers:
         schema = new_spec["paths"]["/users"]["post"]["requestBody"]["content"]["application/json"]["schema"]
         assert schema == {"$ref": "#/components/schemas/User"}
         assert len(embed_infos) == 1
-        assert embed_infos[0] == EmbedInfo(
-            operation_id="createUser", field_name="data", model_name="User"
-        )
+        assert embed_infos[0] == EmbedInfo(operation_id="createUser", field_name="data", model_name="User")
 
     def test_unwraps_embed_with_inline_object(self) -> None:
         """``{data: {properties: ...}}`` 应被解包为内层 object。"""
@@ -306,9 +288,7 @@ class TestUnwrapEmbedWrappers:
                                             "outer": {
                                                 "type": "object",
                                                 "required": ["inner"],
-                                                "properties": {
-                                                    "inner": {"$ref": "#/components/schemas/Item"}
-                                                },
+                                                "properties": {"inner": {"$ref": "#/components/schemas/Item"}},
                                             }
                                         },
                                     }
@@ -385,17 +365,7 @@ class TestUnwrapEmbedWrappers:
         """非 object 的 schema 不解包。"""
         spec: dict[str, Any] = {
             "paths": {
-                "/items": {
-                    "post": {
-                        "requestBody": {
-                            "content": {
-                                "application/json": {
-                                    "schema": {"type": "string"}
-                                }
-                            }
-                        }
-                    }
-                }
+                "/items": {"post": {"requestBody": {"content": {"application/json": {"schema": {"type": "string"}}}}}}
             }
         }
         endpoint = _make_endpoint("createItem", path="/items")

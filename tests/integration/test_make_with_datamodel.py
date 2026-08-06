@@ -111,13 +111,10 @@ def test_make_produces_working_models(
     result = _run_stoma_make(spec_path, out_dir)
 
     assert result.returncode == 0, (
-        f"stoma make 失败 (fixture {fixture_id}):\n"
-        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        f"stoma make 失败 (fixture {fixture_id}):\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert (out_dir / "models.py").exists(), f"missing models.py for fixture {fixture_id}"
-    assert (out_dir / "models.py").read_text(encoding="utf-8").strip(), (
-        f"models.py is empty for fixture {fixture_id}"
-    )
+    assert (out_dir / "models.py").read_text(encoding="utf-8").strip(), f"models.py is empty for fixture {fixture_id}"
 
 
 @pytest.mark.parametrize(
@@ -152,24 +149,16 @@ def test_models_equivalent_to_datamodel_codegen(
 
     out_dir = tmp_path / "out"
     result = _run_stoma_make(spec_path, out_dir)
-    assert result.returncode == 0, (
-        f"stoma make 失败: {result.stdout}\n{result.stderr}"
-    )
+    assert result.returncode == 0, f"stoma make 失败: {result.stdout}\n{result.stderr}"
 
     # fixture 10 (嵌套对象) 和 fixture 12 (embed wrapper) 已知与 reference
     # 在结构上有差异：stoma 把嵌套对象扁平化或解开 embed wrapper，reference
     # 保留这些包装层。标记为 xfail，文档化差异。
     if fixture_id in (10, 12):
-        pytest.xfail(
-            f"fixture {fixture_id} 已知结构差异（嵌套/embed wrapper 处理方式不同）"
-        )
+        pytest.xfail(f"fixture {fixture_id} 已知结构差异（嵌套/embed wrapper 处理方式不同）")
 
-    generated_fields = _extract_data_fields(
-        (out_dir / "models.py").read_text(encoding="utf-8")
-    )
-    reference_fields = _extract_data_fields(
-        reference_path.read_text(encoding="utf-8")
-    )
+    generated_fields = _extract_data_fields((out_dir / "models.py").read_text(encoding="utf-8"))
+    reference_fields = _extract_data_fields(reference_path.read_text(encoding="utf-8"))
 
     # 字段名集合应满足：generated 包含 reference 的所有字段。
     # （stoma 可能把嵌套对象扁平化到顶层 class，这会生成 reference 没有

@@ -36,10 +36,7 @@ app = FastAPI(title="Stoma Mock Server", docs_url=None, redoc_url=None)
 @app.get("/users", response_model=list[UserData])
 def list_users(limit: int = 20, offset: int = 0) -> list[UserData]:
     """GET /users：返回 limit 个用户，从 offset 开始。"""
-    return [
-        UserData(id=i, name=f"User {i}", email=f"user{i}@example.com")
-        for i in range(offset, offset + limit)
-    ]
+    return [UserData(id=i, name=f"User {i}", email=f"user{i}@example.com") for i in range(offset, offset + limit)]
 
 
 @app.get("/users/{user_id}", response_model=UserData)

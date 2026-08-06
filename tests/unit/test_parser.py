@@ -490,8 +490,6 @@ components:
         named_ref = allof_items[0]
         inline_part = allof_items[1]
         # Named 是 $ref，prance 展开后是拷贝，title 应为 'Named'
-        assert named_ref.get("title") == "Named", (
-            f"Expected allOf[0].title='Named', got {named_ref.get('title')!r}"
-        )
+        assert named_ref.get("title") == "Named", f"Expected allOf[0].title='Named', got {named_ref.get('title')!r}"
         # 内联部分不在 components 中，title 应为 None
         assert inline_part.get("title") is None

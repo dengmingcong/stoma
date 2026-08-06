@@ -17,21 +17,9 @@ def _minimal_spec() -> dict[str, Any]:
             "/users": {
                 "post": {
                     "operationId": "createUser",
-                    "requestBody": {
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/User"}
-                            }
-                        }
-                    },
+                    "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/User"}}}},
                     "responses": {
-                        "201": {
-                            "content": {
-                                "application/json": {
-                                    "schema": {"$ref": "#/components/schemas/User"}
-                                }
-                            }
-                        }
+                        "201": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/User"}}}}
                     },
                 }
             }

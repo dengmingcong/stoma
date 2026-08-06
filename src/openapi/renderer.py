@@ -127,12 +127,8 @@ class EndpointRenderer:
         :return: 渲染后的 Python 源码字符串。
         """
         class_name = _to_pascal_case(endpoint.operation_id)
-        response_type, response_imports = self._extract_response_info(
-            endpoint.responses, class_name
-        )
-        request_body_info = self._extract_request_body_info(
-            endpoint.request_body, class_name, endpoint.operation_id
-        )
+        response_type, response_imports = self._extract_response_info(endpoint.responses, class_name)
+        request_body_info = self._extract_request_body_info(endpoint.request_body, class_name, endpoint.operation_id)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
 
         imported_models: list[str] = []
@@ -223,9 +219,7 @@ class EndpointRenderer:
         if not isinstance(schema, Schema):
             return {"type": "", "embed": False, "field_name": None}
 
-        default_name = (
-            embed_info.model_name if embed_info else f"{class_name}Request"
-        )
+        default_name = embed_info.model_name if embed_info else f"{class_name}Request"
         type_name = _resolve_model_name(schema, default_name)
 
         if embed_info:
