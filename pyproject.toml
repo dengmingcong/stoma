@@ -12,6 +12,7 @@ dependencies = [
     "openapi-schema-pydantic>=1.2.4",
     "prance>=26.0.0",
     "pydantic>=2.6.0",
+    "datamodel-code-generator>=0.25.0",
     "pyyaml>=6.0.2",
     "jsonschema>=4.0.0",
     # CLI
