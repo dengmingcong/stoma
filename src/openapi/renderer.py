@@ -204,12 +204,12 @@ class EndpointRenderer:
             return {"type": "", "embed": False, "field_name": None, "imports": ()}
 
         content = request_body.content or {}
-        json_content = content.get("application/json", {})
-        schema = getattr(json_content, "media_type_schema", None)
-        if not isinstance(schema, Schema):
+        json_media_type_obj = content.get("application/json", {})
+        json_media_type_schema = getattr(json_media_type_obj, "media_type_schema", None)
+        if not isinstance(json_media_type_schema, Schema):
             return {"type": "", "embed": False, "field_name": None, "imports": ()}
 
-        embed = self._detect_embed(schema)
+        embed = self._detect_embed(json_media_type_schema)
         if embed:
             return {
                 "type": embed["type_expr"],
@@ -218,7 +218,7 @@ class EndpointRenderer:
                 "imports": embed["imports"],
             }
 
-        resolved = _resolve_model_name(schema, f"{class_name}Request")
+        resolved = _resolve_model_name(json_media_type_schema, f"{class_name}Request")
         return {
             "type": resolved.type_expr,
             "embed": False,
@@ -226,7 +226,7 @@ class EndpointRenderer:
             "imports": resolved.imports,
         }
 
-    def _detect_embed(self, schema: Schema) -> dict[str, Any] | None:
+    def _detect_embed(self, json_media_type_schema: Schema) -> dict[str, Any] | None:
         """检测 schema 是否是最外层 embed wrapper。
 
         embed wrapper 的特征（OpenAPI 单属性 + required 的约定）：
@@ -238,15 +238,15 @@ class EndpointRenderer:
         只检测最外层——runtime 也只用最外层 ``field_name`` 构造 body，中间层
         wrapper 对 runtime 无意义。
 
-        :param schema: 待检测的 Schema 对象。
+        :param json_media_type_schema: 待检测的 JSON Media Type Schema 对象。
         :return: ``{"field_name", "type_expr", "imports"}`` 或 ``None``。
         """
-        if not isinstance(schema, Schema) or schema.type != "object":
+        if not isinstance(json_media_type_schema, Schema) or json_media_type_schema.type != "object":
             return None
-        properties = schema.properties
+        properties = json_media_type_schema.properties
         if not isinstance(properties, dict) or len(properties) != 1:
             return None
-        required = schema.required or []
+        required = json_media_type_schema.required or []
         if not isinstance(required, list):
             return None
         field_name, inner = next(iter(properties.items()))
