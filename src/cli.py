@@ -10,13 +10,31 @@ from typing import Annotated
 
 import typer
 
+from src.openapi.model_generator import generate_models
 from src.openapi.parser import OpenAPIParser, OpenAPISchemaError
 from src.openapi.renderer import EndpointRenderer, render_to_file
+from src.openapi.spec_transform import transform_spec_for_generation
 
 app = typer.Typer(
     help="Stoma - OpenAPI 接口代码生成工具",
     no_args_is_help=True,
 )
+
+
+def _has_any_payloads(endpoints: list) -> bool:
+    """检查是否任何 endpoint 需要模型生成（request body 或 JSON 响应）。"""
+    for endpoint in endpoints:
+        if endpoint.request_body is not None:
+            return True
+        if endpoint.responses:
+            for status in ("200", "201"):
+                resp = endpoint.responses.get(status)
+                if resp is None:
+                    continue
+                content = getattr(resp, "content", None) or {}
+                if "application/json" in content:
+                    return True
+    return False
 
 
 @app.command()
@@ -26,8 +44,9 @@ def make(
 ) -> None:
     """从 OpenAPI 规范生成接口代码。
 
-    读取 OpenAPI 规范文件，为每个 endpoint 生成独立的 .py 文件，
-    包含 route 类和内嵌的 model。
+    读取 OpenAPI 规范文件，生成一份 ``models.py``（由
+    ``datamodel-code-generator`` 产出）+ 每个 endpoint 一份路由文件
+    （引用 ``models.py`` 中的类型）。
     """
     # 校验 spec 文件。
     if not spec.exists():
@@ -49,8 +68,17 @@ def make(
     except (FileNotFoundError, ValueError, OpenAPISchemaError) as e:
         raise typer.BadParameter(str(e)) from e
 
-    # 获取所有 endpoint 并渲染。
+    # 获取所有 endpoint 后做预处理 + 生成 models.py（仅当有需要）。
     endpoints = parser.get_endpoints()
+    embed_infos: list = []
+    spec_dict = parser._spec_dict
+    if spec_dict is not None and endpoints:
+        new_spec, embed_infos = transform_spec_for_generation(spec_dict, endpoints)
+        schemas = (new_spec.get("components") or {}).get("schemas") or {}
+        if schemas or _has_any_payloads(endpoints):
+            generate_models(new_spec, out / "models.py")
+
+    # 渲染每个 endpoint 的 route.py。
     generated_files: list[Path] = []
     renderer = EndpointRenderer()
     for endpoint in endpoints:
@@ -63,7 +91,7 @@ def make(
         generated_files.append(file_path)
 
     # 输出结果。
-    typer.echo(f"生成 {len(generated_files)} 个文件到 {out}:")
+    typer.echo(f"生成 models.py + {len(generated_files)} 个 route 文件到 {out}:")
     for f in generated_files:
         typer.echo(f"  - {f.name}")
 
