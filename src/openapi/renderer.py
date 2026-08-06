@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import keyword
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,21 @@ from pydantic.alias_generators import to_snake
 from src.openapi.models import Endpoint, Parameter, RequestBody, Response
 
 Schema = Schema30 | Schema31
+
+
+@dataclass(frozen=True)
+class ResolvedType:
+    """schema 解析结果：字段类型表达式 + 需要的 import 列表。
+
+    :var type_expr: 用于字段注解的类型字符串，如 ``"User"`` /
+        ``"list[User]"`` / ``"dict[str, Any]"`` / ``""``。
+    :vartype type_expr: str
+    :var imports: 需要从 ``.models`` 导入的类名（元组）。空表示无 import。
+    :vartype imports: tuple[str, ...]
+    """
+
+    type_expr: str
+    imports: tuple[str, ...] = ()
 
 
 def _is_snake_case(name: str) -> bool:
@@ -60,40 +76,25 @@ def _to_pascal_case(operation_id: str) -> str:
     return "".join(word.capitalize() for word in words if word)
 
 
-def _resolve_model_name(schema: Schema, default_name: str) -> str:
-    """从 Schema 对象解析出模型名字符串（已经是 ``models.py`` 中将出现的类名）。
+def _resolve_model_name(schema: Schema, default_name: str) -> ResolvedType:
+    """从 Schema 解析出 :class:`ResolvedType`。
 
     规则：
 
-    - ``$ref`` → 取 ref 末段 schema 名
-    - 有 ``title`` → 直接返回（spec pre-process 已经为 inline object 注入 title）
-    - inline object（无 title）→ 返回 ``default_name``
-    - array → ``list[<items_model_name>]``
-    - 标量 → ``dict[str, Any]``（无法建模）
+    - ``$ref`` / 有 ``title`` → ``type_expr`` 是 schema 名，``imports`` 包含它
+    - inline object（无 title）→ ``type_expr`` 是 ``default_name``，
+      ``imports`` 包含 ``default_name``
+    - array → ``type_expr`` 是 ``list[<items>]``，``imports`` 包含 items 名
+    - 标量 → ``type_expr`` 是 ``"dict[str, Any]"``，``imports`` 为空
     """
     if schema.title:
-        return schema.title
+        return ResolvedType(type_expr=schema.title, imports=(schema.title,))
     if schema.type == "array" and schema.items is not None and isinstance(schema.items, Schema):
         items_name = schema.items.title if schema.items.title else default_name
-        return f"list[{items_name}]"
+        return ResolvedType(type_expr=f"list[{items_name}]", imports=(items_name,))
     if schema.type == "object" and not schema.properties:
-        return "dict[str, Any]"
-    return default_name
-
-
-def _unwrap_model_name(type_expr: str) -> str:
-    """从类型表达式（如 ``list[User]``、``User``）提取需要 import 的模型名。
-
-    - ``User`` → ``User``
-    - ``list[User]`` → ``User``
-    - ``dict[str, Any]`` → 空字符串（不导入）
-    - ``""`` → 空字符串
-    """
-    if not type_expr:
-        return ""
-    if type_expr.startswith("list[") and type_expr.endswith("]"):
-        return type_expr[5:-1]
-    return type_expr
+        return ResolvedType(type_expr="dict[str, Any]", imports=())
+    return ResolvedType(type_expr=default_name, imports=(default_name,))
 
 
 class EndpointRenderer:
@@ -123,16 +124,13 @@ class EndpointRenderer:
         :return: 渲染后的 Python 源码字符串。
         """
         class_name = _to_pascal_case(endpoint.operation_id)
-        response_type = self._extract_response_info(endpoint.responses, class_name)
+        response_resolved = self._extract_response_info(endpoint.responses, class_name)
         request_body_info = self._extract_request_body_info(endpoint.request_body, class_name)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
 
         imported_models: list[str] = []
-        if response_type and response_type != "dict[str, Any]":
-            imported_models.append(_unwrap_model_name(response_type))
-        if request_body_info["type"]:
-            imported_models.append(_unwrap_model_name(request_body_info["type"]))
-        imported_models = [m for m in imported_models if m]
+        imported_models.extend(response_resolved.imports)
+        imported_models.extend(request_body_info["imports"])
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
         return template.render(
@@ -142,7 +140,7 @@ class EndpointRenderer:
             path=endpoint.path,
             summary=endpoint.summary,
             description=endpoint.description,
-            response_type=response_type,
+            response_type=response_resolved.type_expr,
             request_body_type=request_body_info["type"],
             request_body_embed=request_body_info["embed"],
             request_body_field_name=request_body_info["field_name"] or "body",
@@ -193,36 +191,42 @@ class EndpointRenderer:
         行为：
 
         - 引用 ``components.schemas`` 或有 ``title`` 的 schema → ``type`` 等于
-          schema 名（``models.py`` 中已有同名类）。
+          schema 名（``models.py`` 中已有同名类），``imports`` 包含它。
         - embed wrapper（最外层是单属性 required object）→ ``embed=True``，
-          ``field_name`` 用 wrapper 字段名，``type`` 用内层 schema 的 model name。
-        - 未匹配 → ``type`` 为空字符串（不生成 body 字段）。
+          ``field_name`` 用 wrapper 字段名，``type`` / ``imports`` 用内层 schema。
+        - 未匹配 → ``type`` 为空字符串，``imports`` 为空（不生成 body 字段）。
 
         :param request_body: :class:`RequestBody` 对象。
         :param class_name: 接口类名，做 fallback。
-        :return: ``{"type": str, "embed": bool, "field_name": str | None}``。
+        :return: ``{"type": str, "embed": bool, "field_name": str | None, "imports": tuple[str, ...]}``。
         """
         if not request_body:
-            return {"type": "", "embed": False, "field_name": None}
+            return {"type": "", "embed": False, "field_name": None, "imports": ()}
 
         content = request_body.content or {}
         json_content = content.get("application/json", {})
         schema = getattr(json_content, "media_type_schema", None)
         if not isinstance(schema, Schema):
-            return {"type": "", "embed": False, "field_name": None}
+            return {"type": "", "embed": False, "field_name": None, "imports": ()}
 
         embed = self._detect_embed(schema)
         if embed:
             return {
-                "type": embed["model_name"],
+                "type": embed["type_expr"],
                 "embed": True,
                 "field_name": embed["field_name"],
+                "imports": embed["imports"],
             }
 
-        type_name = _resolve_model_name(schema, f"{class_name}Request")
-        return {"type": type_name, "embed": False, "field_name": None}
+        resolved = _resolve_model_name(schema, f"{class_name}Request")
+        return {
+            "type": resolved.type_expr,
+            "embed": False,
+            "field_name": None,
+            "imports": resolved.imports,
+        }
 
-    def _detect_embed(self, schema: Schema) -> dict[str, str] | None:
+    def _detect_embed(self, schema: Schema) -> dict[str, Any] | None:
         """检测 schema 是否是最外层 embed wrapper。
 
         embed wrapper 的特征（OpenAPI 单属性 + required 的约定）：
@@ -235,7 +239,7 @@ class EndpointRenderer:
         wrapper 对 runtime 无意义。
 
         :param schema: 待检测的 Schema 对象。
-        :return: ``{"field_name": str, "model_name": str}`` 或 ``None``。
+        :return: ``{"field_name", "type_expr", "imports"}`` 或 ``None``。
         """
         if not isinstance(schema, Schema) or schema.type != "object":
             return None
@@ -248,37 +252,39 @@ class EndpointRenderer:
         field_name, inner = next(iter(properties.items()))
         if field_name not in required or not isinstance(inner, Schema):
             return None
+        resolved = _resolve_model_name(inner, "")
         return {
             "field_name": field_name,
-            "model_name": _resolve_model_name(inner, ""),
+            "type_expr": resolved.type_expr,
+            "imports": resolved.imports,
         }
 
     def _extract_response_info(
         self,
         responses: dict[str, Response] | None,
         class_name: str,
-    ) -> str:
-        """提取响应的模型名字符串。
+    ) -> ResolvedType:
+        """提取响应的 :class:`ResolvedType`（类型表达式 + import 列表）。
 
         :param responses: OpenAPI 响应字典。
         :param class_name: 接口类名，做 fallback。
-        :return: 响应类型字符串（如 ``"User"`` / ``"list[User]"`` / ``""``）。
+        :return: 响应类型的 :class:`ResolvedType`，无响应时 ``type_expr=""``。
         """
         if not responses:
-            return ""
+            return ResolvedType(type_expr="")
 
         response_200 = responses.get("200") or responses.get("201")
         if not response_200:
-            return ""
+            return ResolvedType(type_expr="")
 
         content = response_200.content or {}
         json_content = content.get("application/json")
         if not json_content:
-            return ""
+            return ResolvedType(type_expr="")
 
         schema = getattr(json_content, "media_type_schema", None)
         if not isinstance(schema, Schema):
-            return ""
+            return ResolvedType(type_expr="")
 
         default_name = f"{class_name}Response" if class_name else ""
         return _resolve_model_name(schema, default_name)
