@@ -5,16 +5,16 @@ Generated from OpenAPI: {{ operation_id }}{{ "\n" + description if description e
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute{% if header_fields %}, Header{% endif %}{% if request_body_type %}, Body{% endif %}
-{% if imported_models %}
+{% if imported_models -%}
 from .models import {{ imported_models | join(', ') }}
-{% endif %}
-{% if header_fields or request_body_type %}
+{% endif -%}
+{% if header_fields or request_body_type -%}
 from typing import Annotated
-{% endif %}
-{% if header_fields %}
+{% endif -%}
+{% if header_fields -%}
 from pydantic import Field
-{% endif %}
+{% endif -%}
+from stoma import APIRouter, APIRoute{% if header_fields %}, Header{% endif %}{% if request_body_type %}, Body{% endif %}
 
 router = APIRouter()
 
