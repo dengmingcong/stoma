@@ -77,7 +77,7 @@ def _unwrap_single_property_to(schema: dict[str, Any]) -> dict[str, Any]:
     return inner
 
 
-def _inject_title_into_request_body_schema(schema: dict[str, Any] | None, pascal: str) -> None:
+def _inject_title_into_request_body_schema(json_media_type_schema: dict[str, Any] | None, pascal: str) -> None:
     """给请求体 schema 注入 title。
 
     三种合法形态：
@@ -89,18 +89,18 @@ def _inject_title_into_request_body_schema(schema: dict[str, Any] | None, pascal
       - 内层是 ``$ref`` → 不动（ref 名已是 title）
       - 内层是 inline object → 在内层上设 ``title = Pascal + Request``（unwrap 后内层变顶层）
     """
-    if not isinstance(schema, dict):
+    if not isinstance(json_media_type_schema, dict):
         return
-    if "$ref" in schema:
+    if "$ref" in json_media_type_schema:
         return
-    inner = _unwrap_single_property_to(schema)
-    if inner is not schema:
+    inner = _unwrap_single_property_to(json_media_type_schema)
+    if inner is not json_media_type_schema:
         # 是 embed wrapper；只在 inner 是 inline object 时设 title
         if _is_inline_object(inner):
             inner["title"] = f"{pascal}Request"
         return
-    if _is_inline_object(schema):
-        schema["title"] = f"{pascal}Request"
+    if _is_inline_object(json_media_type_schema):
+        json_media_type_schema["title"] = f"{pascal}Request"
 
 
 def _inject_title_into_response_schema(schema: dict[str, Any] | None, pascal: str) -> None:
@@ -138,9 +138,9 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> None:
     # Pass 1：components.schemas.X → title = X
     components_schemas = raw_spec_dict.get("components", {}).get("schemas", {})
     if isinstance(components_schemas, dict):
-        for name, schema in components_schemas.items():
-            if isinstance(schema, dict) and not schema.get("title"):
-                schema["title"] = name
+        for name, json_media_type_schema in components_schemas.items():
+            if isinstance(json_media_type_schema, dict) and not json_media_type_schema.get("title"):
+                json_media_type_schema["title"] = name
 
     # Pass 2 / 3：paths[*][*] 的 inline object 注入 title
     paths = raw_spec_dict.get("paths", {})
@@ -161,10 +161,10 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> None:
             rb = op.get("requestBody")
             if isinstance(rb, dict):
                 content = rb.get("content", {})
-                json_content = content.get("application/json", {})
-                if isinstance(json_content, dict):
-                    schema = json_content.get("schema")
-                    _inject_title_into_request_body_schema(schema, pascal)
+                json_media_type_obj = content.get("application/json", {})
+                if isinstance(json_media_type_obj, dict):
+                    json_media_type_schema = json_media_type_obj.get("schema")
+                    _inject_title_into_request_body_schema(json_media_type_schema, pascal)
 
             # 响应 200/201
             responses = op.get("responses", {})
@@ -174,10 +174,10 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> None:
                     if not isinstance(resp, dict):
                         continue
                     content = resp.get("content", {})
-                    json_content = content.get("application/json", {})
-                    if isinstance(json_content, dict):
-                        schema = json_content.get("schema")
-                        _inject_title_into_response_schema(schema, pascal)
+                    json_media_type_obj = content.get("application/json", {})
+                    if isinstance(json_media_type_obj, dict):
+                        json_media_type_schema = json_media_type_obj.get("schema")
+                        _inject_title_into_response_schema(json_media_type_schema, pascal)
 
 
 class OpenAPISchemaError(Exception):
