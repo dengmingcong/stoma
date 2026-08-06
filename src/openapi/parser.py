@@ -60,19 +60,17 @@ def _unwrap_single_property_to(json_media_type_schema: dict[str, Any]) -> dict[s
 
     - ``type: object``
     - 有且仅有一个 property
-    - 这个 property 在 ``required`` 列表中
+
+    注：是否在 ``required`` 列表中**不**作为判断条件——OpenAPI 规范不强
+    制 embed 字段必须 required，部分 spec 省略此字段。
     """
     if not isinstance(json_media_type_schema, dict) or json_media_type_schema.get("type") != "object":
         return json_media_type_schema
     properties = json_media_type_schema.get("properties")
     if not isinstance(properties, dict) or len(properties) != 1:
         return json_media_type_schema
-    required = json_media_type_schema.get("required") or []
-    if not isinstance(required, list):
-        return json_media_type_schema
     inner = next(iter(properties.values()))
-    key = next(iter(properties))
-    if key not in required or not isinstance(inner, dict):
+    if not isinstance(inner, dict):
         return json_media_type_schema
     return inner
 
