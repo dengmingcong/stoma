@@ -118,8 +118,8 @@ def _inject_title_into_response_schema(schema: dict[str, Any] | None, pascal: st
         schema["title"] = f"{pascal}Response"
 
 
-def _fill_schema_titles(spec: dict[str, Any]) -> None:
-    """为所有 schema 注入 title（合并了原 ``_fill_schema_titles`` 与 ``inject_inline_titles``）。
+def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> None:
+    """为所有 schema 注入 title。
 
     在 prance 展开之前调用，三段处理：
 
@@ -131,20 +131,19 @@ def _fill_schema_titles(spec: dict[str, Any]) -> None:
     3. ``paths[*][*].responses[200/201].content["application/json"].schema``
        → ``title = {OperationId}Response``
 
-    已带 title 的 schema（来自 $ref 解析后的命名 schema，或 wrapper
-    上一阶段已注入的）跳过，避免覆盖正确的类名。
+    已带 title 的 schema 跳过，避免覆盖正确的类名。
 
-    :param spec: OpenAPI 规范字典（修改入参——prance 展开后 title 仍在）。
+    :param raw_spec_dict: OpenAPI 规范字典（修改入参——prance 展开后 title 仍在）。
     """
     # Pass 1：components.schemas.X → title = X
-    schemas = spec.get("components", {}).get("schemas", {})
-    if isinstance(schemas, dict):
-        for name, schema in schemas.items():
+    components_schemas = raw_spec_dict.get("components", {}).get("schemas", {})
+    if isinstance(components_schemas, dict):
+        for name, schema in components_schemas.items():
             if isinstance(schema, dict) and not schema.get("title"):
                 schema["title"] = name
 
     # Pass 2 / 3：paths[*][*] 的 inline object 注入 title
-    paths = spec.get("paths", {})
+    paths = raw_spec_dict.get("paths", {})
     if not isinstance(paths, dict):
         return
     for path_item in paths.values():
@@ -223,15 +222,15 @@ class OpenAPIParser:
 
         suffix = self.spec_path.suffix.lower()
         if suffix in {".yaml", ".yml"}:
-            raw_dict = yaml.safe_load(content)
+            raw_spec_dict = yaml.safe_load(content)
         elif suffix == ".json":
-            raw_dict = json.loads(content)
+            raw_spec_dict = json.loads(content)
         else:
             msg = f"Unsupported file suffix: {suffix}. Supported: .yaml, .yml, .json"
             raise ValueError(msg)
 
         # 先检查版本，不支持则提前报错。
-        openapi_version = raw_dict.get("openapi", "") if isinstance(raw_dict, dict) else ""
+        openapi_version = raw_spec_dict.get("openapi", "") if isinstance(raw_spec_dict, dict) else ""
         if not openapi_version.startswith(("3.0.", "3.1.")):
             msg = f"Unsupported OpenAPI version: {openapi_version}. Only 3.0.x and 3.1.x are supported."
             raise ValueError(msg)
@@ -239,10 +238,10 @@ class OpenAPIParser:
         # 给 components.schemas 补全 title，让 prance 展开后的内联副本
         # 也带 title；这是 datamodel-codegen 跨 components 和 paths 做
         # 去重时的关键标识（仅靠 dict key 不够，必须 title 也一致）。
-        _fill_schema_titles(raw_dict)
+        _fill_schema_titles(raw_spec_dict)
 
         try:
-            modified_content = yaml.dump(raw_dict) if suffix in {".yaml", ".yml"} else json.dumps(raw_dict)
+            modified_content = yaml.dump(raw_spec_dict) if suffix in {".yaml", ".yml"} else json.dumps(raw_spec_dict)
             parser = ResolvingParser(spec_string=modified_content, validation=False)
             parser.parse()
             self._spec_dict = parser.specification
