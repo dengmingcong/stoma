@@ -15,12 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from datamodel_code_generator import (
-    DataModelType,
     InputFileType,
     OpenAPIScope,
     PythonVersion,
     generate,
 )
+from datamodel_code_generator.enums import DataModelType
 
 
 def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
