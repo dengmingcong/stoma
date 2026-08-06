@@ -34,25 +34,6 @@ def _operation_id_to_pascal(operation_id: str) -> str:
     return "".join(word.capitalize() for word in words if word)
 
 
-def _is_inline_object(schema: dict[str, Any]) -> bool:
-    """检测 schema 是否是需要注入 title 的「内联 object」。
-
-    - ``$ref`` schema 不算（datamodel-codegen 自己会从 ref 末段取名）
-    - 已有 ``title`` 不算（避免覆盖 $ref 解析后已带 title 的 schema）
-    - 必须 ``type: object`` 且 ``properties`` 非空
-
-    :param schema: 必须是 dict（调用方应先 ``isinstance(x, dict)`` 判断）。
-    """
-    if "$ref" in schema:
-        return False
-    if schema.get("title"):
-        return False
-    if schema.get("type") != "object":
-        return False
-    properties = schema.get("properties")
-    return isinstance(properties, dict) and len(properties) > 0
-
-
 def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> bool:
     """为所有 schema 注入 title，返回是否在 paths 中找到任何 payload。
 
@@ -106,7 +87,16 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> bool:
                 json_media_type_obj = content.get("application/json", {})
                 if isinstance(json_media_type_obj, dict):
                     json_media_type_schema = json_media_type_obj.get("schema")
-                    if isinstance(json_media_type_schema, dict) and _is_inline_object(json_media_type_schema):
+                    if (
+                        isinstance(json_media_type_schema, dict)
+                        and "$ref" not in json_media_type_schema
+                        and not json_media_type_schema.get("title")
+                        and json_media_type_schema.get("type") == "object"
+                        and isinstance(
+                            json_media_type_schema.get("properties"), dict
+                        )
+                        and len(json_media_type_schema["properties"]) > 0
+                    ):
                         json_media_type_schema["title"] = f"{pascal}Request"
                         has_payload = True
 
@@ -121,7 +111,16 @@ def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> bool:
                     json_media_type_obj = content.get("application/json", {})
                     if isinstance(json_media_type_obj, dict):
                         json_media_type_schema = json_media_type_obj.get("schema")
-                        if isinstance(json_media_type_schema, dict) and _is_inline_object(json_media_type_schema):
+                        if (
+                            isinstance(json_media_type_schema, dict)
+                            and "$ref" not in json_media_type_schema
+                            and not json_media_type_schema.get("title")
+                            and json_media_type_schema.get("type") == "object"
+                            and isinstance(
+                                json_media_type_schema.get("properties"), dict
+                            )
+                            and len(json_media_type_schema["properties"]) > 0
+                        ):
                             json_media_type_schema["title"] = f"{pascal}Response"
                             has_payload = True
 
