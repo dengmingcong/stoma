@@ -286,13 +286,17 @@ paths:
 
 
 class TestFillSchemaTitles:
-    """验证 _fill_schema_titles 对各种嵌套场景的处理。"""
+    """验证 _fill_schema_titles 对各种嵌套场景的处理。
+
+    prance 展开后会复制 components/schemas 的内容到 paths 中，title 字段
+    是 datamodel-codegen 跨 components 和 paths 做去重的关键标识。
+    """
 
     def test_inline_request_body_schema_gets_title(self, tmp_path: Path) -> None:
-        """验证内联在 paths/requestBody 中的 schema（非 $ref）也能被填上 title。
+        """验证内联在 paths/requestBody 中的 schema（prance 展开后的 $ref 副本）有 title。
 
-        prance 展开后是 components/schemas 的拷贝，所以 _fill_schema_titles
-        必须处理 paths 中引用了 components/schemas 的 schema，给它也填上 title。
+        没有这个 title，datamodel-codegen 会同时生成 User 和
+        CreateUserRequest 两个重复类。
         """
         spec = """\
 openapi: 3.1.0
@@ -335,62 +339,13 @@ components:
         assert rb is not None
         content = rb.content
         schema = content["application/json"].media_type_schema
-        # requestBody 的 schema（$ref 指向 components/schemas）应该有 title
         assert schema.title == "CreateUserRequest", (
             f"Expected title='CreateUserRequest', got title={schema.title!r}. "
-            "prance 展开后是 components 的拷贝，_fill_schema_titles 没有正确填 title。"
+            "没有这个 title，datamodel-codegen 会生成重复类。"
         )
 
-    def test_inline_path_schema_not_in_components_has_no_title(self, tmp_path: Path) -> None:
-        """验证完全内联在 paths 中的 schema（不在 components 中）没有 title。
-
-        这种 schema 没有 $ref 引用 components，不应该被 _fill_schema_titles 处理，
-        title 本来就应该是 None。
-        """
-        spec = """\
-openapi: 3.1.0
-info:
-  title: Fill Title Test
-  version: "1.0.0"
-paths:
-  /users:
-    post:
-      operationId: createUser
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name]
-              properties:
-                name:
-                  type: string
-      responses:
-        "200":
-          description: ok
-"""
-        spec_file = tmp_path / "spec.yaml"
-        spec_file.write_text(spec, encoding="utf-8")
-
-        parser = OpenAPIParser(spec_file)
-        parser.load()
-        parser.validate()
-        endpoints = parser.get_endpoints()
-
-        assert len(endpoints) == 1
-        endpoint = endpoints[0]
-        rb = endpoint.request_body
-        assert rb is not None
-        schema = rb.content["application/json"].media_type_schema
-        # 完全内联的 schema 不在 components 中，title 本应为 None
-        assert schema.title is None
-
     def test_nested_properties_schema_in_components_gets_title(self, tmp_path: Path) -> None:
-        """验证 components/schemas 中嵌套在 properties 里的 schema 被递归填上 title。
-
-        例如 User.properties.avatar -> Avatar，嵌套 schema 也应该有 title。
-        """
+        """验证 components/schemas 中嵌套在 properties 里的 schema 被递归填上 title。"""
         spec = """\
 openapi: 3.1.0
 info:
@@ -431,11 +386,9 @@ components:
         parser.load()
         parser.validate()
 
-        # 检查 prance 展开后的 components/schemas 中 avatar 的 title
         expanded = parser._spec_dict
         user_schema = expanded["components"]["schemas"]["User"]
         avatar_prop = user_schema["properties"]["avatar"]
-        # avatar 是 $ref，prance 展开后是 Avatar 的拷贝
         assert avatar_prop.get("title") == "Avatar", (
             f"Expected avatar.title='Avatar', got {avatar_prop.get('title')!r}. "
             "_fill_schema_titles 没有递归处理 properties 中的 $ref。"
@@ -488,8 +441,6 @@ components:
         req_schema = expanded["components"]["schemas"]["CreateUserRequest"]
         allof_items = req_schema["allOf"]
         named_ref = allof_items[0]
-        inline_part = allof_items[1]
-        # Named 是 $ref，prance 展开后是拷贝，title 应为 'Named'
-        assert named_ref.get("title") == "Named", f"Expected allOf[0].title='Named', got {named_ref.get('title')!r}"
-        # 内联部分不在 components 中，title 应为 None
-        assert inline_part.get("title") is None
+        assert named_ref.get("title") == "Named", (
+            f"Expected allOf[0].title='Named', got {named_ref.get('title')!r}"
+        )

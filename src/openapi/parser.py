@@ -114,8 +114,9 @@ class OpenAPIParser:
             msg = f"Unsupported OpenAPI version: {openapi_version}. Only 3.0.x and 3.1.x are supported."
             raise ValueError(msg)
 
-        # 在 prance 展开之前，给 components.schemas 补全 title。
-        # 这样展开后的 schema 会保留 title，renderer 不需要再查 components。
+        # 给 components.schemas 补全 title，让 prance 展开后的内联副本
+        # 也带 title；这是 datamodel-codegen 跨 components 和 paths 做
+        # 去重时的关键标识（仅靠 dict key 不够，必须 title 也一致）。
         _fill_schema_titles(raw_dict)
 
         try:
