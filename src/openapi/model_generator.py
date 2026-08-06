@@ -45,7 +45,7 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
             input_file_type=InputFileType.OpenAPI,
             output_model_type=DataModelType.PydanticV2BaseModel,
             target_python_version=PythonVersion.PY_312,
-            use_operation_id_as_name=True,
+            use_title_as_name=True,
             snake_case_field=True,
             use_double_quotes=True,
             use_union_operator=True,
