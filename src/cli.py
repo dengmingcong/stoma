@@ -13,7 +13,6 @@ import typer
 from src.openapi.model_generator import generate_models
 from src.openapi.parser import OpenAPIParser, OpenAPISchemaError
 from src.openapi.renderer import EndpointRenderer, render_to_file
-from src.openapi.spec_transform import transform_spec_for_generation
 
 app = typer.Typer(
     help="Stoma - OpenAPI 接口代码生成工具",
@@ -68,20 +67,17 @@ def make(
     except (FileNotFoundError, ValueError, OpenAPISchemaError) as e:
         raise typer.BadParameter(str(e)) from e
 
-    # 获取所有 endpoint 后做预处理 + 生成 models.py（仅当有需要）。
+    # 获取 endpoints；spec_dict 是 parser 内部状态（pre-transform，含 title）。
     endpoints = parser.get_endpoints()
-    embed_infos: list = []
     spec_dict = parser._spec_dict
     if spec_dict is not None and endpoints:
-        new_spec, embed_infos = transform_spec_for_generation(spec_dict, endpoints)
-        schemas = (new_spec.get("components") or {}).get("schemas") or {}
+        schemas = (spec_dict.get("components") or {}).get("schemas") or {}
         if schemas or _has_any_payloads(endpoints):
-            generate_models(new_spec, out / "models.py")
+            generate_models(spec_dict, out / "models.py")
 
     # 渲染每个 endpoint 的 route.py。
     generated_files: list[Path] = []
-    embed_infos_by_op = {info.operation_id: info for info in embed_infos}
-    renderer = EndpointRenderer(embed_infos=embed_infos_by_op)
+    renderer = EndpointRenderer()
     for endpoint in endpoints:
         rendered = renderer.render(endpoint)
         file_path = render_to_file(

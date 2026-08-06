@@ -150,7 +150,7 @@ def _fill_schema_titles(spec: dict[str, Any]) -> None:
     for path_item in paths.values():
         if not isinstance(path_item, dict):
             continue
-        for method, op in path_item.items():
+        for _method, op in path_item.items():
             if not isinstance(op, dict):
                 continue
             operation_id = op.get("operationId")

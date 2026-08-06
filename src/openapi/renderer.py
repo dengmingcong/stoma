@@ -7,11 +7,13 @@
 - 解析路径 / 查询 / 头部参数并渲染为 Pydantic 字段声明
 - 解析请求体引用哪个模型（名字符串）
 - 解析响应引用哪个模型（名字符串）
-- 渲染 ``Annotated[..., Body(embed=True)]`` 装饰
+- 检测 embed wrapper 并渲染 ``Annotated[..., Body(embed=True)]`` 装饰
 - 输出 ``from .models import ...`` 导入
 
-所有 schema → model 转换都在 spec pre-process 阶段完成（见
-:mod:`src.openapi.spec_transform`），本模块不写 Pydantic 类定义。
+所有 schema → model 转换都在 :mod:`src.openapi.parser` 的
+``_fill_schema_titles`` 阶段完成（注入 title 字段）；本模块不写 Pydantic
+类定义，也不再做 spec 变换。Embed wrapper 的检测在渲染阶段就地完成，
+不依赖任何中间数据结构（如 ``EmbedInfo``）。
 """
 
 from __future__ import annotations
@@ -27,7 +29,6 @@ from openapi_pydantic.v3.v3_1 import Schema as Schema31
 from pydantic.alias_generators import to_snake
 
 from src.openapi.models import Endpoint, Parameter, RequestBody, Response
-from src.openapi.spec_transform import EmbedInfo
 
 Schema = Schema30 | Schema31
 
@@ -101,14 +102,10 @@ class EndpointRenderer:
     def __init__(
         self,
         template_path: str | Path | None = None,
-        embed_infos: dict[str, EmbedInfo] | None = None,
     ) -> None:
         """初始化渲染器。
 
         :param template_path: 模板目录路径，默认为 ``openapi/templates/``。
-        :param embed_infos: 按 ``operation_id`` 索引的 embed wrapper 信息。
-            用于在 ``route.py`` 中渲染 ``Body(embed=True)`` 并使用 wrapper
-            字段名作为接口类字段名。
         """
         if template_path is None:
             template_path = Path(__file__).parent / "templates"
@@ -118,7 +115,6 @@ class EndpointRenderer:
             trim_blocks=True,
             lstrip_blocks=True,
         )
-        self.embed_infos: dict[str, EmbedInfo] = embed_infos or {}
 
     def render(self, endpoint: Endpoint) -> str:
         """渲染 endpoint 的 route.py 内容。
@@ -128,7 +124,7 @@ class EndpointRenderer:
         """
         class_name = _to_pascal_case(endpoint.operation_id)
         response_type = self._extract_response_info(endpoint.responses, class_name)
-        request_body_info = self._extract_request_body_info(endpoint.request_body, class_name, endpoint.operation_id)
+        request_body_info = self._extract_request_body_info(endpoint.request_body, class_name)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
 
         imported_models: list[str] = []
@@ -191,7 +187,6 @@ class EndpointRenderer:
         self,
         request_body: RequestBody | None,
         class_name: str,
-        operation_id: str,
     ) -> dict[str, Any]:
         """提取请求体信息。
 
@@ -199,36 +194,64 @@ class EndpointRenderer:
 
         - 引用 ``components.schemas`` 或有 ``title`` 的 schema → ``type`` 等于
           schema 名（``models.py`` 中已有同名类）。
-        - embed wrapper（已由 :func:`unwrap_embed_wrappers` 在 spec 预处理
-          阶段解开）→ 通过 ``self.embed_infos[operation_id]`` 拿 wrapper
-          字段名，渲染 ``Body(embed=True)``。
+        - embed wrapper（最外层是单属性 required object）→ ``embed=True``，
+          ``field_name`` 用 wrapper 字段名，``type`` 用内层 schema 的 model name。
         - 未匹配 → ``type`` 为空字符串（不生成 body 字段）。
 
         :param request_body: :class:`RequestBody` 对象。
         :param class_name: 接口类名，做 fallback。
-        :param operation_id: 用于查找 embed_info。
         :return: ``{"type": str, "embed": bool, "field_name": str | None}``。
         """
         if not request_body:
             return {"type": "", "embed": False, "field_name": None}
 
-        embed_info = self.embed_infos.get(operation_id)
         content = request_body.content or {}
         json_content = content.get("application/json", {})
         schema = getattr(json_content, "media_type_schema", None)
         if not isinstance(schema, Schema):
             return {"type": "", "embed": False, "field_name": None}
 
-        default_name = embed_info.model_name if embed_info else f"{class_name}Request"
-        type_name = _resolve_model_name(schema, default_name)
-
-        if embed_info:
+        embed = self._detect_embed(schema)
+        if embed:
             return {
-                "type": type_name,
+                "type": embed["model_name"],
                 "embed": True,
-                "field_name": embed_info.field_name,
+                "field_name": embed["field_name"],
             }
+
+        type_name = _resolve_model_name(schema, f"{class_name}Request")
         return {"type": type_name, "embed": False, "field_name": None}
+
+    def _detect_embed(self, schema: Schema) -> dict[str, str] | None:
+        """检测 schema 是否是最外层 embed wrapper。
+
+        embed wrapper 的特征（OpenAPI 单属性 + required 的约定）：
+
+        - ``type: object``
+        - 有且仅有一个 property
+        - 这个 property 在 ``required`` 列表中
+
+        只检测最外层——runtime 也只用最外层 ``field_name`` 构造 body，中间层
+        wrapper 对 runtime 无意义。
+
+        :param schema: 待检测的 Schema 对象。
+        :return: ``{"field_name": str, "model_name": str}`` 或 ``None``。
+        """
+        if not isinstance(schema, Schema) or schema.type != "object":
+            return None
+        properties = schema.properties
+        if not isinstance(properties, dict) or len(properties) != 1:
+            return None
+        required = schema.required or []
+        if not isinstance(required, list):
+            return None
+        field_name, inner = next(iter(properties.items()))
+        if field_name not in required or not isinstance(inner, Schema):
+            return None
+        return {
+            "field_name": field_name,
+            "model_name": _resolve_model_name(inner, ""),
+        }
 
     def _extract_response_info(
         self,
