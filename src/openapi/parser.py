@@ -35,11 +35,26 @@ def _operation_id_to_pascal(operation_id: str) -> str:
 
 
 def _is_inline_object(schema: dict[str, Any]) -> bool:
-    """检测 schema 是否是需要注入 title 的「内联 object」。
+    """判断 schema 是否是「需要被 ``_fill_schema_titles`` 注入 title 的内联 object」。
 
-    - ``$ref`` schema 不算（datamodel-codegen 自己会从 ref 末段取名）
-    - 已有 ``title`` 不算（避免覆盖 $ref 解析后已带 title 的 schema）
-    - 必须 ``type: object`` 且 ``properties`` 非空
+    意义：``_fill_schema_titles`` 给路径里 path.requestBody / responses
+    的 schema 注入 ``title = {OperationId}Request/Response``，让
+    datamodel-codegen 跨 components / paths 做去重。但**不是所有 schema
+    都该被注入**——本函数集中 4 条"不要注入"的条件，把"该不该注入"这个
+    概念命名下来，让 callsite 写成 ``if _is_inline_object(x)`` 即可。
+
+    4 条条件（**全部不满足**才返回 ``True**）：
+
+    1. 不含 ``$ref``——datamodel-codegen 自己会从 ref 末段取名（如
+       ``$ref: '#/components/schemas/User'`` 自动生成 ``class User``），
+       注入 title 会导致重复类。
+    2. 没有现成 title——已有 title 说明 prance 复制时已带 title
+       （来自 components.schemas 命名），覆盖会破坏跨
+       components / paths 的去重。
+    3. ``type: object``——标量（string/number/...）和 array 不需要单独
+       模型类，注入 title 没用。
+    4. ``properties`` 非空——空 object 注入 title 后 datamodel-codegen
+       也建不出有意义的 Pydantic 类。
 
     :param schema: 必须是 dict（调用方应先 ``isinstance(x, dict)`` 判断）。
     """
