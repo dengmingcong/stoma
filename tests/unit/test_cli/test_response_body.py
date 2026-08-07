@@ -232,3 +232,128 @@ paths:
         content = (out_dir / "delete_item.py").read_text(encoding="utf-8")
         # 无 content-type 为 json 的响应，不生成泛型参数。
         assert "APIRoute)" in content
+
+    def test_response_with_non_snake_case_fields(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 response 顶层字段非 snake_case 时自动追加 ``alias=<origin>``。
+
+        回归测试：response 由 ``datamodel-code-generator`` 生成的 model
+        承担 schema 校验职责，字段命名同样受 ``snake_case_field=True``
+        影响——非 snake_case 字段必须带 ``alias=<origin>``，否则反序列化
+        API 实际 payload 时会丢失字段。
+
+        覆盖：
+        - camelCase ``widgetId`` / ``widgetName`` → snake + alias
+        - PascalCase ``CreatedAt`` → snake + alias
+        - 已 snake_case ``item_count`` → 不加 alias
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Mixed Naming Response API
+  version: "1.0.0"
+paths:
+  /widgets:
+    get:
+      operationId: listWidgets
+      summary: 列出 widgets（response 含非蛇形字段）
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [widgetId, widgetName]
+                properties:
+                  widgetId:
+                    type: string
+                  widgetName:
+                    type: string
+                  item_count:
+                    type: integer
+                  CreatedAt:
+                    type: string
+                    format: date-time
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+
+        # camelCase → snake + alias 保留原名。
+        assert 'widget_id: str = Field(..., alias="widgetId")' in models
+        assert 'widget_name: str = Field(..., alias="widgetName")' in models
+        # PascalCase → snake + alias 保留原名。
+        assert 'created_at: AwareDatetime | None = Field(None, alias="CreatedAt")' in models
+        # 已 snake_case → 保持裸声明，不冗余加 alias。
+        assert "item_count: int | None = None" in models
+        assert 'item_count: int | None = Field(None, alias="item_count")' not in models
+
+    def test_response_with_nested_non_snake_case_fields(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 response 嵌套对象内的非 snake_case 字段同样自动添加 ``alias``。
+
+        回归测试：``datamodel-code-generator`` 对每一层嵌套对象独立应用
+        ``snake_case_field`` 转换，所有非 snake_case 字段（包括嵌套层）都
+        必须携带 ``alias=<origin>``，否则反序列化 API 实际 payload 时会
+        丢失嵌套层字段。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Nested Non-Snake Response API
+  version: "1.0.0"
+paths:
+  /orders:
+    get:
+      operationId: getOrder
+      summary: 获取订单（嵌套 response 含非蛇形字段）
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orderInfo]
+                properties:
+                  orderInfo:
+                    type: object
+                    required: [orderId]
+                    properties:
+                      orderId:
+                        type: string
+                      shippingAddress:
+                        type: object
+                        properties:
+                          streetName:
+                            type: string
+                          ZIPCode:
+                            type: string
+                  totalAmount:
+                    type: number
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+
+        # 顶层非 snake_case 字段加 alias。
+        assert 'order_info: OrderInfo = Field(..., alias="orderInfo")' in models
+        assert 'total_amount: float | None = Field(None, alias="totalAmount")' in models
+        # 嵌套对象独立生成 model，字段同样满足 alias 约定。
+        assert 'order_id: str = Field(..., alias="orderId")' in models
+        # 嵌套内的嵌套（含全大写字段名）也命中 alias。
+        assert 'street_name: str | None = Field(None, alias="streetName")' in models
+        assert 'zip_code: str | None = Field(None, alias="ZIPCode")' in models

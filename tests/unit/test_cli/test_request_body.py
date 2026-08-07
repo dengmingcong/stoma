@@ -345,3 +345,136 @@ paths:
 
         assert result.exit_code != 0, result.output
         assert "operationId is required" in result.output
+
+    def test_request_body_with_non_snake_case_fields(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 requestBody 顶层字段非 snake_case 时自动追加 ``alias=<origin>``。
+
+        回归测试：``datamodel-code-generator`` 在 ``snake_case_field=True`` 下
+        对转换前后不一致的字段自动生成 ``Field(..., alias="<original>")``。
+        已是 snake_case 的字段必须保持裸声明（不冗余加 alias）。
+
+        覆盖：
+        - camelCase ``firstName`` / ``isActive`` → snake + alias
+        - PascalCase ``LastName`` / ``EmailAddress`` → snake + alias
+        - 已 snake_case ``user_id`` → 不加 alias
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Mixed Naming API
+  version: "1.0.0"
+paths:
+  /profiles:
+    post:
+      operationId: createProfile
+      summary: 创建 profile（混合大小写命名）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, LastName]
+              properties:
+                firstName:
+                  type: string
+                LastName:
+                  type: string
+                user_id:
+                  type: string
+                EmailAddress:
+                  type: string
+                  format: email
+                isActive:
+                  type: boolean
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+
+        # camelCase → snake + alias 保留原名。
+        assert 'first_name: str = Field(..., alias="firstName")' in models
+        assert 'is_active: bool | None = Field(None, alias="isActive")' in models
+        # PascalCase → snake + alias 保留原名。
+        assert 'last_name: str = Field(..., alias="LastName")' in models
+        assert 'email_address: EmailStr | None = Field(None, alias="EmailAddress")' in models
+        # 已 snake_case → 保持裸声明，不冗余加 alias。
+        assert "user_id: str | None = None" in models
+        assert 'user_id: str | None = Field(None, alias="user_id")' not in models
+
+    def test_request_body_with_nested_non_snake_case_fields(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 requestBody 嵌套对象内的非 snake_case 字段同样自动添加 ``alias``。
+
+        回归测试：``datamodel-code-generator`` 对每一层嵌套对象独立应用
+        ``snake_case_field`` 转换，所有非 snake_case 字段（包括嵌套层）都
+        必须携带 ``alias=<origin>``，否则反序列化 API 实际载荷时会丢失字段。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Nested Non-Snake API
+  version: "1.0.0"
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      summary: 创建订单（嵌套对象含非蛇形字段）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerInfo]
+              properties:
+                customerInfo:
+                  type: object
+                  required: [firstName]
+                  properties:
+                    firstName:
+                      type: string
+                    lastName:
+                      type: string
+                    billingAddress:
+                      type: object
+                      properties:
+                        streetName:
+                          type: string
+                        ZIPCode:
+                          type: string
+                totalAmount:
+                  type: number
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+
+        # 顶层非 snake_case 字段加 alias。
+        assert 'customer_info: CustomerInfo = Field(..., alias="customerInfo")' in models
+        assert 'total_amount: float | None = Field(None, alias="totalAmount")' in models
+        # 嵌套对象独立生成 model，字段同样满足 alias 约定。
+        assert 'first_name: str = Field(..., alias="firstName")' in models
+        assert 'last_name: str | None = Field(None, alias="lastName")' in models
+        # 嵌套内的嵌套（含全大写字段名）也命中 alias。
+        assert 'street_name: str | None = Field(None, alias="streetName")' in models
+        assert 'zip_code: str | None = Field(None, alias="ZIPCode")' in models
