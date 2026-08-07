@@ -47,6 +47,7 @@ def make(
     try:
         parser = OpenAPIParser(spec)
         parser.load()
+        parser.validate_operation_ids()
     except (FileNotFoundError, ValueError, OpenAPISchemaError) as e:
         raise typer.BadParameter(str(e)) from e
 

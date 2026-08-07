@@ -21,7 +21,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from datamodel_code_generator.reference import snake_to_upper_camel
 from jinja2 import Environment, FileSystemLoader, Template
 from openapi_pydantic import Reference
 from pydantic.alias_generators import to_snake
@@ -71,73 +70,16 @@ def _to_pascal_case(operation_id: str) -> str:
     return "".join(word.capitalize() for word in words if word)
 
 
-def _path_to_identifier(path: str) -> str:
-    """把 OpenAPI path 归一化成 snake_case 标识符。
-
-    唯一自定义的 path 归一化 helper（``datamodel-code-generator`` 未暴露
-    等价接口）。``{user_id}`` 之类参数占位符去大括号后，逐段经
-    :func:`pydantic.alias_generators.to_snake` 转换 snake，再用下划线连
-    接；空路径 fallback 为 ``"root"``，保证后续 PascalCase 不会得到空串。
-
-    :param path: OpenAPI 路径字符串（如 ``"/users/{user_id}/posts"``）。
-    :return: snake_case 标识符（如 ``"users_user_id_posts"``）；空路径返回
-        ``"root"``。
-    """
-    stripped = re.sub(r"[{}]", "", path)
-    segments = [s for s in stripped.strip("/").split("/") if s]
-    return "_".join(to_snake(s) for s in segments) or "root"
-
-
-def _method_path_to_class_name(path: str, method: str, kind: str) -> str:
-    """根据 HTTP method + path 推导 PascalCase 类名。
-
-    与 :func:`datamodel_code_generator.reference.snake_to_upper_camel` +
-    path 归一化（:func:`_path_to_identifier`）对齐：
-    ``datamodel-code-generator`` 默认按 HTTP method + path 派生 inline
-    object 类名，renderer 必须同步预测。``kind`` 控制是否追加 ``Request``
-    / ``Response`` 后缀；``kind="class"`` 用于 APIRoute 类名（不加后缀）。
-
-    :param path: OpenAPI 路径字符串。
-    :param method: HTTP 方法（``"get"`` / ``"post"`` 等，小写）。
-    :param kind: ``"request"`` / ``"response"`` / ``"class"``。
-    :return: PascalCase 类名（如 ``"UsersPostRequest"`` / ``"UsersPost"``）。
-    """
-    base = snake_to_upper_camel(_path_to_identifier(path), delimiter="_")
-    suffix = "" if kind == "class" else "Request" if kind == "request" else "Response"
-    return f"{base}{method.capitalize()}{suffix}"
-
-
-def _method_path_to_file_stem(path: str, method: str) -> str:
-    """根据 HTTP method + path 推导 snake_case 文件 stem。
-
-    与 :func:`_path_to_identifier` 输出一致（已是 snake_case），拼上
-    小写 method；path 为根时（归一化结果 ``"root"``）只返回 method 名。
-
-    :param path: OpenAPI 路径字符串。
-    :param method: HTTP 方法（小写）。
-    :return: snake_case 文件 stem（如 ``"users_post"`` / ``"post"``）。
-    """
-    base = _path_to_identifier(path)
-    if base == "root":
-        return method.lower()
-    return f"{base}_{method.lower()}"
-
-
 def _resolve_endpoint_class_and_file(endpoint: Endpoint) -> tuple[str, str]:
     """解析 endpoint 的 APIRoute 类名与文件名。
 
-    优先使用 ``operationId``（向后兼容已有行为）；``operationId`` 为空时
-    回退到 HTTP method + path 派生（:func:`_method_path_to_class_name` /
-    :func:`_method_path_to_file_stem`）。
+    operationId 必填（由 :meth:`OpenAPIParser.validate_operation_ids` 保证），
+    类名与文件名都从 operationId 派生。
 
     :param endpoint: :class:`Endpoint` IR 对象。
     :return: ``(class_name, file_name)`` 元组，``file_name`` 含 ``.py`` 后缀。
     """
-    if endpoint.operation_id:
-        return _to_pascal_case(endpoint.operation_id), f"{to_snake(endpoint.operation_id)}.py"
-    class_name = _method_path_to_class_name(endpoint.path, endpoint.method, "class")
-    file_name = f"{_method_path_to_file_stem(endpoint.path, endpoint.method)}.py"
-    return class_name, file_name
+    return _to_pascal_case(endpoint.operation_id), f"{to_snake(endpoint.operation_id)}.py"
 
 
 class EndpointRenderer:
@@ -235,9 +177,10 @@ class EndpointRenderer:
 
         ``$ref`` 路径取末段并 PascalCase 化（对齐 ``datamodel-code-generator``
         对 ``components.schemas`` key 的自动 PascalCase 行为，例如
-        ``user-profile`` → ``UserProfile``）；inline object 路径按 HTTP
-        method + path 派生（:func:`_method_path_to_class_name`），
-        不再依赖 ``operationId``。
+        ``user-profile`` → ``UserProfile``）；inline object 路径派生为
+        ``{PascalOpId}Request``（对齐 ``datamodel-code-generator`` 的
+        ``use_operation_id_as_name=True`` —— ``datamodel-code-generator``
+        在该模式下对 inline request body 用 ``{operationId}Request`` 命名）。
 
         :param request_body: :class:`RequestBody` 对象。
         :param endpoint: 当前 :class:`Endpoint` IR 对象。
@@ -253,7 +196,7 @@ class EndpointRenderer:
         if isinstance(schema, Reference):
             name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
             return ResolvedType(type_expr=name, imports=(name,))
-        name = _method_path_to_class_name(endpoint.path, endpoint.method, "request")
+        name = f"{_to_pascal_case(endpoint.operation_id)}Request"
         return ResolvedType(type_expr=name, imports=(name,))
 
     def _extract_response_info(
@@ -262,6 +205,13 @@ class EndpointRenderer:
         endpoint: Endpoint,
     ) -> ResolvedType:
         """提取响应的 :class:`ResolvedType`（类型表达式 + import 列表）。
+
+        ``$ref`` 路径取末段并 PascalCase 化（对齐 ``datamodel-code-generator``
+        对 ``components.schemas`` key 的自动 PascalCase 行为，例如
+        ``user-profile`` → ``UserProfile``）；inline object 路径派生为
+        ``{PascalOpId}Response``（对齐 ``datamodel-code-generator`` 的
+        ``use_operation_id_as_name=True`` —— ``datamodel-code-generator``
+        在该模式下对 inline response 用 ``{operationId}Response`` 命名）。
 
         :param responses: OpenAPI 响应字典。
         :param endpoint: 当前 :class:`Endpoint` IR 对象。
@@ -284,7 +234,7 @@ class EndpointRenderer:
         if isinstance(schema, Reference):
             name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
             return ResolvedType(type_expr=name, imports=(name,))
-        name = _method_path_to_class_name(endpoint.path, endpoint.method, "response")
+        name = f"{_to_pascal_case(endpoint.operation_id)}Response"
         return ResolvedType(type_expr=name, imports=(name,))
 
 

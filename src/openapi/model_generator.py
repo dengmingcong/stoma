@@ -28,7 +28,7 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
 
     输入：解析后的 OpenAPI 规范字典。
     输出：单个 ``models.py``，包含 spec 中所有 ``$ref`` schemas + inline
-    objects（带 HTTP method + path 派生的 PascalCase 类名）。
+    objects（带由 operationId 派生的 PascalCase 类名，如 ``createItem`` → ``CreateItemRequest``）。
 
     :param spec_dict: 解析后的 OpenAPI 规范字典。
     :param output_path: ``models.py`` 的输出路径。父目录如不存在会自动创建。
@@ -47,6 +47,7 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
             snake_case_field=True,
             use_double_quotes=True,
             use_union_operator=True,
+            use_operation_id_as_name=True,
             openapi_scopes=[OpenAPIScope.Schemas, OpenAPIScope.Paths],
         )
     except Exception as e:

@@ -100,10 +100,10 @@ components:
         assert (out_dir / "create_item.py").exists()
         content = (out_dir / "create_item.py").read_text(encoding="utf-8")
         assert "@router.post" in content
-        # 内联对象生成 ItemsPostRequest 模型（method+path 派生，
-        # ``POST /items`` → ``ItemsPostRequest``），不基于 operationId。
-        assert "from .models import ItemsPostRequest" in content
-        assert "body: ItemsPostRequest" in content
+        # 内联对象生成 CreateItemRequest 模型（operationId 派生，
+        # ``createItem`` → ``CreateItemRequest``），由 ``use_operation_id_as_name=True`` 触发。
+        assert "from .models import CreateItemRequest" in content
+        assert "body: CreateItemRequest" in content
 
     def test_request_body_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用嵌套 object schema 时能正常生成。"""
@@ -247,10 +247,11 @@ components:
         assert result.exit_code == 0, result.output
         assert (out_dir / "create_user_embed.py").exists()
         content = (out_dir / "create_user_embed.py").read_text(encoding="utf-8")
-        # 不做 embed wrapper 特殊处理——按 method+path 派生（``POST /users``
-        # → ``UsersPostRequest``），body 形态由 spec 决定。
-        assert "body: UsersPostRequest" in content
-        assert "from .models import UsersPostRequest" in content
+        # 按 operationId 派生（``createUserEmbed`` → ``CreateUserEmbedRequest``），
+        # 由 ``use_operation_id_as_name=True`` 触发。
+        # body 形态由 spec 决定。
+        assert "body: CreateUserEmbedRequest" in content
+        assert "from .models import CreateUserEmbedRequest" in content
         assert "from stoma import APIRouter, APIRoute, Body" in content
 
     def test_request_body_with_non_pascalcase_ref(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -304,11 +305,14 @@ components:
         assert "from .models import UserProfile" in content
         assert "body: UserProfile" in content
 
-    def test_request_body_with_no_operation_id(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 spec 缺 ``operationId`` 时 CLI 不报错且 method+path fallback 生效。
+    def test_request_body_without_operation_id_errors(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """operationId 必填校验——缺 operationId 时 CLI 应清晰报错而不是 fallback 到 method+path。
 
-        回归测试：renderer 必须能在 ``operationId`` 为空时回退到 HTTP
-        method + path 派生类名/文件名，确保缺省字段不会破坏生成流程。
+        回归测试：``parser.validate_operation_ids()`` 检查到缺失 operationId 时
+        抛出 ``OpenAPISchemaError``，cli.py 的 typer 错误处理器将其转换为
+        ``typer.BadParameter`` 并输出友好错误信息。
         """
         spec = """\
 openapi: 3.1.0
@@ -339,11 +343,5 @@ paths:
 
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
-        assert result.exit_code == 0, result.output
-        # 文件名按 ``POST /users`` + 小写 method 派生。
-        assert (out_dir / "users_post.py").exists()
-        content = (out_dir / "users_post.py").read_text(encoding="utf-8")
-        # APIRoute 类名按 method+path 派生（不带 ``Request``/``Response`` 后缀）。
-        assert "class UsersPost(APIRoute):" in content
-        # model 类名按 method+path 派生（带 ``Request`` 后缀，与 dmcg 对齐）。
-        assert "from .models import UsersPostRequest" in content
+        assert result.exit_code != 0, result.output
+        assert "operationId is required" in result.output

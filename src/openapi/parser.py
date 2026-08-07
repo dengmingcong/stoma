@@ -167,6 +167,38 @@ class OpenAPIParser:
             return ""
         return self._raw_spec_dict.get("openapi", "")
 
+    def validate_operation_ids(self) -> None:
+        """校验所有 operation 都有非空 operationId。
+
+        ``datamodel-code-generator`` 的 ``use_operation_id_as_name=True`` 严格模式
+        要求每个 operation 必须有 operationId，缺失时 dmcg 会报错，但报错信息
+        对 stoma 用户不友好。本方法在调用 dmcg 之前提前校验，抛清晰错误。
+
+        本方法为独立方法，不放在 :meth:`get_endpoints` 里——因为 ``get_endpoints()``
+        在 cli.py 里**不在 try/except 块内**（只有 ``parser.load()`` 在），
+        从 ``get_endpoints()`` 抛的异常会泄露 stack trace。独立方法让 cli.py
+        在已有 try 块里显式调用 ``parser.validate_operation_ids()``，错误走
+        ``typer.BadParameter`` 友好路径。
+
+        :raise RuntimeError: 尚未调用 ``load()`` 方法。
+        :raise OpenAPISchemaError: 存在缺失 operationId 的 operation。
+        """
+        if self._spec is None:
+            msg = "OpenAPI specification not loaded. Call load() first."
+            raise RuntimeError(msg)
+
+        if not self._spec.paths:
+            return
+
+        for path, path_item in self._spec.paths.items():
+            for method in ("get", "post", "put", "patch", "delete"):
+                operation = getattr(path_item, method, None)
+                if operation is None:
+                    continue
+                if not (operation.operationId and operation.operationId.strip()):
+                    msg = f"operationId is required for {method.upper()} {path}"
+                    raise OpenAPISchemaError(msg)
+
     def _schema_to_model_name(
         self,
         schema: Any,
