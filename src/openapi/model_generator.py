@@ -30,6 +30,13 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
     输出：单个 ``models.py``，包含 spec 中所有 ``$ref`` schemas + inline
     objects（带由 operationId 派生的 PascalCase 类名，如 ``createItem`` → ``CreateItemRequest``）。
 
+    约束字段和 alias 字段均以 Pydantic v2 风格的 ``Annotated[T, Field(...)]`` 形式输出
+    （启用 dmcg 的 ``field_constraints=True`` + ``use_annotated=True``）。这取代了默认的 v1 风格
+    ``conint(...)``/``constr(...)`` —— 后者会被 Pylance 静态分析为非法类型形式
+    并触发 ``reportInvalidTypeForm`` 误报；也替代了 ``T = Field(...)`` 这种
+    把类型与默认值揉在同一位置的写法，输出更符合 PEP 593 的习惯，并对
+    Pylance / mypy 等静态检查器更友好。
+
     :param spec_dict: 解析后的 OpenAPI 规范字典。
     :param output_path: ``models.py`` 的输出路径。父目录如不存在会自动创建。
     :raise RuntimeError: ``datamodel-code-generator`` 调用失败且未产出文件。
@@ -44,6 +51,8 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
             input_file_type=InputFileType.OpenAPI,
             output_model_type=DataModelType.PydanticV2BaseModel,
             target_python_version=PythonVersion.PY_312,
+            field_constraints=True,
+            use_annotated=True,
             snake_case_field=True,
             use_double_quotes=True,
             use_union_operator=True,
