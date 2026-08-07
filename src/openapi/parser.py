@@ -9,18 +9,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from openapi_pydantic import OpenAPI, Reference
+from openapi_pydantic import OpenAPI
 
 from src.openapi.models import Endpoint, Operation, RequestBody, Response
-
-
-def _ref_to_model_name(ref: str) -> str:
-    """从 ``$ref`` 字符串提取 model 名（末段）。
-
-    :param ref: 形如 ``"#/components/schemas/User"`` 的 $ref 字符串。
-    :return: 末段作为 model 名（``"User"``）。
-    """
-    return ref.rsplit("/", 1)[-1]
 
 
 class OpenAPISchemaError(Exception):
@@ -137,33 +128,12 @@ class OpenAPIParser:
                     msg = f"operationId is required for {method.upper()} {path}"
                     raise OpenAPISchemaError(msg)
 
-    def _schema_to_model_name(
-        self,
-        schema: Any,
-        kind: str,
-        operation_id: str,
-    ) -> str | None:
-        """从 schema 字段提取 model 名。
-
-        :param schema: openapi-pydantic 的 Schema | Reference | None。
-        :param kind: ``"request"`` 或 ``"response"``——决定 fallback 命名。
-        :param operation_id: 当前 operation 的 operationId（用于 fallback）。
-        :return: model 名；没有 body / response 时返回 None。
-        """
-        if schema is None:
-            return None
-        if isinstance(schema, Reference):
-            return _ref_to_model_name(schema.ref)
-        # inline object（Pydantic Schema 实例，没有 title 因为我们不再注入）
-        suffix = "Request" if kind == "request" else "Response"
-        return f"{operation_id}{suffix}"
-
     def get_endpoints(self) -> list[Endpoint]:
         """获取所有 endpoint 的结构化信息。
 
-        遍历 raw spec 的 paths，对每个 operation 计算 ``request_body_type``
-        和 ``response_type``（从 ``Reference.ref`` 末段或 operationId 派生）。
-        同时设置 ``_has_payloads`` 供 cli 判断是否要生成 ``models.py``。
+        遍历 raw spec 的 paths，检查每个 operation 是否带 JSON schema（request body
+        或 200/201 响应）。同时设置 ``_has_payloads`` 供 cli 判断是否要生成
+        ``models.py``。
 
         :return: endpoint 列表。
         :raise RuntimeError: 尚未调用 ``load()`` 方法。
@@ -188,21 +158,16 @@ class OpenAPIParser:
             for method, operation in method_to_operation.items():
                 operation_id = operation.operationId or ""
 
-                # 请求体 model 名
-                request_body_type: str | None = None
+                # 请求体是否带 JSON schema
                 rb = operation.requestBody
                 # 只内联 RequestBody；$ref 的 requestBody 是 Reference，没法取 content。
                 if isinstance(rb, RequestBody):
                     content = rb.content or {}
                     json_content = content.get("application/json")
-                    if json_content is not None:
-                        schema = getattr(json_content, "media_type_schema", None)
-                        request_body_type = self._schema_to_model_name(schema, "request", operation_id)
-                        if request_body_type is not None:
-                            has_payload = True
+                    if json_content is not None and getattr(json_content, "media_type_schema", None) is not None:
+                        has_payload = True
 
-                # 响应 model 名（200/201 优先）
-                response_type: str | None = None
+                # 响应是否带 JSON schema（200/201 优先）
                 if operation.responses:
                     for status in ("200", "201"):
                         resp = operation.responses.get(status)
@@ -213,9 +178,7 @@ class OpenAPIParser:
                         json_content = content.get("application/json")
                         if json_content is None:
                             continue
-                        schema = getattr(json_content, "media_type_schema", None)
-                        response_type = self._schema_to_model_name(schema, "response", operation_id)
-                        if response_type is not None:
+                        if getattr(json_content, "media_type_schema", None) is not None:
                             has_payload = True
                         break
 
