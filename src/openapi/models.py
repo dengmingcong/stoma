@@ -1,6 +1,9 @@
 """OpenAPI 生成器的中间表示（IR）模型。"""
 
 from openapi_pydantic.v3.v3_0 import (
+    Operation as Operation30,
+)
+from openapi_pydantic.v3.v3_0 import (
     Parameter as Parameter30,
 )
 from openapi_pydantic.v3.v3_0 import (
@@ -8,6 +11,9 @@ from openapi_pydantic.v3.v3_0 import (
 )
 from openapi_pydantic.v3.v3_0 import (
     Response as Response30,
+)
+from openapi_pydantic.v3.v3_1 import (
+    Operation as Operation31,
 )
 from openapi_pydantic.v3.v3_1 import (
     Parameter as Parameter31,
@@ -21,6 +27,7 @@ from openapi_pydantic.v3.v3_1 import (
 from pydantic import BaseModel
 
 # 支持 OpenAPI 3.0.x 和 3.1.x
+Operation = Operation30 | Operation31
 Parameter = Parameter30 | Parameter31
 RequestBody = RequestBody30 | RequestBody31
 Response = Response30 | Response31
