@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import keyword
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, Template
@@ -26,21 +25,6 @@ from openapi_pydantic import Reference
 from pydantic.alias_generators import to_snake
 
 from src.openapi.models import Endpoint, Parameter, RequestBody, Response
-
-
-@dataclass(frozen=True)
-class ResolvedType:
-    """schema 解析结果：字段类型表达式 + 需要的 import 列表。
-
-    :var type_expr: 用于字段注解的类型字符串，如 ``"User"`` /
-        ``"list[User]"`` / ``"dict[str, Any]"`` / ``""``。
-    :vartype type_expr: str
-    :var imports: 需要从 ``.models`` 导入的类名（元组）。空表示无 import。
-    :vartype imports: tuple[str, ...]
-    """
-
-    type_expr: str
-    imports: tuple[str, ...] = ()
 
 
 def _is_snake_case(name: str) -> bool:
@@ -104,13 +88,11 @@ class EndpointRenderer:
         operation_id = endpoint.operation_id
         class_name = _to_pascal_case(operation_id)
         file_name = f"{to_snake(operation_id)}.py"
-        response_resolved = self._extract_response_info(endpoint.responses, endpoint)
-        request_body_resolved = self._extract_request_body_info(endpoint.request_body, endpoint)
+        response_type = self._extract_response_info(endpoint.responses, endpoint)
+        request_body_type = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
 
-        imported_models: list[str] = []
-        imported_models.extend(response_resolved.imports)
-        imported_models.extend(request_body_resolved.imports)
+        imported_models = [t for t in (response_type, request_body_type) if t]
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
         rendered_code = template.render(
@@ -120,8 +102,8 @@ class EndpointRenderer:
             path=endpoint.path,
             summary=endpoint.summary,
             description=endpoint.description,
-            response_type=response_resolved.type_expr,
-            request_body_type=request_body_resolved.type_expr,
+            response_type=response_type,
+            request_body_type=request_body_type,
             header_fields=header_fields,
             param_fields=param_fields,
             imported_models=imported_models,
@@ -168,8 +150,8 @@ class EndpointRenderer:
         self,
         request_body: RequestBody | None,
         endpoint: Endpoint,
-    ) -> ResolvedType:
-        """提取请求体的 :class:`ResolvedType`（类型表达式 + import 列表）。
+    ) -> str:
+        """提取请求体对应的模型名（同时也是要从 ``.models`` 导入的类名）。
 
         ``$ref`` 路径取末段并 PascalCase 化（对齐 ``datamodel-code-generator``
         对 ``components.schemas`` key 的自动 PascalCase 行为，例如
@@ -180,27 +162,26 @@ class EndpointRenderer:
 
         :param request_body: :class:`RequestBody` 对象。
         :param endpoint: 当前 :class:`Endpoint` IR 对象。
-        :return: 请求体的 :class:`ResolvedType`。
+        :return: 请求体模型名；无 request body / 无 application/json 时返回
+            空字符串（无 body 不需要 import）。
         """
         if not request_body:
-            return ResolvedType(type_expr="")
+            return ""
 
         content = request_body.content or {}
         json_content = content.get("application/json", {})
         schema = getattr(json_content, "media_type_schema", None)
 
         if isinstance(schema, Reference):
-            name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
-            return ResolvedType(type_expr=name, imports=(name,))
-        name = f"{_to_pascal_case(endpoint.operation_id)}Request"
-        return ResolvedType(type_expr=name, imports=(name,))
+            return _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
+        return f"{_to_pascal_case(endpoint.operation_id)}Request"
 
     def _extract_response_info(
         self,
         responses: dict[str, Response] | None,
         endpoint: Endpoint,
-    ) -> ResolvedType:
-        """提取响应的 :class:`ResolvedType`（类型表达式 + import 列表）。
+    ) -> str:
+        """提取响应对应的模型名（同时也是要从 ``.models`` 导入的类名）。
 
         ``$ref`` 路径取末段并 PascalCase 化（对齐 ``datamodel-code-generator``
         对 ``components.schemas`` key 的自动 PascalCase 行为，例如
@@ -211,27 +192,26 @@ class EndpointRenderer:
 
         :param responses: OpenAPI 响应字典。
         :param endpoint: 当前 :class:`Endpoint` IR 对象。
-        :return: 响应类型的 :class:`ResolvedType`，无响应时 ``type_expr=""``。
+        :return: 响应模型名；无 200/201 响应 / 无 application/json 时返回
+            空字符串（无响应不需要 import）。
         """
         if not responses:
-            return ResolvedType(type_expr="")
+            return ""
 
         response_200 = responses.get("200") or responses.get("201")
         if not response_200:
-            return ResolvedType(type_expr="")
+            return ""
 
         content = response_200.content or {}
         json_content = content.get("application/json")
         if not json_content:
-            return ResolvedType(type_expr="")
+            return ""
 
         schema = getattr(json_content, "media_type_schema", None)
 
         if isinstance(schema, Reference):
-            name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
-            return ResolvedType(type_expr=name, imports=(name,))
-        name = f"{_to_pascal_case(endpoint.operation_id)}Response"
-        return ResolvedType(type_expr=name, imports=(name,))
+            return _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
+        return f"{_to_pascal_case(endpoint.operation_id)}Response"
 
 
 def _map_json_schema_type(json_type: str) -> str:
