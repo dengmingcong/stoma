@@ -70,18 +70,6 @@ def _to_pascal_case(operation_id: str) -> str:
     return "".join(word.capitalize() for word in words if word)
 
 
-def _resolve_endpoint_class_and_file(endpoint: Endpoint) -> tuple[str, str]:
-    """解析 endpoint 的 APIRoute 类名与文件名。
-
-    operationId 必填（由 :meth:`OpenAPIParser.validate_operation_ids` 保证），
-    类名与文件名都从 operationId 派生。
-
-    :param endpoint: :class:`Endpoint` IR 对象。
-    :return: ``(class_name, file_name)`` 元组，``file_name`` 含 ``.py`` 后缀。
-    """
-    return _to_pascal_case(endpoint.operation_id), f"{to_snake(endpoint.operation_id)}.py"
-
-
 class EndpointRenderer:
     """Endpoint 路由文件渲染器。"""
 
@@ -102,13 +90,20 @@ class EndpointRenderer:
             lstrip_blocks=True,
         )
 
-    def render(self, endpoint: Endpoint) -> str:
+    def render(self, endpoint: Endpoint) -> tuple[str, str]:
         """渲染 endpoint 的 route.py 内容。
 
+        一并返回从 operationId 派生的文件名（``{snake_case_id}.py``），
+        与渲染结果对应——调用方（``make``）拿到 file_name 直接落盘，
+        不用再算一次。
+
         :param endpoint: :class:`Endpoint` IR 对象。
-        :return: 渲染后的 Python 源码字符串。
+        :return: ``(file_name, rendered_code)`` 元组，``file_name`` 含
+            ``.py`` 后缀。
         """
-        class_name, _ = _resolve_endpoint_class_and_file(endpoint)
+        operation_id = endpoint.operation_id
+        class_name = _to_pascal_case(operation_id)
+        file_name = f"{to_snake(operation_id)}.py"
         response_resolved = self._extract_response_info(endpoint.responses, endpoint)
         request_body_resolved = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
@@ -118,7 +113,7 @@ class EndpointRenderer:
         imported_models.extend(request_body_resolved.imports)
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
-        return template.render(
+        rendered_code = template.render(
             operation_id=endpoint.operation_id,
             class_name=class_name,
             method=endpoint.method,
@@ -131,6 +126,7 @@ class EndpointRenderer:
             param_fields=param_fields,
             imported_models=imported_models,
         )
+        return file_name, rendered_code
 
     def _extract_params(
         self,
@@ -289,10 +285,10 @@ def render_to_file(
     file_name: str,
     rendered_code: str,
 ) -> Path:
-    """将渲染后的代码写入文件（文件名由调用方计算，含 ``.py`` 后缀）。
+    """将渲染后的代码写入文件。
 
-    文件名解析集中在 :func:`_resolve_endpoint_class_and_file`，本函数只
-    负责落盘，不再重复 snake_case 派生。
+    ``file_name`` 由 ``EndpointRenderer.render()`` 一并返回（从
+    ``operation_id`` 派生），本函数只负责落盘。
 
     :param output_dir: 输出目录。
     :param file_name: 目标文件名（含 ``.py`` 后缀）。
