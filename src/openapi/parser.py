@@ -191,10 +191,13 @@ class OpenAPIParser:
             return
 
         for path, path_item in self._spec.paths.items():
-            for method in ("get", "post", "put", "patch", "delete"):
-                operation = getattr(path_item, method, None)
-                if operation is None:
-                    continue
+            method_to_operation = {
+                method: operation
+                for method in ("get", "post", "put", "patch", "delete")
+                if (operation := getattr(path_item, method))
+            }
+            operation: Operation
+            for method, operation in method_to_operation.items():
                 if not (operation.operationId and operation.operationId.strip()):
                     msg = f"operationId is required for {method.upper()} {path}"
                     raise OpenAPISchemaError(msg)
