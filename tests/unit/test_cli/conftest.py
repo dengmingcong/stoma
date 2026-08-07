@@ -64,7 +64,7 @@ info: not a valid info
 """
 
 EMPTY_OPENAPI_YAML = """\
-openapi: 3.0.0
+openapi: 3.1.0
 info:
   title: Empty API
   version: "1.0.0"

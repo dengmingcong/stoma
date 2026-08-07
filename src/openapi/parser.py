@@ -10,15 +10,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from openapi_pydantic import OpenAPI
-from openapi_pydantic.v3.v3_0 import OpenAPI as OpenAPI30
-from openapi_pydantic.v3.v3_0 import Operation as Operation30
+from openapi_pydantic import OpenAPI, Reference
 from openapi_pydantic.v3.v3_1 import Operation as Operation31
-from prance import ResolvingParser
 
 from src.openapi.models import Endpoint
 
-Operation = Operation30 | Operation31
+Operation = Operation31
 
 
 def _operation_id_to_pascal(operation_id: str) -> str:
@@ -34,11 +31,20 @@ def _operation_id_to_pascal(operation_id: str) -> str:
     return "".join(word.capitalize() for word in words if word)
 
 
+def _ref_to_model_name(ref: str) -> str:
+    """从 ``$ref`` 字符串提取 model 名（末段）。
+
+    :param ref: 形如 ``"#/components/schemas/User"`` 的 $ref 字符串。
+    :return: 末段作为 model 名（``"User"``）。
+    """
+    return ref.rsplit("/", 1)[-1]
+
+
 def _is_inline_object(schema: dict[str, Any]) -> bool:
-    """判断 schema 是否是「需要被 ``_fill_schema_titles`` 注入 title 的内联 object」。
+    """判断 schema 是否是需要注入 title 的「内联 object」。
 
     意义：``_fill_schema_titles`` 给路径里 path.requestBody / responses
-    的 schema 注入 ``title = {OperationId}Request/Response``，让
+    的 schema 注入 ``title = {OperationId}Request``，让
     datamodel-codegen 跨 components / paths 做去重。但**不是所有 schema
     都该被注入**——本函数集中 4 条"不要注入"的条件，把"该不该注入"这个
     概念命名下来，让 callsite 写成 ``if _is_inline_object(x)`` 即可。
@@ -68,81 +74,6 @@ def _is_inline_object(schema: dict[str, Any]) -> bool:
     return isinstance(properties, dict) and len(properties) > 0
 
 
-def _fill_schema_titles(raw_spec_dict: dict[str, Any]) -> bool:
-    """为所有 schema 注入 title，返回是否在 paths 中找到任何 payload。
-
-    在 prance 展开之前调用：
-
-    1. ``components.schemas.X`` → ``title = X``（让 prance 复制时保留 title，
-       datamodel-codegen 跨 components + paths 做去重）
-    2. ``paths[*][*].requestBody.content["application/json"].schema``（inline）
-       → ``title = {OperationId}Request``
-    3. ``paths[*][*].responses[200/201].content["application/json"].schema``
-       → ``title = {OperationId}Response``
-
-    **不**做 embed wrapper 检测。OpenAPI 单属性 wrapper（如
-    ``{data: User}``）让 datamodel-codegen 直接按 wrapper 形态生成
-    ``class CreateXRequest { data: User }``，runtime 用 ``body: CreateXRequest``
-    直接发——body 形态由 spec 自然决定，不做猜测。
-
-    已带 title 的 schema 跳过，避免覆盖正确的类名。
-
-    :param raw_spec_dict: OpenAPI 规范字典（修改入参——prance 展开后 title 仍在）。
-    :return: 是否在 paths 中找到任何 ``application/json`` 的 request body 或
-        200/201 响应。cli 据此判断是否要生成 ``models.py``。
-    """
-    # Pass 1：components.schemas.X → title = X
-    components_schemas = raw_spec_dict.get("components", {}).get("schemas", {})
-    if isinstance(components_schemas, dict):
-        for name, json_media_type_schema in components_schemas.items():
-            if isinstance(json_media_type_schema, dict) and not json_media_type_schema.get("title"):
-                json_media_type_schema["title"] = name
-
-    # Pass 2 / 3：paths[*][*] 的 inline object 注入 title
-    has_payload = False
-    paths = raw_spec_dict.get("paths", {})
-    if not isinstance(paths, dict):
-        return False
-    for path_item in paths.values():
-        if not isinstance(path_item, dict):
-            continue
-        for _method, op in path_item.items():
-            if not isinstance(op, dict):
-                continue
-            operation_id = op.get("operationId")
-            if not isinstance(operation_id, str) or not operation_id:
-                continue
-            pascal = _operation_id_to_pascal(operation_id)
-
-            # 请求体
-            rb = op.get("requestBody")
-            if isinstance(rb, dict):
-                content = rb.get("content", {})
-                json_media_type_obj = content.get("application/json", {})
-                if isinstance(json_media_type_obj, dict):
-                    json_media_type_schema = json_media_type_obj.get("schema")
-                    if isinstance(json_media_type_schema, dict) and _is_inline_object(json_media_type_schema):
-                        json_media_type_schema["title"] = f"{pascal}Request"
-                        has_payload = True
-
-            # 响应 200/201
-            responses = op.get("responses", {})
-            if isinstance(responses, dict):
-                for status in ("200", "201"):
-                    resp = responses.get(status)
-                    if not isinstance(resp, dict):
-                        continue
-                    content = resp.get("content", {})
-                    json_media_type_obj = content.get("application/json", {})
-                    if isinstance(json_media_type_obj, dict):
-                        json_media_type_schema = json_media_type_obj.get("schema")
-                        if isinstance(json_media_type_schema, dict) and _is_inline_object(json_media_type_schema):
-                            json_media_type_schema["title"] = f"{pascal}Response"
-                            has_payload = True
-
-    return has_payload
-
-
 class OpenAPISchemaError(Exception):
     """OpenAPI schema 校验失败。"""
 
@@ -165,23 +96,35 @@ class OpenAPIParser:
         :param spec_path: OpenAPI 规范文件路径（支持 YAML 或 JSON）。
         """
         self.spec_path = Path(spec_path)
-        self._spec_dict: dict[str, Any] | None = None
-        self._spec: OpenAPI | OpenAPI30 | None = None
+        self._raw_spec_dict: dict[str, Any] | None = None
+        self._spec: OpenAPI | None = None
         self._has_payloads: bool = False
+
+    @property
+    def raw_spec_dict(self) -> dict[str, Any]:
+        """raw spec 字典（含未展开的 ``$ref``），给 ``generate_models`` 使用。"""
+        if self._raw_spec_dict is None:
+            raise RuntimeError("call load() first")
+        return self._raw_spec_dict
+
+    @property
+    def spec_dict(self) -> dict[str, Any]:
+        """同 :attr:`raw_spec_dict`（保留兼容旧接口）。"""
+        return self.raw_spec_dict
 
     @property
     def has_payloads(self) -> bool:
         """``load()`` 后：paths 中是否找到任何 request body 或 200/201 响应的 ``application/json``。
 
-        由 :func:`_fill_schema_titles` 在遍历 paths 时设置，避免 cli 重复 walk。
+        由 :meth:`get_endpoints` 在遍历 paths 时设置，避免 cli 重复 walk。
         """
         return self._has_payloads
 
     def load(self) -> None:
-        """加载 OpenAPI 规范文件，并展开所有内部 $ref。
+        """加载 OpenAPI 规范文件。
 
-        使用 prance 解析，自动处理 YAML 和 JSON 格式，
-        并将所有 $ref 引用解析为实际对象。
+        读 YAML/JSON → 用 openapi-pydantic 构造 Pydantic 模型。
+        不展开 ``$ref``——renderer 自己读 ``Reference.ref`` 字符串。
 
         :raise FileNotFoundError: 规范文件不存在。
         :raise ValueError: 解析失败。
@@ -207,76 +150,60 @@ class OpenAPIParser:
             msg = f"Unsupported OpenAPI version: {openapi_version}. Only 3.0.x and 3.1.x are supported."
             raise ValueError(msg)
 
-        # 给 components.schemas 补全 title，让 prance 展开后的内联副本
-        # 也带 title；这是 datamodel-codegen 跨 components 和 paths 做
-        # 去重时的关键标识（仅靠 dict key 不够，必须 title 也一致）。
-        self._has_payloads = _fill_schema_titles(raw_spec_dict)
-
+        # 直接用 raw spec 构造 Pydantic 模型——$ref 字段变成 Reference 实例。
+        # 不再 prance 展开，不再 _fill_schema_titles 注入 title。
+        self._raw_spec_dict = raw_spec_dict
         try:
-            modified_content = yaml.dump(raw_spec_dict) if suffix in {".yaml", ".yml"} else json.dumps(raw_spec_dict)
-            parser = ResolvingParser(spec_string=modified_content, validation=False)
-            parser.parse()
-            self._spec_dict = parser.specification
+            self._spec = OpenAPI.model_validate(raw_spec_dict)
         except Exception as e:
             raise ValueError(f"Failed to parse OpenAPI specification: {e}") from e
-
-    def validate(self) -> None:
-        """使用 openapi-pydantic 校验 OpenAPI 规范。
-
-        :raise OpenAPISchemaError: 规范不符合 OpenAPI Schema。
-        :raise ValueError: 尚未加载规范。
-        """
-        if self._spec_dict is None:
-            msg = "OpenAPI specification not loaded. Call load() first."
-            raise ValueError(msg)
-
-        try:
-            openapi_version = self.get_openapi_version()
-            if openapi_version.startswith("3.1."):
-                self._spec = OpenAPI.model_validate(self._spec_dict)
-            elif openapi_version.startswith("3.0."):
-                self._spec = OpenAPI30.model_validate(self._spec_dict)
-            else:
-                msg = f"Unsupported OpenAPI version: {openapi_version}. Only 3.0.x and 3.1.x are supported."
-                raise OpenAPISchemaError(msg)
-        except OpenAPISchemaError:
-            raise
-        except Exception as e:
-            msg = f"OpenAPI specification validation failed: {e}"
-            raise OpenAPISchemaError(msg) from e
-
-    @property
-    def spec(self) -> OpenAPI | OpenAPI30:
-        """获取已解析的 OpenAPI 规范对象。
-
-        :return: OpenAPI 规范 Pydantic 模型。
-        :raise RuntimeError: 尚未调用 validate() 方法。
-        """
-        if self._spec is None:
-            msg = "OpenAPI specification not validated. Call validate() first."
-            raise RuntimeError(msg)
-        return self._spec
 
     def get_openapi_version(self) -> str:
         """获取 OpenAPI 版本。
 
         :return: OpenAPI 版本号（如 "3.0.0"、"3.1.0"）。
         """
-        return self._spec_dict.get("openapi", "") if self._spec_dict else ""
+        if self._raw_spec_dict is None:
+            return ""
+        return self._raw_spec_dict.get("openapi", "")
+
+    def _schema_to_model_name(
+        self,
+        schema: Any,
+        kind: str,
+        operation_id: str,
+    ) -> str | None:
+        """从 schema 字段提取 model 名。
+
+        :param schema: openapi-pydantic 的 Schema | Reference | None。
+        :param kind: ``"request"`` 或 ``"response"``——决定 fallback 命名。
+        :param operation_id: 当前 operation 的 operationId（用于 fallback）。
+        :return: model 名；没有 body / response 时返回 None。
+        """
+        if schema is None:
+            return None
+        if isinstance(schema, Reference):
+            return _ref_to_model_name(schema.ref)
+        # inline object（Pydantic Schema 实例，没有 title 因为我们不再注入）
+        suffix = "Request" if kind == "request" else "Response"
+        return f"{operation_id}{suffix}"
 
     def get_endpoints(self) -> list[Endpoint]:
         """获取所有 endpoint 的结构化信息。
 
-        prance 已在 load() 阶段展开所有 $ref，此处直接取值。
+        遍历 raw spec 的 paths，对每个 operation 计算 ``request_body_type``
+        和 ``response_type``（从 ``Reference.ref`` 末段或 operationId 派生）。
+        同时设置 ``_has_payloads`` 供 cli 判断是否要生成 ``models.py``。
 
         :return: endpoint 列表。
-        :raise RuntimeError: 尚未验证规范。
+        :raise RuntimeError: 尚未调用 ``load()`` 方法。
         """
-        if self._spec is None:
-            msg = "OpenAPI specification not validated. Call validate() first."
+        if self._spec is None or self._raw_spec_dict is None:
+            msg = "OpenAPI specification not loaded. Call load() first."
             raise RuntimeError(msg)
 
         endpoints: list[Endpoint] = []
+        has_payload = False
         paths = self._spec.paths
         if not paths:
             return endpoints
@@ -289,8 +216,43 @@ class OpenAPIParser:
             }
             operation: Operation
             for method, operation in method_to_operation.items():
+                operation_id = operation.operationId or ""
+
+                # 请求体 model 名
+                request_body_type: str | None = None
+                rb = operation.requestBody
+                if rb is not None:
+                    content = rb.content or {}
+                    json_content = content.get("application/json")
+                    if json_content is not None:
+                        schema = getattr(json_content, "media_type_schema", None)
+                        request_body_type = self._schema_to_model_name(
+                            schema, "request", operation_id
+                        )
+                        if request_body_type is not None:
+                            has_payload = True
+
+                # 响应 model 名（200/201 优先）
+                response_type: str | None = None
+                if operation.responses:
+                    for status in ("200", "201"):
+                        resp = operation.responses.get(status)
+                        if resp is None:
+                            continue
+                        content = resp.content or {}
+                        json_content = content.get("application/json")
+                        if json_content is None:
+                            continue
+                        schema = getattr(json_content, "media_type_schema", None)
+                        response_type = self._schema_to_model_name(
+                            schema, "response", operation_id
+                        )
+                        if response_type is not None:
+                            has_payload = True
+                        break
+
                 endpoint = Endpoint(
-                    operation_id=operation.operationId or "",
+                    operation_id=operation_id,
                     method=method,
                     path=path,
                     summary=operation.summary,
@@ -301,4 +263,5 @@ class OpenAPIParser:
                 )
                 endpoints.append(endpoint)
 
+        self._has_payloads = has_payload
         return endpoints

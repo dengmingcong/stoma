@@ -100,10 +100,10 @@ components:
         assert (out_dir / "create_item.py").exists()
         content = (out_dir / "create_item.py").read_text(encoding="utf-8")
         assert "@router.post" in content
-        # 内联对象生成 CreateItemRequest 模型，从 .models 导入。
-        assert "from .models import CreateItemRequest" in content
+        # 内联对象生成 createItemRequest 模型，从 .models 导入。
+        assert "from .models import createItemRequest" in content
         # 内联 object 无 title，render 为 case 3：body: <class_name>Request
-        assert "body: CreateItemRequest" in content
+        assert "body: createItemRequest" in content
 
     def test_request_body_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用嵌套 object schema 时能正常生成。"""
@@ -248,8 +248,8 @@ components:
         assert (out_dir / "create_user_embed.py").exists()
         content = (out_dir / "create_user_embed.py").read_text(encoding="utf-8")
         # 不做 embed wrapper 特殊处理。datamodel-codegen 直接按 wrapper 形态
-        # 生成 `class CreateUserEmbedRequest: data: User`，runtime 用
-        # `body: CreateUserEmbedRequest` 引用——body 形态由 spec 决定。
-        assert "body: CreateUserEmbedRequest" in content
-        assert "from .models import CreateUserEmbedRequest" in content
+        # 生成 `class createUserEmbedRequest: data: User`，runtime 用
+        # `body: createUserEmbedRequest` 引用——body 形态由 spec 决定。
+        assert "body: createUserEmbedRequest" in content
+        assert "from .models import createUserEmbedRequest" in content
         assert "from stoma import APIRouter, APIRoute, Body" in content

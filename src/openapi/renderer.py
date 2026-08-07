@@ -7,13 +7,11 @@
 - 解析路径 / 查询 / 头部参数并渲染为 Pydantic 字段声明
 - 解析请求体引用哪个模型（名字符串）
 - 解析响应引用哪个模型（名字符串）
-- 检测 embed wrapper 并渲染 ``Annotated[..., Body(embed=True)]`` 装饰
 - 输出 ``from .models import ...`` 导入
 
-所有 schema → model 转换都在 :mod:`src.openapi.parser` 的
-``_fill_schema_titles`` 阶段完成（注入 title 字段）；本模块不写 Pydantic
-类定义，也不再做 spec 变换。Embed wrapper 的检测在渲染阶段就地完成，
-不依赖任何中间数据结构（如 ``EmbedInfo``）。
+所有 schema → model 转换都在 :mod:`src.openapi.parser` 的 ``load()``
+阶段（用 openapi-pydantic 构造 Pydantic 模型，$ref 字段是 ``Reference``）。
+renderer 直接读 ``Reference.ref`` 字符串计算模型名。
 """
 
 from __future__ import annotations
@@ -24,13 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, Template
-from openapi_pydantic.v3.v3_0 import Schema as Schema30
-from openapi_pydantic.v3.v3_1 import Schema as Schema31
+from openapi_pydantic import Reference
 from pydantic.alias_generators import to_snake
 
 from src.openapi.models import Endpoint, Parameter, RequestBody, Response
-
-Schema = Schema30 | Schema31
 
 
 @dataclass(frozen=True)
@@ -75,27 +70,6 @@ def _to_pascal_case(operation_id: str) -> str:
     return "".join(word.capitalize() for word in words if word)
 
 
-def _resolve_model_name(schema: Schema, default_name: str) -> ResolvedType:
-    """从 Schema 解析出 :class:`ResolvedType`。
-
-    规则：
-
-    - ``$ref`` / 有 ``title`` → ``type_expr`` 是 schema 名，``imports`` 包含它
-    - inline object（无 title）→ ``type_expr`` 是 ``default_name``，
-      ``imports`` 包含 ``default_name``
-    - array → ``type_expr`` 是 ``list[<items>]``，``imports`` 包含 items 名
-    - 标量 → ``type_expr`` 是 ``"dict[str, Any]"``，``imports`` 为空
-    """
-    if schema.title:
-        return ResolvedType(type_expr=schema.title, imports=(schema.title,))
-    if schema.type == "array" and schema.items is not None and isinstance(schema.items, Schema):
-        items_name = schema.items.title if schema.items.title else default_name
-        return ResolvedType(type_expr=f"list[{items_name}]", imports=(items_name,))
-    if schema.type == "object" and not schema.properties:
-        return ResolvedType(type_expr="dict[str, Any]", imports=())
-    return ResolvedType(type_expr=default_name, imports=(default_name,))
-
-
 class EndpointRenderer:
     """Endpoint 路由文件渲染器。"""
 
@@ -123,8 +97,8 @@ class EndpointRenderer:
         :return: 渲染后的 Python 源码字符串。
         """
         class_name = _to_pascal_case(endpoint.operation_id)
-        response_resolved = self._extract_response_info(endpoint.responses, class_name)
-        request_body_resolved = self._extract_request_body_info(endpoint.request_body, class_name)
+        response_resolved = self._extract_response_info(endpoint.responses, endpoint.operation_id)
+        request_body_resolved = self._extract_request_body_info(endpoint.request_body, endpoint.operation_id)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
 
         imported_models: list[str] = []
@@ -165,9 +139,13 @@ class EndpointRenderer:
             required = param.required or False
             schema = param.param_schema
 
-            schema_dict = schema.model_dump(mode="json") if schema else {}
-            json_type = schema_dict.get("type", "Any")
-            param_type = _map_json_schema_type(str(json_type))
+            if isinstance(schema, Reference):
+                # $ref: 用 ref 末段作类型名（datamodel-codegen 也会这么做）
+                param_type = schema.ref.rsplit("/", 1)[-1]
+            else:
+                schema_dict = schema.model_dump(mode="json") if schema else {}
+                json_type = schema_dict.get("type", "Any")
+                param_type = _map_json_schema_type(str(json_type))
 
             field_line = _build_param_field_line(name, param_type, required, location)
 
@@ -181,17 +159,15 @@ class EndpointRenderer:
     def _extract_request_body_info(
         self,
         request_body: RequestBody | None,
-        class_name: str,
+        operation_id: str,
     ) -> ResolvedType:
         """提取请求体的 :class:`ResolvedType`（类型表达式 + import 列表）。
 
-        不做 embed wrapper 特殊处理。OpenAPI 规范里写 ``{data: User}``
-        时，datamodel-codegen 直接生成 ``class CreateXRequest { data: User }``，
-        runtime 用 ``body: CreateXRequest`` 引用——body 形态由 spec 自然
-        决定，不做特殊判断。
+        读 ``media_type_schema``：如果是 ``Reference``，用 ref 末段作类型名；
+        否则（inline object）用 ``f"{operation_id}Request"``。
 
         :param request_body: :class:`RequestBody` 对象。
-        :param class_name: 接口类名，做 fallback。
+        :param operation_id: 当前 operation 的 operationId。
         :return: 请求体的 :class:`ResolvedType`。
         """
         if not request_body:
@@ -200,20 +176,23 @@ class EndpointRenderer:
         content = request_body.content or {}
         json_content = content.get("application/json", {})
         schema = getattr(json_content, "media_type_schema", None)
-        if not isinstance(schema, Schema):
-            return ResolvedType(type_expr="")
 
-        return _resolve_model_name(schema, f"{class_name}Request")
+        if isinstance(schema, Reference):
+            name = schema.ref.rsplit("/", 1)[-1]
+            return ResolvedType(type_expr=name, imports=(name,))
+        # inline object（Pydantic Schema 实例，没有 title 因为我们不再注入）
+        name = f"{operation_id}Request"
+        return ResolvedType(type_expr=name, imports=(name,))
 
     def _extract_response_info(
         self,
         responses: dict[str, Response] | None,
-        class_name: str,
+        operation_id: str,
     ) -> ResolvedType:
         """提取响应的 :class:`ResolvedType`（类型表达式 + import 列表）。
 
         :param responses: OpenAPI 响应字典。
-        :param class_name: 接口类名，做 fallback。
+        :param operation_id: 当前 operation 的 operationId。
         :return: 响应类型的 :class:`ResolvedType`，无响应时 ``type_expr=""``。
         """
         if not responses:
@@ -229,11 +208,12 @@ class EndpointRenderer:
             return ResolvedType(type_expr="")
 
         schema = getattr(json_content, "media_type_schema", None)
-        if not isinstance(schema, Schema):
-            return ResolvedType(type_expr="")
 
-        default_name = f"{class_name}Response" if class_name else ""
-        return _resolve_model_name(schema, default_name)
+        if isinstance(schema, Reference):
+            name = schema.ref.rsplit("/", 1)[-1]
+            return ResolvedType(type_expr=name, imports=(name,))
+        name = f"{operation_id}Response"
+        return ResolvedType(type_expr=name, imports=(name,))
 
 
 def _map_json_schema_type(json_type: str) -> str:

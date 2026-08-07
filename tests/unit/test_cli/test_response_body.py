@@ -104,8 +104,10 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "list_users.py").read_text(encoding="utf-8")
-        assert "APIRoute[list[User]]" in content
-        assert "from .models import User" in content
+        # datamodel-codegen 用 use_operation_id_as_name 包装 array-of-ref response，
+        # 生成 `class listUsersResponse: items: list[User]`，renderer 同步引用同名。
+        assert "APIRoute[listUsersResponse]" in content
+        assert "from .models import listUsersResponse" in content
 
     def test_response_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 为嵌套对象时能正常生成。"""
@@ -155,8 +157,8 @@ paths:
         content = (out_dir / "get_profile.py").read_text(encoding="utf-8")
         assert "@router.get" in content
         # 嵌套对象响应也生成对应的模型（从 .models 导入）。
-        assert "from .models import GetProfileResponse" in content
-        assert "APIRoute[GetProfileResponse]" in content
+        assert "from .models import getProfileResponse" in content
+        assert "APIRoute[getProfileResponse]" in content
 
     def test_response_201_uses_201_status(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 201 Created 响应也能正确识别。"""
