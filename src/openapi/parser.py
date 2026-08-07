@@ -5,19 +5,136 @@
 """
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import yaml
-from openapi_pydantic import OpenAPI
+from openapi_pydantic import OpenAPI, Reference
+from pydantic import TypeAdapter
+from referencing import Registry, Resource
+from referencing.exceptions import Unresolvable
 
 from src.openapi.models import Endpoint, Operation, RequestBody, Response
+from src.openapi.models import Parameter as ParameterUnion
+
+_PARAMETER_UNION_ADAPTER: TypeAdapter[ParameterUnion] = TypeAdapter(ParameterUnion)
 
 
 class OpenAPISchemaError(Exception):
     """OpenAPI schema 校验失败。"""
 
     pass
+
+
+def _build_registry(raw_spec: dict[str, Any]) -> Registry[dict[str, Any]]:
+    """把 raw spec 包装为用于解析 JSON Pointer 的注册表。
+
+    :param raw_spec: 完整的 OpenAPI spec 字典，包含未展开的 ``$ref``。
+    :return: 可解析 ``#/components/parameters/<name>`` 等内部引用的注册表。
+    """
+    resource = Resource.opaque(raw_spec)
+    registry: Registry[dict[str, Any]] = Registry()
+    registry = registry.with_resource(uri="", resource=resource)
+    return registry
+
+
+def _resolve_parameter_refs(
+    raw_spec: dict[str, Any],
+    params: Sequence[ParameterUnion | Reference],
+) -> list[ParameterUnion]:
+    """展开参数列表中的引用元素。
+
+    支持链式 ``$ref``，并拒绝循环引用、外部引用和不存在的目标。
+
+    :param raw_spec: 完整的 OpenAPI spec 字典。
+    :param params: 元素为参数或引用的参数列表。
+    :return: 所有引用均已展开的参数列表。
+    :raise OpenAPISchemaError: 引用成环、指向外部资源或无法解析时。
+    """
+    registry = _build_registry(raw_spec)
+    return [_resolve_one(param, registry, frozenset()) for param in params]
+
+
+def _resolve_one(
+    node: ParameterUnion | Reference,
+    registry: Registry[dict[str, Any]],
+    seen: frozenset[str],
+) -> ParameterUnion:
+    """解析单个参数或引用。
+
+    遇到引用时递归展开，并检测链式引用中的环。外部引用和无法解析的
+    JSON Pointer 会转换为 ``OpenAPISchemaError``。
+
+    :param node: 待解析的参数或引用。
+    :param registry: 包含完整 OpenAPI spec 的引用注册表。
+    :param seen: 当前解析链中已经访问的引用集合。
+    :return: 展开引用后的参数。
+    :raise OpenAPISchemaError: 引用成环、指向外部资源或无法解析时。
+    """
+    if not isinstance(node, Reference):
+        return node
+
+    if node.ref in seen:
+        path = " -> ".join((*seen, node.ref))
+        raise OpenAPISchemaError(f"Cycle detected resolving parameter $ref: {path}")
+
+    if not node.ref.startswith("#/components/parameters/"):
+        raise OpenAPISchemaError(
+            f"Unsupported parameter $ref: {node.ref!r}. "
+            "Only '#/components/parameters/<name>' is supported."
+        )
+
+    try:
+        resolved = registry.resolver().lookup(node.ref)
+    except Unresolvable as error:
+        raise OpenAPISchemaError(
+            f"Cannot resolve parameter $ref: {node.ref!r}. "
+            "Component not found in '#/components/parameters/'."
+        ) from error
+
+    contents = resolved.contents
+    if "$ref" in contents:
+        return _resolve_one(
+            Reference.model_validate({"$ref": contents["$ref"]}),
+            registry,
+            seen | {node.ref},
+        )
+
+    parameter_contents = {key: value for key, value in contents.items() if key != "$ref"}
+    return _PARAMETER_UNION_ADAPTER.validate_python(parameter_contents)
+
+
+def _merge_path_item_params(
+    path_item_params: Sequence[ParameterUnion | Reference],
+    operation_params: Sequence[ParameterUnion | Reference],
+    raw_spec: dict[str, Any],
+) -> list[ParameterUnion]:
+    """合并路径项级和操作级参数。
+
+    操作级中 ``(name, in)`` 相同的参数覆盖路径项级参数。结果先保留路径项级
+    独占参数，再追加操作级独占参数和覆盖参数，并确保所有引用均已展开。
+
+    :param path_item_params: 路径项级参数列表。
+    :param operation_params: 操作级参数列表。
+    :param raw_spec: 完整的 OpenAPI spec 字典。
+    :return: 按覆盖规则合并且已展开引用的参数列表。
+    :raise OpenAPISchemaError: 任一参数引用成环、指向外部资源或无法解析时。
+    """
+    path_item_resolved = _resolve_parameter_refs(raw_spec, path_item_params)
+    operation_resolved = _resolve_parameter_refs(raw_spec, operation_params)
+    operation_keys = {
+        (parameter.name, parameter.param_in.value if parameter.param_in else "")
+        for parameter in operation_resolved
+    }
+
+    merged = [
+        parameter
+        for parameter in path_item_resolved
+        if (parameter.name, parameter.param_in.value if parameter.param_in else "") not in operation_keys
+    ]
+    merged.extend(operation_resolved)
+    return merged
 
 
 class OpenAPIParser:
@@ -133,10 +250,12 @@ class OpenAPIParser:
 
         遍历 raw spec 的 paths，检查每个 operation 是否带 JSON schema（request body
         或 200/201 响应）。同时设置 ``_has_payloads`` 供 cli 判断是否要生成
-        ``models.py``。
+        ``models.py``。逐 operation 合并 path_item 级与 operation 级的 parameters，
+        并展开其中的 ``$ref`` 元素。
 
         :return: endpoint 列表。
         :raise RuntimeError: 尚未调用 ``load()`` 方法。
+        :raise OpenAPISchemaError: 参数 ``$ref`` 解析失败（环、外部 ref、组件不存在）。
         """
         if self._spec is None or self._raw_spec_dict is None:
             msg = "OpenAPI specification not loaded. Call load() first."
@@ -188,7 +307,11 @@ class OpenAPIParser:
                     path=path,
                     summary=operation.summary,
                     description=operation.description,
-                    parameters=operation.parameters or [],
+                    parameters=_merge_path_item_params(
+                        path_item.parameters or [],
+                        operation.parameters or [],
+                        self._raw_spec_dict,
+                    ),
                     request_body=operation.requestBody,
                     responses=operation.responses,
                 )

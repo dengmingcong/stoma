@@ -48,13 +48,13 @@ def make(
         parser = OpenAPIParser(spec)
         parser.load()
         parser.validate_operation_ids()
+        # 必须先调 get_endpoints()，因为 has_payloads 由它内部计算。
+        raw_spec = parser.raw_spec_dict
+        endpoints = parser.get_endpoints()
     except (FileNotFoundError, ValueError, OpenAPISchemaError) as e:
         raise typer.BadParameter(str(e)) from e
 
     # 决定是否生成 models.py：有 components.schemas 或 paths 中有 payload 即可。
-    # 必须先调 get_endpoints()，因为 has_payloads 由它内部计算。
-    raw_spec = parser.raw_spec_dict
-    endpoints = parser.get_endpoints()
     has_payloads = parser.has_payloads
     if raw_spec is not None and endpoints:
         schemas = (raw_spec.get("components") or {}).get("schemas") or {}
