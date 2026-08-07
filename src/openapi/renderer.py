@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from datamodel_code_generator.reference import snake_to_upper_camel
 from jinja2 import Environment, FileSystemLoader, Template
 from openapi_pydantic import Reference
 from pydantic.alias_generators import to_snake
@@ -70,6 +71,75 @@ def _to_pascal_case(operation_id: str) -> str:
     return "".join(word.capitalize() for word in words if word)
 
 
+def _path_to_identifier(path: str) -> str:
+    """把 OpenAPI path 归一化成 snake_case 标识符。
+
+    唯一自定义的 path 归一化 helper（``datamodel-code-generator`` 未暴露
+    等价接口）。``{user_id}`` 之类参数占位符去大括号后，逐段经
+    :func:`pydantic.alias_generators.to_snake` 转换 snake，再用下划线连
+    接；空路径 fallback 为 ``"root"``，保证后续 PascalCase 不会得到空串。
+
+    :param path: OpenAPI 路径字符串（如 ``"/users/{user_id}/posts"``）。
+    :return: snake_case 标识符（如 ``"users_user_id_posts"``）；空路径返回
+        ``"root"``。
+    """
+    stripped = re.sub(r"[{}]", "", path)
+    segments = [s for s in stripped.strip("/").split("/") if s]
+    return "_".join(to_snake(s) for s in segments) or "root"
+
+
+def _method_path_to_class_name(path: str, method: str, kind: str) -> str:
+    """根据 HTTP method + path 推导 PascalCase 类名。
+
+    与 :func:`datamodel_code_generator.reference.snake_to_upper_camel` +
+    path 归一化（:func:`_path_to_identifier`）对齐：
+    ``datamodel-code-generator`` 默认按 HTTP method + path 派生 inline
+    object 类名，renderer 必须同步预测。``kind`` 控制是否追加 ``Request``
+    / ``Response`` 后缀；``kind="class"`` 用于 APIRoute 类名（不加后缀）。
+
+    :param path: OpenAPI 路径字符串。
+    :param method: HTTP 方法（``"get"`` / ``"post"`` 等，小写）。
+    :param kind: ``"request"`` / ``"response"`` / ``"class"``。
+    :return: PascalCase 类名（如 ``"UsersPostRequest"`` / ``"UsersPost"``）。
+    """
+    base = snake_to_upper_camel(_path_to_identifier(path), delimiter="_")
+    suffix = "" if kind == "class" else "Request" if kind == "request" else "Response"
+    return f"{base}{method.capitalize()}{suffix}"
+
+
+def _method_path_to_file_stem(path: str, method: str) -> str:
+    """根据 HTTP method + path 推导 snake_case 文件 stem。
+
+    与 :func:`_path_to_identifier` 输出一致（已是 snake_case），拼上
+    小写 method；path 为根时（归一化结果 ``"root"``）只返回 method 名。
+
+    :param path: OpenAPI 路径字符串。
+    :param method: HTTP 方法（小写）。
+    :return: snake_case 文件 stem（如 ``"users_post"`` / ``"post"``）。
+    """
+    base = _path_to_identifier(path)
+    if base == "root":
+        return method.lower()
+    return f"{base}_{method.lower()}"
+
+
+def _resolve_endpoint_class_and_file(endpoint: Endpoint) -> tuple[str, str]:
+    """解析 endpoint 的 APIRoute 类名与文件名。
+
+    优先使用 ``operationId``（向后兼容已有行为）；``operationId`` 为空时
+    回退到 HTTP method + path 派生（:func:`_method_path_to_class_name` /
+    :func:`_method_path_to_file_stem`）。
+
+    :param endpoint: :class:`Endpoint` IR 对象。
+    :return: ``(class_name, file_name)`` 元组，``file_name`` 含 ``.py`` 后缀。
+    """
+    if endpoint.operation_id:
+        return _to_pascal_case(endpoint.operation_id), f"{to_snake(endpoint.operation_id)}.py"
+    class_name = _method_path_to_class_name(endpoint.path, endpoint.method, "class")
+    file_name = f"{_method_path_to_file_stem(endpoint.path, endpoint.method)}.py"
+    return class_name, file_name
+
+
 class EndpointRenderer:
     """Endpoint 路由文件渲染器。"""
 
@@ -96,9 +166,9 @@ class EndpointRenderer:
         :param endpoint: :class:`Endpoint` IR 对象。
         :return: 渲染后的 Python 源码字符串。
         """
-        class_name = _to_pascal_case(endpoint.operation_id)
-        response_resolved = self._extract_response_info(endpoint.responses, endpoint.operation_id)
-        request_body_resolved = self._extract_request_body_info(endpoint.request_body, endpoint.operation_id)
+        class_name, _ = _resolve_endpoint_class_and_file(endpoint)
+        response_resolved = self._extract_response_info(endpoint.responses, endpoint)
+        request_body_resolved = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
 
         imported_models: list[str] = []
@@ -159,15 +229,18 @@ class EndpointRenderer:
     def _extract_request_body_info(
         self,
         request_body: RequestBody | None,
-        operation_id: str,
+        endpoint: Endpoint,
     ) -> ResolvedType:
         """提取请求体的 :class:`ResolvedType`（类型表达式 + import 列表）。
 
-        读 ``media_type_schema``：如果是 ``Reference``，用 ref 末段作类型名；
-        否则（inline object）用 ``f"{operation_id}Request"``。
+        ``$ref`` 路径取末段并 PascalCase 化（对齐 ``datamodel-code-generator``
+        对 ``components.schemas`` key 的自动 PascalCase 行为，例如
+        ``user-profile`` → ``UserProfile``）；inline object 路径按 HTTP
+        method + path 派生（:func:`_method_path_to_class_name`），
+        不再依赖 ``operationId``。
 
         :param request_body: :class:`RequestBody` 对象。
-        :param operation_id: 当前 operation 的 operationId。
+        :param endpoint: 当前 :class:`Endpoint` IR 对象。
         :return: 请求体的 :class:`ResolvedType`。
         """
         if not request_body:
@@ -178,21 +251,20 @@ class EndpointRenderer:
         schema = getattr(json_content, "media_type_schema", None)
 
         if isinstance(schema, Reference):
-            name = schema.ref.rsplit("/", 1)[-1]
+            name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
             return ResolvedType(type_expr=name, imports=(name,))
-        # inline object（Pydantic Schema 实例，没有 title 因为我们不再注入）
-        name = f"{operation_id}Request"
+        name = _method_path_to_class_name(endpoint.path, endpoint.method, "request")
         return ResolvedType(type_expr=name, imports=(name,))
 
     def _extract_response_info(
         self,
         responses: dict[str, Response] | None,
-        operation_id: str,
+        endpoint: Endpoint,
     ) -> ResolvedType:
         """提取响应的 :class:`ResolvedType`（类型表达式 + import 列表）。
 
         :param responses: OpenAPI 响应字典。
-        :param operation_id: 当前 operation 的 operationId。
+        :param endpoint: 当前 :class:`Endpoint` IR 对象。
         :return: 响应类型的 :class:`ResolvedType`，无响应时 ``type_expr=""``。
         """
         if not responses:
@@ -210,9 +282,9 @@ class EndpointRenderer:
         schema = getattr(json_content, "media_type_schema", None)
 
         if isinstance(schema, Reference):
-            name = schema.ref.rsplit("/", 1)[-1]
+            name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
             return ResolvedType(type_expr=name, imports=(name,))
-        name = f"{operation_id}Response"
+        name = _method_path_to_class_name(endpoint.path, endpoint.method, "response")
         return ResolvedType(type_expr=name, imports=(name,))
 
 
@@ -264,22 +336,22 @@ def _build_param_field_line(
 
 def render_to_file(
     output_dir: str | Path,
-    operation_id: str,
+    file_name: str,
     rendered_code: str,
 ) -> Path:
-    """将渲染后的代码写入文件（snake_case operation_id → ``<op>.py``）。
+    """将渲染后的代码写入文件（文件名由调用方计算，含 ``.py`` 后缀）。
+
+    文件名解析集中在 :func:`_resolve_endpoint_class_and_file`，本函数只
+    负责落盘，不再重复 snake_case 派生。
 
     :param output_dir: 输出目录。
-    :param operation_id: operationId。
+    :param file_name: 目标文件名（含 ``.py`` 后缀）。
     :param rendered_code: 渲染后的 Python 代码。
     :return: 写入的文件路径。
     """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    snake_name = _to_pascal_case(operation_id)
-    snake_name = re.sub(r"([A-Z])", r"_\1", snake_name).lower().lstrip("_")
-    file_name = f"{snake_name}.py"
     file_path = output_path / file_name
     file_path.write_text(rendered_code, encoding="utf-8")
     return file_path

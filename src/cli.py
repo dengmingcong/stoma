@@ -12,7 +12,7 @@ import typer
 
 from src.openapi.model_generator import generate_models
 from src.openapi.parser import OpenAPIParser, OpenAPISchemaError
-from src.openapi.renderer import EndpointRenderer, render_to_file
+from src.openapi.renderer import EndpointRenderer, _resolve_endpoint_class_and_file, render_to_file
 
 app = typer.Typer(
     help="Stoma - OpenAPI 接口代码生成工具",
@@ -65,9 +65,10 @@ def make(
     renderer = EndpointRenderer()
     for endpoint in endpoints:
         rendered = renderer.render(endpoint)
+        _, file_name = _resolve_endpoint_class_and_file(endpoint)
         file_path = render_to_file(
             output_dir=out,
-            operation_id=endpoint.operation_id,
+            file_name=file_name,
             rendered_code=rendered,
         )
         generated_files.append(file_path)

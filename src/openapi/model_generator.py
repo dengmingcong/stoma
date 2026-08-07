@@ -26,10 +26,9 @@ from datamodel_code_generator.enums import DataModelType
 def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
     """调用 ``datamodel-code-generator`` 生成 Pydantic v2 模型到 ``output_path``。
 
-    输入：被 prance 展开 ``$ref``、经过 :func:`transform_spec_for_generation`
-    预处理（注入内联 title、解包 embed wrapper）后的 OpenAPI 规范字典。
+    输入：解析后的 OpenAPI 规范字典。
     输出：单个 ``models.py``，包含 spec 中所有 ``$ref`` schemas + inline
-    objects（带操作 ID 派生名）。
+    objects（带 HTTP method + path 派生的 PascalCase 类名）。
 
     :param spec_dict: 解析后的 OpenAPI 规范字典。
     :param output_path: ``models.py`` 的输出路径。父目录如不存在会自动创建。
@@ -45,7 +44,6 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
             input_file_type=InputFileType.OpenAPI,
             output_model_type=DataModelType.PydanticV2BaseModel,
             target_python_version=PythonVersion.PY_312,
-            use_title_as_name=True,
             snake_case_field=True,
             use_double_quotes=True,
             use_union_operator=True,

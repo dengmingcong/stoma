@@ -100,10 +100,10 @@ components:
         assert (out_dir / "create_item.py").exists()
         content = (out_dir / "create_item.py").read_text(encoding="utf-8")
         assert "@router.post" in content
-        # 内联对象生成 createItemRequest 模型，从 .models 导入。
-        assert "from .models import createItemRequest" in content
-        # 内联 object 无 title，render 为 case 3：body: <class_name>Request
-        assert "body: createItemRequest" in content
+        # 内联对象生成 ItemsPostRequest 模型（method+path 派生，
+        # ``POST /items`` → ``ItemsPostRequest``），不基于 operationId。
+        assert "from .models import ItemsPostRequest" in content
+        assert "body: ItemsPostRequest" in content
 
     def test_request_body_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用嵌套 object schema 时能正常生成。"""
@@ -247,9 +247,103 @@ components:
         assert result.exit_code == 0, result.output
         assert (out_dir / "create_user_embed.py").exists()
         content = (out_dir / "create_user_embed.py").read_text(encoding="utf-8")
-        # 不做 embed wrapper 特殊处理。datamodel-codegen 直接按 wrapper 形态
-        # 生成 `class createUserEmbedRequest: data: User`，runtime 用
-        # `body: createUserEmbedRequest` 引用——body 形态由 spec 决定。
-        assert "body: createUserEmbedRequest" in content
-        assert "from .models import createUserEmbedRequest" in content
+        # 不做 embed wrapper 特殊处理——按 method+path 派生（``POST /users``
+        # → ``UsersPostRequest``），body 形态由 spec 决定。
+        assert "body: UsersPostRequest" in content
+        assert "from .models import UsersPostRequest" in content
         assert "from stoma import APIRouter, APIRoute, Body" in content
+
+    def test_request_body_with_non_pascalcase_ref(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 ``$ref`` 末段（``components.schemas`` 的 key）非 PascalCase 时被 PascalCase 化。
+
+        回归测试：renderer 必须 PascalCase 化 ref 末段，与
+        ``datamodel-code-generator`` 对 ``components.schemas`` key 的自动
+        PascalCase 行为对齐。例如 ``components.schemas.user-profile`` 在
+        dmcg 生成 ``class UserProfile``，renderer 也必须引用 ``UserProfile``
+        而不是 ``user-profile``。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Non-PascalCase Ref API
+  version: "1.0.0"
+paths:
+  /profile:
+    post:
+      operationId: createProfile
+      summary: 创建个人资料
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/user-profile'
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    user-profile:
+      type: object
+      required: [display_name]
+      properties:
+        display_name:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        assert (out_dir / "create_profile.py").exists()
+        content = (out_dir / "create_profile.py").read_text(encoding="utf-8")
+        # ref 末段 ``user-profile`` 必须 PascalCase 为 ``UserProfile``，与
+        # ``datamodel-code-generator`` 对 ``components.schemas`` key 的处理对齐。
+        assert "from .models import UserProfile" in content
+        assert "body: UserProfile" in content
+
+    def test_request_body_with_no_operation_id(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 spec 缺 ``operationId`` 时 CLI 不报错且 method+path fallback 生效。
+
+        回归测试：renderer 必须能在 ``operationId`` 为空时回退到 HTTP
+        method + path 派生类名/文件名，确保缺省字段不会破坏生成流程。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: No OperationId API
+  version: "1.0.0"
+paths:
+  /users:
+    post:
+      summary: 创建用户
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        # 文件名按 ``POST /users`` + 小写 method 派生。
+        assert (out_dir / "users_post.py").exists()
+        content = (out_dir / "users_post.py").read_text(encoding="utf-8")
+        # APIRoute 类名按 method+path 派生（不带 ``Request``/``Response`` 后缀）。
+        assert "class UsersPost(APIRoute):" in content
+        # model 类名按 method+path 派生（带 ``Request`` 后缀，与 dmcg 对齐）。
+        assert "from .models import UsersPostRequest" in content
