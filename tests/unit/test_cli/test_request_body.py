@@ -305,6 +305,138 @@ components:
         assert "from .models import UserProfile" in content
         assert "body: UserProfile" in content
 
+    def test_request_body_with_kebab_case_schema_name(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 ``components.schemas`` key 含连字符（kebab-case）时与 dmcg 一致 PascalCase 化。
+
+        回归测试：``components.schemas.user-profile``（含连字符）在
+        ``datamodel-code-generator`` 中会被自动归一化为 ``class UserProfile``，
+        stoma 的 renderer 必须使用同一归一化结果（``UserProfile``）作为
+        ``from .models import`` 和 ``body:`` 的类型名，否则 route.py 与
+        models.py 之间会出现 ImportError。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Kebab Case Schema API
+  version: "1.0.0"
+paths:
+  /users:
+    post:
+      operationId: createUser
+      summary: 创建用户
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/user-profile'
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    user-profile:
+      type: object
+      required: [display_name, age]
+      properties:
+        display_name:
+          type: string
+        age:
+          type: integer
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        assert (out_dir / "create_user.py").exists()
+        assert (out_dir / "models.py").exists()
+
+        models_content = (out_dir / "models.py").read_text(encoding="utf-8")
+        assert "class UserProfile(BaseModel):" in models_content
+        assert "class user-profile" not in models_content
+
+        route_content = (out_dir / "create_user.py").read_text(encoding="utf-8")
+        assert "from .models import UserProfile" in route_content
+        assert "body: UserProfile" in route_content
+
+    def test_request_body_with_discriminator_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 requestBody 使用带 discriminator 的 oneOf schema 时生成联合模型。
+ 
+        回归测试：discriminator oneOf 在 dmcg 0.72.2 中会生成 ``RootModel[Cat | Dog]``
+        作为 ``Pet``，并把 ``Cat`` / ``Dog`` 独立为可被 ``Pet`` 引用的子类。
+        路由文件应引用 ``Pet`` 作为 body 参数。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Pet API
+  version: "1.0.0"
+paths:
+  /pets:
+    post:
+      operationId: createPet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pet'
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Pet:
+      oneOf:
+        - $ref: '#/components/schemas/Cat'
+        - $ref: '#/components/schemas/Dog'
+      discriminator:
+        propertyName: petType
+        mapping:
+          cat: '#/components/schemas/Cat'
+          dog: '#/components/schemas/Dog'
+    Cat:
+      allOf:
+        - $ref: '#/components/schemas/PetBase'
+      properties:
+        huntingSkill:
+          type: string
+    Dog:
+      allOf:
+        - $ref: '#/components/schemas/PetBase'
+      properties:
+        packSize:
+          type: integer
+    PetBase:
+      type: object
+      required: [petType, name]
+      properties:
+        petType:
+          type: string
+        name:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+        route = (out_dir / "create_pet.py").read_text(encoding="utf-8")
+        assert "class Pet(RootModel[Cat | Dog])" in models
+        assert "class Cat(PetBase)" in models
+        assert "class Dog(PetBase)" in models
+        assert 'Annotated[Cat | Dog, Field(discriminator="pet_type")]' in models
+        assert "from .models import Pet" in route
+        assert "body: Pet" in route
+
     def test_request_body_without_operation_id_errors(
         self, cli_runner: CliRunner, tmp_path: Path
     ) -> None:
@@ -403,11 +535,11 @@ paths:
         models = (out_dir / "models.py").read_text(encoding="utf-8")
 
         # camelCase → snake + alias 保留原名。
-        assert 'first_name: str = Field(..., alias="firstName")' in models
-        assert 'is_active: bool | None = Field(None, alias="isActive")' in models
+        assert 'first_name: Annotated[str, Field(alias="firstName")]' in models
+        assert 'is_active: Annotated[bool | None, Field(alias="isActive")] = None' in models
         # PascalCase → snake + alias 保留原名。
-        assert 'last_name: str = Field(..., alias="LastName")' in models
-        assert 'email_address: EmailStr | None = Field(None, alias="EmailAddress")' in models
+        assert 'last_name: Annotated[str, Field(alias="LastName")]' in models
+        assert 'email_address: Annotated[EmailStr | None, Field(alias="EmailAddress")] = None' in models
         # 已 snake_case → 保持裸声明，不冗余加 alias。
         assert "user_id: str | None = None" in models
         assert 'user_id: str | None = Field(None, alias="user_id")' not in models
@@ -470,11 +602,198 @@ paths:
         models = (out_dir / "models.py").read_text(encoding="utf-8")
 
         # 顶层非 snake_case 字段加 alias。
-        assert 'customer_info: CustomerInfo = Field(..., alias="customerInfo")' in models
-        assert 'total_amount: float | None = Field(None, alias="totalAmount")' in models
+        assert 'customer_info: Annotated[CustomerInfo, Field(alias="customerInfo")]' in models
+        assert 'total_amount: Annotated[float | None, Field(alias="totalAmount")] = None' in models
         # 嵌套对象独立生成 model，字段同样满足 alias 约定。
-        assert 'first_name: str = Field(..., alias="firstName")' in models
-        assert 'last_name: str | None = Field(None, alias="lastName")' in models
+        assert 'first_name: Annotated[str, Field(alias="firstName")]' in models
+        assert 'last_name: Annotated[str | None, Field(alias="lastName")] = None' in models
         # 嵌套内的嵌套（含全大写字段名）也命中 alias。
-        assert 'street_name: str | None = Field(None, alias="streetName")' in models
-        assert 'zip_code: str | None = Field(None, alias="ZIPCode")' in models
+        assert 'street_name: Annotated[str | None, Field(alias="streetName")] = None' in models
+        assert 'zip_code: Annotated[str | None, Field(alias="ZIPCode")] = None' in models
+
+    def test_request_body_with_oneof_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 requestBody 使用 oneOf 包含多个 $ref 时生成 Pydantic v2 联合类型。
+
+        dmcg 0.72.2 在 ``use_union_operator=True``（默认）下为 oneOf 生成
+        ``RootModel[TypeA | TypeB]``，其中 ``TypeA | TypeB`` 为内置 union 语法。
+        route.py 应正确引用该 body 类型。
+        """
+        spec = _build_spec(
+            "/entities",
+            "post",
+            "createEntity",
+            """\
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/TypeA'
+                - $ref: '#/components/schemas/TypeB'
+components:
+  schemas:
+    TypeA:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        name_a:
+          type: string
+    TypeB:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        name_b:
+          type: string
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        assert (out_dir / "models.py").exists()
+        assert (out_dir / "create_entity.py").exists()
+
+        models_content = (out_dir / "models.py").read_text(encoding="utf-8")
+        # dmcg 生成 RootModel[TypeA | TypeB]，验证 TypeA | TypeB 存在。
+        assert "TypeA | TypeB" in models_content
+
+        route_content = (out_dir / "create_entity.py").read_text(encoding="utf-8")
+        # route.py 应从 models 导入 body 类型。
+        assert "from .models import" in route_content
+        assert "body:" in route_content
+
+    def test_request_body_with_anyof_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 requestBody 使用 anyOf 包含多个 $ref 时生成 Pydantic v2 联合类型。
+
+        dmcg 0.72.2 在 ``use_union_operator=True``（默认）下为 anyOf 生成
+        ``RootModel[TypeA | TypeB]``，与 oneOf 行为一致。route.py 应正确引用
+        该 body 类型。
+        """
+        spec = _build_spec(
+            "/records",
+            "post",
+            "createRecord",
+            """\
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: '#/components/schemas/TypeA'
+                - $ref: '#/components/schemas/TypeB'
+components:
+  schemas:
+    TypeA:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        kind_a:
+          type: string
+    TypeB:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        kind_b:
+          type: string
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        assert (out_dir / "models.py").exists()
+        assert (out_dir / "create_record.py").exists()
+
+        models_content = (out_dir / "models.py").read_text(encoding="utf-8")
+        # dmcg 生成 RootModel[TypeA | TypeB]，验证 TypeA | TypeB 存在。
+        assert "TypeA | TypeB" in models_content
+
+        route_content = (out_dir / "create_record.py").read_text(encoding="utf-8")
+        # route.py 应从 models 导入 body 类型。
+        assert "from .models import" in route_content
+        assert "body:" in route_content
+
+    def test_request_body_with_allof_merge(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 requestBody 使用 ``allOf`` 合并 ``$ref`` 父 schema 与内联对象时字段被正确合并。
+
+        dmcg 0.72.2 通过 Python 类继承实现 ``allOf`` 合并：父类保留 ``$ref`` 指向
+        的字段（``BaseModelModel`` 是 dmcg 对 ``BaseModel`` schema 的自动重命名结果，
+        避免与 ``pydantic.BaseModel`` 冲突），子类由 ``use_operation_id_as_name=True``
+        从 ``createOrder`` 派生出 ``CreateOrderRequest``，继承父类并新增内联
+        ``extra`` 字段。``route.py`` 通过 ``body: CreateOrderRequest`` 引用合并后
+        的类型，运行时请求体验证同时覆盖父类字段与内联字段。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: allOf Merge API
+  version: "1.0.0"
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      summary: 创建订单（allOf 合并）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/BaseModel'
+                - type: object
+                  properties:
+                    extra:
+                      type: string
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    BaseModel:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        assert (out_dir / "models.py").exists()
+        assert (out_dir / "create_order.py").exists()
+
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+        # ``createOrder`` 经 ``use_operation_id_as_name=True`` 派生出合并类型
+        # ``CreateOrderRequest``，dmcg 通过 Python 类继承实现 ``allOf`` 合并。
+        assert "class CreateOrderRequest(" in models
+        # 父类 ``BaseModelModel``（dmcg 对 ``BaseModel`` 的自动重命名）保留 ``id`` 字段。
+        assert "class BaseModelModel(" in models
+        # 内联 ``allOf`` 对象新增的 ``extra`` 字段被合入子类。
+        assert "extra:" in models
+        # 父类的 ``id`` 字段在 ``models.py`` 中触达（transitively via inheritance）。
+        assert "id: str" in models
+
+        route = (out_dir / "create_order.py").read_text(encoding="utf-8")
+        # route 引用合并后的 ``CreateOrderRequest``，请求体验证覆盖父类 + 内联字段。
+        assert "from .models import CreateOrderRequest" in route
+        assert "body: CreateOrderRequest" in route

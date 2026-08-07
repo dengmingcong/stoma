@@ -287,10 +287,10 @@ paths:
         models = (out_dir / "models.py").read_text(encoding="utf-8")
 
         # camelCase → snake + alias 保留原名。
-        assert 'widget_id: str = Field(..., alias="widgetId")' in models
-        assert 'widget_name: str = Field(..., alias="widgetName")' in models
+        assert 'widget_id: Annotated[str, Field(alias="widgetId")]' in models
+        assert 'widget_name: Annotated[str, Field(alias="widgetName")]' in models
         # PascalCase → snake + alias 保留原名。
-        assert 'created_at: AwareDatetime | None = Field(None, alias="CreatedAt")' in models
+        assert 'created_at: Annotated[AwareDatetime | None, Field(alias="CreatedAt")] = None' in models
         # 已 snake_case → 保持裸声明，不冗余加 alias。
         assert "item_count: int | None = None" in models
         assert 'item_count: int | None = Field(None, alias="item_count")' not in models
@@ -350,10 +350,136 @@ paths:
         models = (out_dir / "models.py").read_text(encoding="utf-8")
 
         # 顶层非 snake_case 字段加 alias。
-        assert 'order_info: OrderInfo = Field(..., alias="orderInfo")' in models
-        assert 'total_amount: float | None = Field(None, alias="totalAmount")' in models
+        assert 'order_info: Annotated[OrderInfo, Field(alias="orderInfo")]' in models
+        assert 'total_amount: Annotated[float | None, Field(alias="totalAmount")] = None' in models
         # 嵌套对象独立生成 model，字段同样满足 alias 约定。
-        assert 'order_id: str = Field(..., alias="orderId")' in models
+        assert 'order_id: Annotated[str, Field(alias="orderId")]' in models
         # 嵌套内的嵌套（含全大写字段名）也命中 alias。
-        assert 'street_name: str | None = Field(None, alias="streetName")' in models
-        assert 'zip_code: str | None = Field(None, alias="ZIPCode")' in models
+        assert 'street_name: Annotated[str | None, Field(alias="streetName")] = None' in models
+        assert 'zip_code: Annotated[str | None, Field(alias="ZIPCode")] = None' in models
+
+    def test_response_with_oneof_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 response 使用 oneOf 引用多个 schema 时生成 union 类型。
+
+        dmcg 对 response oneOf 包装为 ``RootModel[TypeA | TypeB]``，
+        由 ``use_operation_id_as_name=True`` 派生响应模型名
+        （``getEntity`` → ``GetEntityResponse``）。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Response OneOf Union API
+  version: "1.0.0"
+paths:
+  /entity:
+    get:
+      operationId: getEntity
+      summary: 获取实体
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/TypeA'
+                  - $ref: '#/components/schemas/TypeB'
+components:
+  schemas:
+    TypeA:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    TypeB:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        value:
+          type: integer
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+        route = (out_dir / "get_entity.py").read_text(encoding="utf-8")
+        # dmcg 将 oneOf 包装为 RootModel[TypeA | TypeB]。
+        assert "TypeA | TypeB" in models
+        # 由 use_operation_id_as_name 派生响应包装类。
+        assert "GetEntityResponse" in models
+        assert "RootModel[TypeA | TypeB]" in models
+        # route.py 正确引用包装类。
+        assert "APIRoute[GetEntityResponse]" in route
+        assert "from .models import GetEntityResponse" in route
+
+    def test_response_with_anyof_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 response 使用 anyOf 引用多个 schema 时生成 union 类型。
+
+        dmcg 对 response anyOf 包装为 ``RootModel[TypeA | TypeB]``，
+        由 ``use_operation_id_as_name=True`` 派生响应模型名
+        （``getRecord`` → ``GetRecordResponse``）。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Response AnyOf Union API
+  version: "1.0.0"
+paths:
+  /record:
+    get:
+      operationId: getRecord
+      summary: 获取记录
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/TypeA'
+                  - $ref: '#/components/schemas/TypeB'
+components:
+  schemas:
+    TypeA:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        kind_a:
+          type: string
+    TypeB:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        kind_b:
+          type: integer
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+        route = (out_dir / "get_record.py").read_text(encoding="utf-8")
+        # dmcg 将 anyOf 包装为 RootModel[TypeA | TypeB]。
+        assert "TypeA | TypeB" in models
+        # 由 use_operation_id_as_name 派生响应包装类。
+        assert "GetRecordResponse" in models
+        assert "RootModel[TypeA | TypeB]" in models
+        # route.py 正确引用包装类。
+        assert "APIRoute[GetRecordResponse]" in route
+        assert "from .models import GetRecordResponse" in route
