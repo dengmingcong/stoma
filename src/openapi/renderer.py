@@ -46,6 +46,7 @@ from pydantic.alias_generators import to_snake
 
 from src.openapi.models import Endpoint
 from src.openapi.models_types import SpecVersion
+from src.openapi.parser import OpenAPISchemaError
 from src.openapi.reference_types import Reference30, Reference31
 
 
@@ -200,6 +201,13 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             # ``schema`` 此时只会是普通 Schema（不会触发 ``_is_reference``）。
             schema_dict = schema.model_dump(mode="json") if schema else {}
             json_type = schema_dict.get("type", "Any")
+            # 1.0 范围：仅支持原始类型作为参数，复杂 schema 应挪到 requestBody。
+            if json_type not in {"string", "integer", "number", "boolean"}:
+                msg = (
+                    f"Unsupported schema type for parameter {name!r} ({location}): "
+                    f"{json_type!r}. Only primitive types (string/integer/number/boolean) are supported."
+                )
+                raise OpenAPISchemaError(msg)
             param_type = _map_json_schema_type(str(json_type))
 
             field_line = _build_param_field_line(name, param_type, required, location)

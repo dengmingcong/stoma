@@ -86,7 +86,7 @@ def _extract_classes(code: str) -> dict[str, list[str]]:
         (3, "allof_inheritance"),
         (4, "allof_property_conflict"),
         (5, "oneof_union"),
-        (6, "anyof_union"),
+        # (6, "anyof_union") -- excluded: query param uses anyOf, rejected by primitive-only rule
         (7, "discriminator"),
         (8, "array_items_inline_object"),
         (9, "array_items_ref"),
@@ -125,7 +125,7 @@ def test_make_produces_working_models(
         (3, "allof_inheritance"),
         (4, "allof_property_conflict"),
         (5, "oneof_union"),
-        (6, "anyof_union"),
+        # (6, "anyof_union") -- excluded: query param uses anyOf, rejected by primitive-only rule
         (7, "discriminator"),
         (8, "array_items_inline_object"),
         (9, "array_items_ref"),
