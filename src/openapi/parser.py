@@ -21,6 +21,7 @@ from typing import Any, TypeGuard
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from src.openapi.model_generator import _detect_parameter_cycle, _expand_parameter_refs
 from src.openapi.models import Endpoint
 from src.openapi.models_types import SpecVersion
 from src.openapi.reference_types import (
@@ -282,12 +283,25 @@ class OpenAPIParser[
 def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, Any, Any]:
     """按规范声明的版本构造参数化解析器。
 
+    工厂会先沿 :func:`src.openapi.model_generator._detect_parameter_cycle`
+    检查 ``components.parameters`` 中的 ``$ref`` 链是否有环，遇到环立即
+    抛出 :class:`OpenAPISchemaError`（避免 jsonref 陷入无限递归）。
+    随后调用 :func:`src.openapi.model_generator._expand_parameter_refs`
+    在 ``paths[*]`` 操作级 ``parameters`` 上就地展开 ``$ref``，
+    ``requestBody`` 与 ``responses`` 中的引用保持原样。
+
     :param spec_path: OpenAPI 规范文件路径。
     :return: 注入对应版本模型类的解析器。
+    :raise OpenAPISchemaError: 参数 ``$ref`` 链存在环，或 jsonref 解析失败。
     :raise ValueError: 规范声明的版本不受支持。
     """
     path = Path(spec_path)
     raw_spec = _read_raw_spec(path)
+    cycle_path = _detect_parameter_cycle(raw_spec)
+    if cycle_path is not None:
+        msg = f"Cycle detected in parameter $ref chain: {cycle_path}"
+        raise OpenAPISchemaError(msg)
+    raw_spec = _expand_parameter_refs(raw_spec)
     version = _declared_version(raw_spec)
     if version.startswith("3.0."):
         return OpenAPIParser[OpenAPI30, Reference30, Parameter30, RequestBody30, Response30](
