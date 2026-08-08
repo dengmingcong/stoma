@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from src.cli import app
-from src.openapi.parser import OpenAPISchemaError, make_openapi_parser
+from src.openapi.parser import make_openapi_parser
 from src.openapi.renderer import make_endpoint_renderer
 
 
@@ -239,56 +238,121 @@ paths:
         content = (out_dir / "list_items.py").read_text(encoding="utf-8")
         assert "page: int | None = None" in content
 
-    def test_parameter_ref_cycle_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 A ↔ B 环引用被检测并抛 OpenAPISchemaError（绕开 CLI 包装验原始错误）。
+    def test_parameter_cycle_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 ``components.parameters.A -> B -> A`` 环引用被 CLI 捕获并报告。
 
-        直接调 :meth:`OpenAPIParser.resolve_parameter_refs` 而不走 CLI，是因为 bug 状态下 Reference
-        透传到 renderer 也会触发 AttributeError 让 ``exit_code != 0``，验退出码抓不到
-        真正的 cycle 检测逻辑。
+        经 ``make_openapi_parser`` 在工厂层做 cycle 检测，遇到环立即抛
+        :class:`OpenAPISchemaError`，经 CLI 包装为非 0 退出码并把错误信息
+        打到 ``result.output``。断言必须看到完整环路径 ``"A -> B -> A"``，
+        而不是仅看到 "Cycle detected" 关键字。
         """
-        from openapi_pydantic import Reference
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Cycle API
+  version: "1.0.0"
+components:
+  parameters:
+    A:
+      $ref: '#/components/parameters/B'
+    B:
+      $ref: '#/components/parameters/A'
+paths:
+  /items:
+    get:
+      operationId: listItems
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
 
-        spec_file = tmp_path / "cycle.yaml"
-        spec_file.write_text(
-            "openapi: 3.1.0\n"
-            "info:\n"
-            "  title: Cycle test\n"
-            '  version: "1.0.0"\n'
-            "paths: {}\n"
-            "components:\n"
-            "  parameters:\n"
-            "    A:\n"
-            "      $ref: '#/components/parameters/B'\n"
-            "    B:\n"
-            "      $ref: '#/components/parameters/A'\n",
-            encoding="utf-8",
+        result = cli_runner.invoke(
+            app, [str(spec_file), "--out", str(out_dir)], catch_exceptions=False
         )
-        parser = make_openapi_parser(spec_file)
-        parser.load()
 
-        ref_params: list[Reference] = [Reference.model_validate({"$ref": "#/components/parameters/A"})]
-        with pytest.raises(OpenAPISchemaError, match="Cycle detected"):
-            parser.resolve_parameter_refs(parser.raw_spec_dict, ref_params)
+        assert result.exit_code != 0
+        assert "Cycle detected in parameter $ref chain" in result.output
+        assert "A -> B -> A" in result.output
 
-    def test_parameter_ref_external_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证外部 ref（common.yaml#/...）被拒绝并抛 OpenAPISchemaError。
+    def test_parameter_external_ref_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证指向外部文件的 ``$ref``（如 ``common.yaml#/schemas/X``）被 CLI 捕获并报告。
 
-        直接调 :meth:`OpenAPIParser.resolve_parameter_refs` 而不走 CLI，原因同 cycle 测试 —— 验
-        退出码抓不到 parser 层对 ``#/components/parameters/`` 前缀的检查。
+        ``_expand_parameter_refs`` 委托 :mod:`jsonref` 解析，jsonref 抛
+        :class:`jsonref.JsonRefError` 时被包装为 :class:`OpenAPISchemaError`，
+        CLI 退出码非 0 并把 "Failed to resolve parameter $ref" 打到输出。
         """
-        from openapi_pydantic import Reference
+        spec = """\
+openapi: 3.1.0
+info:
+  title: External Ref API
+  version: "1.0.0"
+paths:
+  /items:
+    get:
+      operationId: listItems
+      parameters:
+        - name: x
+          in: query
+          schema:
+            $ref: 'common.yaml#/schemas/X'
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
 
-        spec_file = tmp_path / "ext.yaml"
-        spec_file.write_text(
-            'openapi: 3.1.0\ninfo:\n  title: External ref test\n  version: "1.0.0"\npaths: {}\n',
-            encoding="utf-8",
+        result = cli_runner.invoke(
+            app, [str(spec_file), "--out", str(out_dir)], catch_exceptions=False
         )
-        parser = make_openapi_parser(spec_file)
-        parser.load()
 
-        ref_params: list[Reference] = [Reference.model_validate({"$ref": "common.yaml#/parameters/X"})]
-        with pytest.raises(OpenAPISchemaError, match=r"Unsupported parameter \$ref"):
-            parser.resolve_parameter_refs(parser.raw_spec_dict, ref_params)
+        assert result.exit_code != 0
+        assert "Failed to resolve parameter $ref" in result.output
+
+    def test_parameter_cycle_not_referenced_still_raises(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 ``components.parameters`` 中的环即使没被任何 path 引用也被检测到。
+
+        ``_detect_parameter_cycle`` 是对整张 ``components.parameters`` 表做
+        DFS，而不是只走被引用的子图；任何 ``$ref`` 闭环都会立即报错。
+        场景里 path 不带 ``parameters``，只用 ``responses`` 占位——确保
+        C / D 不会被任何 path 触达，cycle 检测仍然命中。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Unreferenced Cycle API
+  version: "1.0.0"
+components:
+  parameters:
+    C:
+      $ref: '#/components/parameters/D'
+    D:
+      $ref: '#/components/parameters/C'
+paths:
+  /items:
+    get:
+      operationId: listItems
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(
+            app, [str(spec_file), "--out", str(out_dir)], catch_exceptions=False
+        )
+
+        assert result.exit_code != 0
+        assert "Cycle detected in parameter $ref chain" in result.output
+        assert "C -> D -> C" in result.output
 
     def test_path_item_parameters_merged_with_override(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 path_item 级 + operation 级同名覆盖 + path_item 级独占继承同时工作。
