@@ -8,7 +8,8 @@ import pytest
 from typer.testing import CliRunner
 
 from src.cli import app
-from src.openapi.parser import OpenAPISchemaError
+from src.openapi.parser import OpenAPISchemaError, make_openapi_parser
+from src.openapi.renderer import make_endpoint_renderer
 
 
 class TestMakeParameters:
@@ -183,6 +184,22 @@ paths:
         assert result.exit_code == 0, result.output
         content = (out_dir / "list_items.py").read_text(encoding="utf-8")
         assert "page: int | None = None" in content
+
+    def test_parameter_v30_ref_detection(self, valid_v30_spec: Path) -> None:
+        """验证 OpenAPI 3.0.x ``parameters[*].$ref`` 被 parser + renderer 正确解析。
+
+        ``components.parameters.UserIdParam`` 定义 ``schema: type: string``，
+        解析后 ``param_schema`` 应是 ``Schema``（不是 ``Reference30``），
+        renderer 才能映射为 ``str`` 而不是把 ref 末段 ``UserIdParam`` 当作类型名。
+        """
+        parser = make_openapi_parser(valid_v30_spec)
+        parser.load()
+        endpoints = parser.get_endpoints()
+        renderer = make_endpoint_renderer(parser.spec_version)
+        get_user = next(ep for ep in endpoints if ep.operation_id == "getUser")
+        _file_name, code = renderer.render(get_user)
+        assert "user_id: str" in code
+        assert "user_id: UserIdParam" not in code
 
     def test_parameter_ref_chained_resolves(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 A → B → C 三层链式 ref 能递归解析到 C。"""

@@ -7,6 +7,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from src.cli import app
+from src.openapi.parser import make_openapi_parser
 
 
 class TestMakeOpenAPIValidation:
@@ -50,3 +51,18 @@ class TestMakeOpenAPIValidation:
 
         assert result.exit_code == 0, result.output
         assert (out_dir / "ping.py").exists()
+
+    def test_parser_loads_v30_spec(self, valid_v30_spec: Path) -> None:
+        """验证 ``make_openapi_parser`` 能识别 OpenAPI 3.0.x 规范。
+
+        工厂按 ``openapi`` 版本字符串前缀注入 3.0 模型类，断言：
+        1. ``load()`` 不抛异常
+        2. ``spec_version == "3.0"``
+        3. 解析出 2 个 endpoint（``getUser`` / ``createUser``）
+        """
+        parser = make_openapi_parser(valid_v30_spec)
+        parser.load()
+        assert parser.spec_version == "3.0"
+        endpoints = parser.get_endpoints()
+        assert len(endpoints) == 2
+        assert {endpoint.operation_id for endpoint in endpoints} == {"getUser", "createUser"}

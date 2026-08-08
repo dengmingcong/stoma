@@ -71,6 +71,73 @@ info:
 paths: {}
 """
 
+OPENAPI_30_SPEC = """\
+openapi: 3.0.3
+info:
+  title: Test API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      summary: 获取用户
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+  /users:
+    post:
+      operationId: createUser
+      summary: 创建用户
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  parameters:
+    UserIdParam:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+  requestBodies:
+    UserBody:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User'
+  responses:
+    UserResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User'
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+"""
+
 
 @pytest.fixture
 def cli_runner() -> CliRunner:
@@ -85,3 +152,14 @@ def valid_spec(tmp_path: Path) -> tuple[Path, Path]:
     spec_file.write_text(VALID_OPENAPI_YAML, encoding="utf-8")
     out_dir = tmp_path / "output"
     return spec_file, out_dir
+
+
+@pytest.fixture
+def valid_v30_spec(tmp_path: Path) -> Path:
+    """创建 OpenAPI 3.0.x spec 文件并返回路径。
+
+    用于验证 3.0 ``$ref`` 解析（parameter / requestBody / response）。
+    """
+    spec_file = tmp_path / "spec_v30.yaml"
+    spec_file.write_text(OPENAPI_30_SPEC, encoding="utf-8")
+    return spec_file

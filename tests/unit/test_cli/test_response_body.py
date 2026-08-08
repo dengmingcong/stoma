@@ -7,6 +7,8 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from src.cli import app
+from src.openapi.parser import make_openapi_parser
+from src.openapi.renderer import make_endpoint_renderer
 
 
 class TestMakeResponseBody:
@@ -63,6 +65,23 @@ components:
         # response 类型为 User，从 .models 导入。
         assert "APIRoute[User]" in content
         assert "from .models import User" in content
+
+    def test_response_body_v30_ref_detection(self, valid_v30_spec: Path) -> None:
+        """验证 OpenAPI 3.0.x ``responses[200].content.application/json.schema.$ref`` 被 renderer 正确识别。
+
+        直接走 ``make_openapi_parser`` + ``make_endpoint_renderer`` 而不绕道 CLI——
+        绕开 ``datamodel-code-generator`` 的副产物，纯粹验证 renderer 对 3.0
+        ``Reference30`` 实例的 ``_is_reference`` 检测（factory 注入 ``Reference30``
+        类到 ``EndpointRenderer.Reference``，3.1 / 3.0 不串类）。
+        """
+        parser = make_openapi_parser(valid_v30_spec)
+        parser.load()
+        endpoints = parser.get_endpoints()
+        renderer = make_endpoint_renderer(parser.spec_version)
+        get_user = next(ep for ep in endpoints if ep.operation_id == "getUser")
+        _file_name, code = renderer.render(get_user)
+        assert "from .models import User" in code
+        assert "APIRoute[User]" in code
 
     def test_response_with_array_of_ref(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 为引用类型的数组时生成 list[Model]。"""
