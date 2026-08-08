@@ -195,13 +195,12 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             required = param.required or False
             schema = param.param_schema
 
-            if self._is_reference(schema):
-                # $ref: 用 ref 末段作类型名（datamodel-codegen 也会这么做）
-                param_type = schema.ref.rsplit("/", 1)[-1]
-            else:
-                schema_dict = schema.model_dump(mode="json") if schema else {}
-                json_type = schema_dict.get("type", "Any")
-                param_type = _map_json_schema_type(str(json_type))
+            # 参数级 ``$ref`` 已在 :func:`src.openapi.parser.make_openapi_parser`
+            # 上游通过 ``_expand_parameter_refs`` 展开为内联 schema，因此
+            # ``schema`` 此时只会是普通 Schema（不会触发 ``_is_reference``）。
+            schema_dict = schema.model_dump(mode="json") if schema else {}
+            json_type = schema_dict.get("type", "Any")
+            param_type = _map_json_schema_type(str(json_type))
 
             field_line = _build_param_field_line(name, param_type, required, location)
 
