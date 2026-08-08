@@ -11,8 +11,8 @@ from typing import Annotated
 import typer
 
 from src.openapi.model_generator import generate_models
-from src.openapi.parser import OpenAPIParser, OpenAPISchemaError
-from src.openapi.renderer import EndpointRenderer, render_to_file
+from src.openapi.parser import OpenAPISchemaError, make_openapi_parser
+from src.openapi.renderer import make_endpoint_renderer, render_to_file
 
 app = typer.Typer(
     help="Stoma - OpenAPI 接口代码生成工具",
@@ -45,7 +45,7 @@ def make(
 
     # 解析 OpenAPI 规范。
     try:
-        parser = OpenAPIParser(spec)
+        parser = make_openapi_parser(spec)
         parser.load()
         parser.validate_operation_ids()
         # 必须先调 get_endpoints()，因为 has_payloads 由它内部计算。
@@ -63,7 +63,7 @@ def make(
 
     # 渲染每个 endpoint 的 route.py。
     generated_files: list[Path] = []
-    renderer = EndpointRenderer()
+    renderer = make_endpoint_renderer(parser.spec_version)
     for endpoint in endpoints:
         file_name, rendered_code = renderer.render(endpoint)
         file_path = render_to_file(
