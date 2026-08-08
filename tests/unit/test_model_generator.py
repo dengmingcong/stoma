@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from src.openapi.model_generator import generate_models
+import pytest
+
+from src.openapi.model_generator import (
+    _detect_parameter_cycle,
+    _expand_parameter_refs,
+    generate_models,
+)
+
+if TYPE_CHECKING:  # pragma: no cover
+    from src.openapi.parser import OpenAPISchemaError  # noqa: F401
 
 
 def _minimal_spec() -> dict[str, Any]:
@@ -73,3 +82,159 @@ class TestGenerateModels:
             if not output_path.exists():
                 msg = "无效 spec 应报错"
                 raise AssertionError(msg)
+
+
+class TestExpandParameterRefs:
+    """测试 :func:`_expand_parameter_refs` 选择性参数 ``$ref`` 展开。"""
+
+    def test_expand_parameter_refs_preserves_body_refs(self) -> None:
+        """``requestBody`` 与 ``responses`` 中的 ``$ref`` 字符串保持原样。
+
+        ``_expand_parameter_refs`` 仅展开 ``parameters`` 中的 ``$ref``，
+        其余键（如 ``requestBody``、``responses``）应原封不动。
+        """
+        spec: dict[str, Any] = {
+            "paths": {
+                "/items": {
+                    "get": {
+                        "operationId": "listItems",
+                        "parameters": [{"$ref": "#/components/parameters/PageParam"}],
+                        "requestBody": {"$ref": "#/components/schemas/ItemBody"},
+                        "responses": {
+                            "200": {"$ref": "#/components/responses/ItemList"},
+                            "404": {"$ref": "#/components/responses/NotFound"},
+                        },
+                        "summary": "list summary",
+                    }
+                }
+            },
+            "components": {
+                "parameters": {
+                    "PageParam": {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {"type": "integer"},
+                    }
+                },
+                "schemas": {"ItemBody": {"type": "object"}},
+                "responses": {
+                    "ItemList": {"description": "ok"},
+                    "NotFound": {"description": "missing"},
+                },
+            },
+        }
+
+        result = _expand_parameter_refs(spec)
+
+        expanded_param = result["paths"]["/items"]["get"]["parameters"][0]
+        assert expanded_param == {
+            "name": "page",
+            "in": "query",
+            "schema": {"type": "integer"},
+        }
+        assert "$ref" not in expanded_param
+        assert result["paths"]["/items"]["get"]["requestBody"] == {
+            "$ref": "#/components/schemas/ItemBody"
+        }
+        assert result["paths"]["/items"]["get"]["responses"] == {
+            "200": {"$ref": "#/components/responses/ItemList"},
+            "404": {"$ref": "#/components/responses/NotFound"},
+        }
+        assert result["paths"]["/items"]["get"]["summary"] == "list summary"
+
+    def test_expand_parameter_refs_resolves_parameter_chain(self) -> None:
+        """``parameters[*].$ref`` 指向 ``#/components/parameters/X`` 时被展开。"""
+        spec: dict[str, Any] = {
+            "paths": {
+                "/items": {
+                    "get": {
+                        "parameters": [{"$ref": "#/components/parameters/PageParam"}]
+                    }
+                }
+            },
+            "components": {
+                "parameters": {
+                    "PageParam": {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {"type": "integer"},
+                    }
+                }
+            },
+        }
+
+        result = _expand_parameter_refs(spec)
+
+        assert result["paths"]["/items"]["get"]["parameters"] == [
+            {"name": "page", "in": "query", "schema": {"type": "integer"}}
+        ]
+
+    def test_expand_parameter_refs_catches_external_ref_error(self) -> None:
+        """组件参数 ``schema.$ref`` 指向外部文件时抛出 :class:`OpenAPISchemaError`。"""
+        from src.openapi.parser import OpenAPISchemaError
+
+        spec: dict[str, Any] = {
+            "paths": {
+                "/x": {
+                    "get": {
+                        "parameters": [{"$ref": "#/components/parameters/X"}]
+                    }
+                }
+            },
+            "components": {
+                "parameters": {
+                    "X": {
+                        "name": "x",
+                        "in": "query",
+                        "schema": {"$ref": "common.yaml#/components/schemas/Common"},
+                    }
+                }
+            },
+        }
+
+        with pytest.raises(
+            OpenAPISchemaError, match=r"Failed to resolve parameter \$ref"
+        ):
+            _expand_parameter_refs(spec)
+
+
+class TestDetectParameterCycle:
+    """测试 :func:`_detect_parameter_cycle` 参数 ``$ref`` 环检测。"""
+
+    def test_detect_parameter_cycle_finds_cycle(self) -> None:
+        """``A -> B -> A`` 的环应被检测并返回包含 ``A``、``B`` 的路径。"""
+        spec: dict[str, Any] = {
+            "components": {
+                "parameters": {
+                    "A": {"$ref": "#/components/parameters/B"},
+                    "B": {"$ref": "#/components/parameters/A"},
+                }
+            }
+        }
+
+        result = _detect_parameter_cycle(spec)
+
+        assert result is not None
+        parts = [part.strip() for part in result.split("->")]
+        assert parts[0] == parts[-1]
+        assert "A" in parts
+        assert "B" in parts
+
+    def test_detect_parameter_cycle_no_cycle_returns_none(self) -> None:
+        """非环参数链（引用同一内联参数或只引用一次）返回 ``None``。"""
+        spec: dict[str, Any] = {
+            "components": {
+                "parameters": {
+                    "A": {
+                        "name": "foo",
+                        "in": "query",
+                        "schema": {"type": "string"},
+                    },
+                    "B": {"$ref": "#/components/parameters/A"},
+                }
+            }
+        }
+
+        result = _detect_parameter_cycle(spec)
+
+        assert result is None

@@ -12,8 +12,9 @@ stoma 的 ``make`` 命令在预处理 spec 后调用本模块生成 ``models.py`
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import jsonref
 from datamodel_code_generator import (
     InputFileType,
     OpenAPIScope,
@@ -21,6 +22,17 @@ from datamodel_code_generator import (
     generate,
 )
 from datamodel_code_generator.enums import DataModelType
+
+# ``OpenAPISchemaError`` 定义在 :mod:`src.openapi.parser`，而
+# :func:`parser.make_openapi_parser` 后续会反过来调用本模块
+# 的 :func:`_expand_parameter_refs`，因此运行时 ``import`` 必须延迟到
+# 函数内部，模块顶层只用 ``TYPE_CHECKING`` 给静态检查器提供类型。
+if TYPE_CHECKING:  # pragma: no cover
+    from src.openapi.parser import OpenAPISchemaError  # noqa: F401
+
+# 循环检测只沿 ``#/components/parameters/`` 开头的内部 ``$ref`` 展开；
+# 指向 schema 或外部文件的 ``$ref`` 不属于参数链，遇到即停止。
+_PARAMETER_REF_PREFIX: str = "#/components/parameters/"
 
 
 def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
@@ -66,3 +78,119 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
     if not output_path.exists():
         msg = f"datamodel-code-generator 未生成文件: {output_path}"
         raise RuntimeError(msg)
+
+
+def _detect_parameter_cycle(raw_spec: dict[str, Any]) -> str | None:
+    """深度优先遍历 ``components.parameters``，检测 ``$ref`` 链中的环。
+
+    仅沿 ``#/components/parameters/<name>`` 这一前缀向下展开：
+    指向 schema 或外部文件的 ``$ref`` 不属于参数链，遇到即停止，
+    因此不会误把 ``components.schemas`` 之间的相互引用当作参数环。
+
+    :param raw_spec: 原始 OpenAPI 规范字典。
+    :return: 发现环时返回形如 ``"A -> B -> A"`` 的路径字符串；
+        否则返回 ``None``。路径以展开起点参数名闭合。
+    """
+    components_obj = raw_spec.get("components")
+    if not isinstance(components_obj, dict):
+        return None
+    params_obj = components_obj.get("parameters")
+    if not isinstance(params_obj, dict):
+        return None
+
+    def walk(name: str, seen: frozenset[str], path: tuple[str, ...]) -> str | None:
+        if name in seen:
+            return " -> ".join((*path, name))
+        value: object = params_obj.get(name)
+        if not isinstance(value, dict):
+            return None
+        ref: object = value.get("$ref")
+        if not isinstance(ref, str):
+            return None
+        if not ref.startswith(_PARAMETER_REF_PREFIX):
+            return None
+        target = ref[len(_PARAMETER_REF_PREFIX) :]
+        return walk(target, seen | {name}, (*path, name))
+
+    for name in params_obj:
+        if not isinstance(name, str):
+            continue
+        result = walk(name, frozenset(), ())
+        if result is not None:
+            return result
+    return None
+
+
+def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
+    """在 ``raw_spec`` 内仅展开 ``paths[*]`` 下操作级 ``parameters`` 中的 ``$ref``。
+
+    构造一份合成规范，仅保留每个操作的 ``parameters`` 键（丢弃
+    ``requestBody``、``responses``、``summary``、``description``、``security`` 等），
+    原样附带 ``components``，交给 :func:`jsonref.replace_refs` 立即解析。
+    ``requestBody`` 和 ``responses`` 中的 ``$ref`` 字符串因此原封不动地留在
+    原 ``raw_spec`` 中——datamodel-code-generator 会自行处理它们。
+
+    解析结果以每个方法为单位回写到 ``raw_spec`` 的对应方法上，仅替换
+    ``parameters`` 键，其余字段保持不变。``jsonref.JsonRefError``（例如
+    指向外部文件且无法解析的 ``$ref``）会被包装为
+    :class:`OpenAPISchemaError` 抛出。
+
+    :param raw_spec: 待修改的 OpenAPI 规范字典（会被就地修改）。
+    :return: 修改后的 ``raw_spec``。
+    :raise OpenAPISchemaError: ``jsonref`` 解析参数 ``$ref`` 失败。
+    """
+    original_paths = raw_spec.get("paths")
+    if not isinstance(original_paths, dict):
+        original_paths = {}
+        raw_spec["paths"] = original_paths
+
+    synthetic_paths: dict[str, Any] = {}
+    for path_key, path_item in original_paths.items():
+        if not isinstance(path_item, dict):
+            continue
+        filtered_item: dict[str, Any] = {}
+        for method_key, operation in path_item.items():
+            if not isinstance(operation, dict):
+                continue
+            if "parameters" in operation:
+                filtered_item[str(method_key)] = {"parameters": operation["parameters"]}
+        if filtered_item:
+            synthetic_paths[str(path_key)] = filtered_item
+
+    synthetic: dict[str, Any] = {
+        "paths": synthetic_paths,
+        "components": raw_spec.get("components", {}),
+    }
+
+    try:
+        expanded = jsonref.replace_refs(synthetic, proxies=False, lazy_load=False)
+    except jsonref.JsonRefError as exc:
+        from src.openapi.parser import OpenAPISchemaError
+
+        msg = f"Failed to resolve parameter $ref: {exc}"
+        raise OpenAPISchemaError(msg) from exc
+
+    expanded_paths: object = expanded["paths"] if isinstance(expanded, dict) else {}
+    if not isinstance(expanded_paths, dict):
+        expanded_paths = {}
+
+    for path_key, path_item in expanded_paths.items():
+        if not isinstance(path_item, dict):
+            continue
+        target_path_item = original_paths.get(path_key)
+        if not isinstance(target_path_item, dict):
+            target_path_item = {}
+            original_paths[str(path_key)] = target_path_item
+        for method_key, operation in path_item.items():
+            if not isinstance(operation, dict):
+                continue
+            expanded_params = operation.get("parameters")
+            if expanded_params is None:
+                continue
+            target_operation = target_path_item.get(method_key)
+            if isinstance(target_operation, dict):
+                target_operation["parameters"] = expanded_params
+            else:
+                target_path_item[str(method_key)] = {"parameters": expanded_params}
+
+    return raw_spec
