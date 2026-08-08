@@ -15,7 +15,11 @@ from enum import Enum
 
 
 class ParamTypes(Enum):
-    """参数类型枚举。"""
+    """参数类型枚举。
+
+    stoma 不处理 cookie 参数：cookie 值由用户在创建 Playwright APIRequestContext 时通过
+    ``storage_state={"cookies": [...]}`` 注入，Playwright 会自动随请求发送。
+    """
 
     query = "query"
     header = "header"
