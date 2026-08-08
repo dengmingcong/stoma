@@ -95,7 +95,6 @@ class OpenAPIParser[
 
     def __init__(
         self,
-        spec_path: str | Path,
         *,
         OpenAPI: type[OpenAPIT],  # noqa: N803
         Reference: type[ReferenceT],  # noqa: N803
@@ -107,7 +106,6 @@ class OpenAPIParser[
     ) -> None:
         """初始化解析器。
 
-        :param spec_path: OpenAPI 规范文件路径。
         :param OpenAPI: 当前版本的 OpenAPI 根模型类。
         :param Reference: 当前版本的引用模型类。
         :param Parameter: 当前版本的参数模型类。
@@ -116,7 +114,6 @@ class OpenAPIParser[
         :param spec_version: 当前解析器处理的 OpenAPI 主版本。
         :param raw_spec: 已读取的原始规范字典（由工厂预填充）。
         """
-        self.spec_path = Path(spec_path)
         self.OpenAPI = OpenAPI
         self.Reference = Reference
         self.Parameter = Parameter
@@ -340,7 +337,6 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
     version = _declared_version(raw_spec)
     if version.startswith("3.0."):
         return OpenAPIParser[OpenAPI30, Reference30, Parameter30, RequestBody30, Response30](
-            path,
             OpenAPI=OpenAPI30,
             Reference=Reference30,
             Parameter=Parameter30,
@@ -351,7 +347,6 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
         )
     if version.startswith("3.1."):
         return OpenAPIParser[OpenAPI31, Reference31, Parameter31, RequestBody31, Response31](
-            path,
             OpenAPI=OpenAPI31,
             Reference=Reference31,
             Parameter=Parameter31,
