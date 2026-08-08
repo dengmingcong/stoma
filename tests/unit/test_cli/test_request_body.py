@@ -816,3 +816,62 @@ components:
         # route 引用合并后的 ``CreateOrderRequest``，请求体验证覆盖父类 + 内联字段。
         assert "from .models import CreateOrderRequest" in route
         assert "body: CreateOrderRequest" in route
+
+    def test_request_and_response_share_model_dedupes_import(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 requestBody 和 response 共用同一 schema 时 import 不重复。
+
+        回归测试：当 POST /users 的 requestBody 和 201 response 都引用
+        ``$ref: '#/components/schemas/User'`` 时，renderer 必须对
+        ``imported_models`` 去重，避免生成 ``from .models import User, User``
+        这种语法错误的重复导入。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Shared Model API
+  version: "1.0.0"
+paths:
+  /users:
+    post:
+      operationId: createUser
+      summary: 创建用户
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        route_content = (out_dir / "create_user.py").read_text(encoding="utf-8")
+        # 导入了 User（存在至少一次）。
+        assert "from .models import User" in route_content
+        # 不应该出现重复的 ``User, User``。
+        assert "from .models import User, User" not in route_content
+        # 文件必须是语法正确的 Python。
+        compile(route_content, "create_user.py", "exec")

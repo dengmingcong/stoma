@@ -158,7 +158,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         request_body_type = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields = self._extract_params(endpoint.parameters, endpoint)
 
-        imported_models = [t for t in (response_type, request_body_type) if t]
+        imported_models = list(dict.fromkeys(t for t in (response_type, request_body_type) if t))
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
         rendered_code = template.render(
