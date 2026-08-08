@@ -5,6 +5,10 @@
 :class:`pydantic.BaseModel`；构造参数和实例属性则使用无后缀的 PascalCase
 名称，以区分静态类型参数与运行时模型类。跨类型输入通过 ``object`` 和
 ``TypeGuard`` 收窄，避免把不同版本的模型合并成 Union。
+
+参数层的 ``$ref`` 解析由工厂在上游通过 :func:`src.openapi.model_generator._expand_parameter_refs`
+完成（基于 ``jsonref``），本模块只负责接收已展开的 spec 并做 Pydantic 校验
++ IR 构建，不再自行解析参数引用。
 """
 
 from __future__ import annotations
@@ -16,8 +20,6 @@ from typing import Any, TypeGuard
 
 import yaml
 from pydantic import BaseModel, ValidationError
-from referencing import Registry, Resource
-from referencing.exceptions import Unresolvable
 
 from src.openapi.models import Endpoint
 from src.openapi.models_types import SpecVersion
@@ -74,14 +76,6 @@ def _declared_version(raw_spec: dict[str, Any]) -> str:
     """返回规范声明的 OpenAPI 版本号。"""
     version = raw_spec.get("openapi", "")
     return version if isinstance(version, str) else ""
-
-
-def _build_registry(raw_spec: dict[str, Any]) -> Registry[dict[str, Any]]:
-    """把原始规范包装为可解析内部 JSON Pointer 的注册表。"""
-    resource = Resource.opaque(raw_spec)
-    registry: Registry[dict[str, Any]] = Registry()
-    registry = registry.with_resource(uri="", resource=resource)
-    return registry
 
 
 class OpenAPIParser[
@@ -158,61 +152,21 @@ class OpenAPIParser[
             msg = f"Failed to parse OpenAPI specification: {error}"
             raise ValueError(msg) from error
 
-    def _resolve_one(
-        self,
-        node: object,
-        registry: Registry[dict[str, Any]],
-        seen: frozenset[str],
-    ) -> ParameterT:
-        """解析单个参数节点，递归展开引用。"""
+    def _resolve_one(self, node: object) -> ParameterT:
+        """校验节点是 Parameter（jsonref 上游已展开 ref）。"""
         if self._is_parameter(node):
             return node
-        if not self._is_reference(node):
-            msg = f"Expected Parameter or Reference, got {type(node).__name__}"
-            raise OpenAPISchemaError(msg)
-
-        ref = getattr(node, "ref", None)
-        if not isinstance(ref, str):
-            msg = "Reference must contain a string $ref"
-            raise OpenAPISchemaError(msg)
-        if ref in seen:
-            path = " -> ".join((*seen, ref))
-            raise OpenAPISchemaError(f"Cycle detected resolving parameter $ref: {path}")
-        if not ref.startswith("#/components/parameters/"):
-            msg = f"Unsupported parameter $ref: {ref!r}. Only '#/components/parameters/<name>' is supported."
-            raise OpenAPISchemaError(msg)
-
-        try:
-            contents = registry.resolver().lookup(ref).contents
-        except Unresolvable as error:
-            msg = f"Cannot resolve parameter $ref: {ref!r}. Component not found in '#/components/parameters/'."
-            raise OpenAPISchemaError(msg) from error
-
-        nested_ref = contents.get("$ref")
-        if nested_ref is not None:
-            nested = self.Reference.model_validate({"$ref": nested_ref})
-            return self._resolve_one(nested, registry, seen | {ref})
-        parameter_contents = {key: value for key, value in contents.items() if key != "$ref"}
-        return self.Parameter.model_validate(parameter_contents)
-
-    def resolve_parameter_refs(
-        self,
-        raw_spec: dict[str, Any],
-        params: Sequence[object],
-    ) -> list[ParameterT]:
-        """展开参数序列中的所有内部引用。"""
-        registry = _build_registry(raw_spec)
-        return [self._resolve_one(param, registry, frozenset()) for param in params]
+        msg = f"Expected Parameter, got {type(node).__name__}"
+        raise OpenAPISchemaError(msg)
 
     def _merge_path_item_params(
         self,
         path_item_params: Sequence[object],
         operation_params: Sequence[object],
-        raw_spec: dict[str, Any],
     ) -> list[ParameterT]:
         """合并路径项参数和操作参数，操作级同名参数优先。"""
-        path_resolved = self.resolve_parameter_refs(raw_spec, path_item_params)
-        operation_resolved = self.resolve_parameter_refs(raw_spec, operation_params)
+        path_resolved = [self._resolve_one(parameter) for parameter in path_item_params]
+        operation_resolved = [self._resolve_one(parameter) for parameter in operation_params]
         operation_keys = {self._parameter_key(parameter) for parameter in operation_resolved}
         merged = [parameter for parameter in path_resolved if self._parameter_key(parameter) not in operation_keys]
         merged.extend(operation_resolved)
@@ -314,7 +268,7 @@ class OpenAPIParser[
                     path=str(path),
                     summary=summary if isinstance(summary, str) else None,
                     description=description if isinstance(description, str) else None,
-                    parameters=self._merge_path_item_params(path_params, operation_params, self._raw_spec_dict),
+                    parameters=self._merge_path_item_params(path_params, operation_params),
                     request_body=request_body,
                     responses=responses,
                     spec_version=self.spec_version,
