@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import Any, TypeGuard, cast
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -153,29 +153,21 @@ class OpenAPIParser[
             msg = f"Failed to parse OpenAPI specification: {error}"
             raise ValueError(msg) from error
 
-    def _resolve_one(self, node: object) -> ParameterT:
-        """校验节点是 Parameter（jsonref 上游已展开 ref）。"""
-        if self._is_parameter(node):
-            return node
-        msg = f"Expected Parameter, got {type(node).__name__}"
-        raise OpenAPISchemaError(msg)
-
     def _merge_path_item_params(
         self,
         path_item_params: Sequence[object],
         operation_params: Sequence[object],
     ) -> list[ParameterT]:
         """合并路径项参数和操作参数，操作级同名参数优先。"""
-        path_resolved = [self._resolve_one(parameter) for parameter in path_item_params]
-        operation_resolved = [self._resolve_one(parameter) for parameter in operation_params]
-        operation_keys = {self._parameter_key(parameter) for parameter in operation_resolved}
-        merged = [parameter for parameter in path_resolved if self._parameter_key(parameter) not in operation_keys]
-        merged.extend(operation_resolved)
-        return merged
+        operation_keys = {self._parameter_key(parameter) for parameter in operation_params}
+        merged = [parameter for parameter in path_item_params if self._parameter_key(parameter) not in operation_keys]
+        merged.extend(operation_params)
+        return cast(list[ParameterT], merged)
 
     @staticmethod
-    def _parameter_key(parameter: BaseModel) -> tuple[str, str]:
+    def _parameter_key(parameter: object) -> tuple[str, str]:
         """返回参数覆盖规则使用的 ``(name, in)`` 键。"""
+        assert isinstance(parameter, BaseModel)
         data = parameter.model_dump(mode="json", by_alias=True)
         name = data.get("name", "")
         location = data.get("in", "")
