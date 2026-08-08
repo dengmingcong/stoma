@@ -208,7 +208,7 @@ class OpenAPIParser[
         parameter_contents = {key: value for key, value in contents.items() if key != "$ref"}
         return self.Parameter.model_validate(parameter_contents)
 
-    def _resolve_parameter_refs(
+    def resolve_parameter_refs(
         self,
         raw_spec: dict[str, Any],
         params: Sequence[object],
@@ -224,8 +224,8 @@ class OpenAPIParser[
         raw_spec: dict[str, Any],
     ) -> list[ParameterT]:
         """合并路径项参数和操作参数，操作级同名参数优先。"""
-        path_resolved = self._resolve_parameter_refs(raw_spec, path_item_params)
-        operation_resolved = self._resolve_parameter_refs(raw_spec, operation_params)
+        path_resolved = self.resolve_parameter_refs(raw_spec, path_item_params)
+        operation_resolved = self.resolve_parameter_refs(raw_spec, operation_params)
         operation_keys = {self._parameter_key(parameter) for parameter in operation_resolved}
         merged = [parameter for parameter in path_resolved if self._parameter_key(parameter) not in operation_keys]
         merged.extend(operation_resolved)
@@ -369,42 +369,3 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
         )
     msg = f"Unsupported OpenAPI version: {version}. Only 3.0.x and 3.1.x are supported."
     raise ValueError(msg)
-
-
-def _compatibility_parser() -> OpenAPIParser[OpenAPI31, Reference31, Parameter31, RequestBody31, Response31]:
-    """为保留旧模块级参数解析 helper 构造 3.1 解析器。"""
-    return OpenAPIParser[OpenAPI31, Reference31, Parameter31, RequestBody31, Response31](
-        Path("."),
-        OpenAPI=OpenAPI31,
-        Reference=Reference31,
-        Parameter=Parameter31,
-        RequestBody=RequestBody31,
-        Response=Response31,
-        spec_version="3.1",
-    )
-
-
-def _resolve_one(
-    node: object,
-    registry: Registry[dict[str, Any]],
-    seen: frozenset[str],
-) -> Parameter31:
-    """使用 3.1 模型保留旧模块级单参数引用解析入口。"""
-    return _compatibility_parser()._resolve_one(node, registry, seen)
-
-
-def _resolve_parameter_refs(
-    raw_spec: dict[str, Any],
-    params: Sequence[object],
-) -> list[Parameter31]:
-    """使用 3.1 模型保留旧模块级参数引用解析入口。"""
-    return _compatibility_parser()._resolve_parameter_refs(raw_spec, params)
-
-
-def _merge_path_item_params(
-    path_item_params: Sequence[object],
-    operation_params: Sequence[object],
-    raw_spec: dict[str, Any],
-) -> list[Parameter31]:
-    """使用 3.1 模型保留旧模块级参数合并入口。"""
-    return _compatibility_parser()._merge_path_item_params(path_item_params, operation_params, raw_spec)

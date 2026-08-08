@@ -242,39 +242,53 @@ paths:
     def test_parameter_ref_cycle_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 A ↔ B 环引用被检测并抛 OpenAPISchemaError（绕开 CLI 包装验原始错误）。
 
-        直接调 :func:`_resolve_parameter_refs` 而不走 CLI，是因为 bug 状态下 Reference
+        直接调 :meth:`OpenAPIParser.resolve_parameter_refs` 而不走 CLI，是因为 bug 状态下 Reference
         透传到 renderer 也会触发 AttributeError 让 ``exit_code != 0``，验退出码抓不到
         真正的 cycle 检测逻辑。
         """
         from openapi_pydantic import Reference
 
-        spec = {
-            "components": {
-                "parameters": {
-                    "A": {"$ref": "#/components/parameters/B"},
-                    "B": {"$ref": "#/components/parameters/A"},
-                },
-            },
-        }
-        from src.openapi.parser import _resolve_parameter_refs
+        spec_file = tmp_path / "cycle.yaml"
+        spec_file.write_text(
+            "openapi: 3.1.0\n"
+            "info:\n"
+            "  title: Cycle test\n"
+            '  version: "1.0.0"\n'
+            "paths: {}\n"
+            "components:\n"
+            "  parameters:\n"
+            "    A:\n"
+            "      $ref: '#/components/parameters/B'\n"
+            "    B:\n"
+            "      $ref: '#/components/parameters/A'\n",
+            encoding="utf-8",
+        )
+        parser = make_openapi_parser(spec_file)
+        parser.load()
 
         ref_params: list[Reference] = [Reference.model_validate({"$ref": "#/components/parameters/A"})]
         with pytest.raises(OpenAPISchemaError, match="Cycle detected"):
-            _resolve_parameter_refs(spec, ref_params)
+            parser.resolve_parameter_refs(parser.raw_spec_dict, ref_params)
 
     def test_parameter_ref_external_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证外部 ref（common.yaml#/...）被拒绝并抛 OpenAPISchemaError。
 
-        直接调 :func:`_resolve_parameter_refs` 而不走 CLI，原因同 cycle 测试 —— 验
+        直接调 :meth:`OpenAPIParser.resolve_parameter_refs` 而不走 CLI，原因同 cycle 测试 —— 验
         退出码抓不到 parser 层对 ``#/components/parameters/`` 前缀的检查。
         """
         from openapi_pydantic import Reference
 
-        from src.openapi.parser import _resolve_parameter_refs
+        spec_file = tmp_path / "ext.yaml"
+        spec_file.write_text(
+            'openapi: 3.1.0\ninfo:\n  title: External ref test\n  version: "1.0.0"\npaths: {}\n',
+            encoding="utf-8",
+        )
+        parser = make_openapi_parser(spec_file)
+        parser.load()
 
         ref_params: list[Reference] = [Reference.model_validate({"$ref": "common.yaml#/parameters/X"})]
         with pytest.raises(OpenAPISchemaError, match=r"Unsupported parameter \$ref"):
-            _resolve_parameter_refs({}, ref_params)
+            parser.resolve_parameter_refs(parser.raw_spec_dict, ref_params)
 
     def test_path_item_parameters_merged_with_override(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 path_item 级 + operation 级同名覆盖 + path_item 级独占继承同时工作。
