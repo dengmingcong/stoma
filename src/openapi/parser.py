@@ -3,8 +3,9 @@
 工厂按原始规范中的版本号注入 OpenAPI 3.0 或 3.1 的 Pydantic 模型类，
 解析流程本身由同一个泛型类复用。类型参数统一使用 ``T`` 后缀并约束到
 :class:`pydantic.BaseModel`；构造参数和实例属性则使用无后缀的 PascalCase
-名称，以区分静态类型参数与运行时模型类。跨类型输入通过 ``object`` 和
-``TypeGuard`` 收窄，避免把不同版本的模型合并成 Union。
+名称，以区分静态类型参数与运行时模型类。openapi-pydantic 暴露的
+``Union[Parameter, Reference]`` 等类型与本模块泛型之间通过 ``cast`` 在
+边界处对齐（运行时已由 jsonref 上游保证引用已展开）。
 
 参数层的 ``$ref`` 解析由工厂在上游通过 :func:`src.openapi.model_generator._expand_parameter_refs`
 完成（基于 ``jsonref``），本模块只负责接收已展开的 spec 并做 Pydantic 校验
@@ -16,7 +17,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, TypeGuard, cast
+from typing import Any, cast
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -129,22 +130,6 @@ class OpenAPIParser[
         """返回 paths 中是否包含 JSON 请求体或成功响应。"""
         return self._has_payloads
 
-    def _is_reference(self, node: object) -> TypeGuard[ReferenceT]:
-        """判断节点是否为当前版本的引用模型。"""
-        return isinstance(node, self.Reference)
-
-    def _is_parameter(self, node: object) -> TypeGuard[ParameterT]:
-        """判断节点是否为当前版本的参数模型。"""
-        return isinstance(node, self.Parameter)
-
-    def _is_request_body(self, node: object) -> TypeGuard[RequestBodyT]:
-        """判断节点是否为当前版本的请求体模型。"""
-        return isinstance(node, self.RequestBody)
-
-    def _is_response(self, node: object) -> TypeGuard[ResponseT]:
-        """判断节点是否为当前版本的响应模型。"""
-        return isinstance(node, self.Response)
-
     def load(self) -> None:
         """通过 ``self.OpenAPI`` 校验原始规范字典。"""
         try:
@@ -155,19 +140,18 @@ class OpenAPIParser[
 
     def _merge_path_item_params(
         self,
-        path_item_params: Sequence[object],
-        operation_params: Sequence[object],
+        path_item_params: Sequence[ParameterT],
+        operation_params: Sequence[ParameterT],
     ) -> list[ParameterT]:
         """合并路径项参数和操作参数，操作级同名参数优先。"""
         operation_keys = {self._parameter_key(parameter) for parameter in operation_params}
         merged = [parameter for parameter in path_item_params if self._parameter_key(parameter) not in operation_keys]
         merged.extend(operation_params)
-        return cast(list[ParameterT], merged)
+        return merged
 
     @staticmethod
-    def _parameter_key(parameter: object) -> tuple[str, str]:
+    def _parameter_key(parameter: ParameterT) -> tuple[str, str]:
         """返回参数覆盖规则使用的 ``(name, in)`` 键。"""
-        assert isinstance(parameter, BaseModel)
         data = parameter.model_dump(mode="json", by_alias=True)
         name = data.get("name", "")
         location = data.get("in", "")
@@ -184,13 +168,6 @@ class OpenAPIParser[
         return operations
 
     @staticmethod
-    def _as_sequence(value: object) -> Sequence[object]:
-        """把第三方模型中的可选参数序列规范化为空序列或对象序列。"""
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            return value
-        return ()
-
-    @staticmethod
     def _has_json_schema(node: BaseModel) -> bool:
         """判断请求体或响应是否声明 application/json schema。"""
         content = getattr(node, "content", None)
@@ -198,12 +175,6 @@ class OpenAPIParser[
             return False
         media_type = content.get("application/json")
         return media_type is not None and getattr(media_type, "media_type_schema", None) is not None
-
-    def _response_map(self, value: object) -> dict[str, ResponseT] | None:
-        """收窄操作响应映射中的当前版本响应模型。"""
-        if not isinstance(value, dict):
-            return None
-        return {str(status): response for status, response in value.items() if self._is_response(response)}
 
     def validate_operation_ids(self) -> None:
         """校验所有操作均有非空 ``operationId``。"""
@@ -235,15 +206,23 @@ class OpenAPIParser[
 
         has_payloads = False
         for path, path_item in paths.items():
-            path_params = self._as_sequence(getattr(path_item, "parameters", None))
+            path_params = cast(Sequence[ParameterT], getattr(path_item, "parameters", None) or ())
             for method, operation in self._operations(path_item).items():
                 request_body_node = getattr(operation, "requestBody", None)
-                request_body = request_body_node if self._is_request_body(request_body_node) else None
+                request_body = (
+                    cast(RequestBodyT | None, request_body_node)
+                    if request_body_node is not None
+                    else None
+                )
                 if request_body is not None and self._has_json_schema(request_body):
                     has_payloads = True
 
                 response_nodes = getattr(operation, "responses", None)
-                responses = self._response_map(response_nodes)
+                responses: dict[str, ResponseT] | None = (
+                    cast(dict[str, ResponseT], response_nodes)
+                    if isinstance(response_nodes, dict)
+                    else None
+                )
                 if responses and any(
                     self._has_json_schema(response)
                     for status, response in responses.items()
@@ -254,7 +233,9 @@ class OpenAPIParser[
                 operation_id = getattr(operation, "operationId", None)
                 summary = getattr(operation, "summary", None)
                 description = getattr(operation, "description", None)
-                operation_params = self._as_sequence(getattr(operation, "parameters", None))
+                operation_params = cast(
+                    Sequence[ParameterT], getattr(operation, "parameters", None) or ()
+                )
                 endpoint = Endpoint[ParameterT, RequestBodyT, ResponseT](
                     operation_id=operation_id if isinstance(operation_id, str) else "",
                     method=method,
