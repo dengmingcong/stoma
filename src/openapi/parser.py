@@ -103,6 +103,7 @@ class OpenAPIParser[
         RequestBody: type[RequestBodyT],  # noqa: N803
         Response: type[ResponseT],  # noqa: N803
         spec_version: SpecVersion,
+        raw_spec: dict[str, Any],
     ) -> None:
         """初始化解析器。
 
@@ -113,6 +114,7 @@ class OpenAPIParser[
         :param RequestBody: 当前版本的请求体模型类。
         :param Response: 当前版本的响应模型类。
         :param spec_version: 当前解析器处理的 OpenAPI 主版本。
+        :param raw_spec: 已读取的原始规范字典（由工厂预填充）。
         """
         self.spec_path = Path(spec_path)
         self.OpenAPI = OpenAPI
@@ -121,15 +123,13 @@ class OpenAPIParser[
         self.RequestBody = RequestBody
         self.Response = Response
         self.spec_version = spec_version
-        self._raw_spec_dict: dict[str, Any] | None = None
+        self._raw_spec_dict: dict[str, Any] = raw_spec
         self._spec: OpenAPIT | None = None
         self._has_payloads = False
 
     @property
     def raw_spec_dict(self) -> dict[str, Any]:
         """返回包含未展开 ``$ref`` 的原始规范字典。"""
-        if self._raw_spec_dict is None:
-            raise RuntimeError("call load() first")
         return self._raw_spec_dict
 
     @property
@@ -154,19 +154,9 @@ class OpenAPIParser[
         return isinstance(node, self.Response)
 
     def load(self) -> None:
-        """读取并解析 OpenAPI 规范，但不展开 schema 引用。"""
-        raw_spec = _read_raw_spec(self.spec_path)
-        version = _declared_version(raw_spec)
-        if not version.startswith(("3.0.", "3.1.")):
-            msg = f"Unsupported OpenAPI version: {version}. Only 3.0.x and 3.1.x are supported."
-            raise ValueError(msg)
-        if not version.startswith(f"{self.spec_version}."):
-            msg = f"OpenAPI version mismatch: parser configured for {self.spec_version}, but spec declares {version!r}"
-            raise ValueError(msg)
-
-        self._raw_spec_dict = raw_spec
+        """通过 ``self.OpenAPI`` 校验原始规范字典。"""
         try:
-            self._spec = self.OpenAPI.model_validate(raw_spec)
+            self._spec = self.OpenAPI.model_validate(self._raw_spec_dict)
         except ValidationError as error:
             msg = f"Failed to parse OpenAPI specification: {error}"
             raise ValueError(msg) from error
@@ -346,7 +336,8 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
     :raise ValueError: 规范声明的版本不受支持。
     """
     path = Path(spec_path)
-    version = _declared_version(_read_raw_spec(path))
+    raw_spec = _read_raw_spec(path)
+    version = _declared_version(raw_spec)
     if version.startswith("3.0."):
         return OpenAPIParser[OpenAPI30, Reference30, Parameter30, RequestBody30, Response30](
             path,
@@ -356,6 +347,7 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
             RequestBody=RequestBody30,
             Response=Response30,
             spec_version="3.0",
+            raw_spec=raw_spec,
         )
     if version.startswith("3.1."):
         return OpenAPIParser[OpenAPI31, Reference31, Parameter31, RequestBody31, Response31](
@@ -366,6 +358,7 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
             RequestBody=RequestBody31,
             Response=Response31,
             spec_version="3.1",
+            raw_spec=raw_spec,
         )
     msg = f"Unsupported OpenAPI version: {version}. Only 3.0.x and 3.1.x are supported."
     raise ValueError(msg)
