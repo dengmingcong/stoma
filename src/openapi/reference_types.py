@@ -23,16 +23,32 @@ from __future__ import annotations
 
 from openapi_pydantic.v3.v3_0 import (
     OpenAPI as OpenAPI30,
+)
+from openapi_pydantic.v3.v3_0 import (
     Parameter as Parameter30,
+)
+from openapi_pydantic.v3.v3_0 import (
     Reference as Reference30,
+)
+from openapi_pydantic.v3.v3_0 import (
     RequestBody as RequestBody30,
+)
+from openapi_pydantic.v3.v3_0 import (
     Response as Response30,
 )
 from openapi_pydantic.v3.v3_1 import (
     OpenAPI as OpenAPI31,
+)
+from openapi_pydantic.v3.v3_1 import (
     Parameter as Parameter31,
+)
+from openapi_pydantic.v3.v3_1 import (
     Reference as Reference31,
+)
+from openapi_pydantic.v3.v3_1 import (
     RequestBody as RequestBody31,
+)
+from openapi_pydantic.v3.v3_1 import (
     Response as Response31,
 )
 

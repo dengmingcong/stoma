@@ -110,7 +110,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
     def __init__(
         self,
         *,
-        Reference: type[ReferenceT],
+        Reference: type[ReferenceT],  # noqa: N803
         template_path: str | Path | None = None,
     ) -> None:
         """初始化渲染器。
