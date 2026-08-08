@@ -144,51 +144,80 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
     """
     original_paths = raw_spec.get("paths")
     if not isinstance(original_paths, dict):
+        # 没有 paths 字段时按空 spec 处理：建一个空 dict 占位，方便后续循环不报错。
         original_paths = {}
         raw_spec["paths"] = original_paths
 
+    # ---- 第 1 步：构造合成规范 ----
+    # 合成规范只包含 ``parameters`` 键（path item 级 + 各 operation 级），
+    # 其余键（``requestBody``、``responses`` 等）原样不在合成 spec 中出现，
+    # 因此 jsonref 不会展开它们的 ``$ref``——datamodel-code-generator 仍按
+    # ``components.schemas`` 里的命名规则生成对应的 Pydantic 类。
     synthetic_paths: dict[str, Any] = {}
     for path_key, path_item in original_paths.items():
         if not isinstance(path_item, dict):
+            # path item 不是 dict（如 yaml 里写成了字符串）的容错：跳过。
             continue
         filtered_item: dict[str, Any] = {}
+        # OpenAPI 允许 ``parameters`` 挂在 path item 上（对该路径下所有
+        # operation 生效），这里一并收入合成 spec。
         if "parameters" in path_item:
             filtered_item["parameters"] = path_item["parameters"]
+        # 各 operation（``get``/``post``/``put``/``patch``/``delete``）
+        # 也可能有自己的 ``parameters``，同样收入合成 spec。
         for method_key, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
             if "parameters" in operation:
                 filtered_item[str(method_key)] = {"parameters": operation["parameters"]}
+        # 只有当这个路径至少有一处 ``parameters`` 时才纳入合成 spec。
+        # 没有任何参数的路径加进去只会让 jsonref 多走无意义的分支。
         if filtered_item:
             synthetic_paths[str(path_key)] = filtered_item
 
     synthetic: dict[str, Any] = {
         "paths": synthetic_paths,
+        # ``components`` 必须原样附带：jsonref 通过它解析 ``$ref`` 指向的目标。
+        # body / response 的 ``$ref`` 指向的 schema 也在 ``components.schemas`` 里。
         "components": raw_spec.get("components", {}),
     }
 
+    # ---- 第 2 步：调用 jsonref 一次性展开 ----
+    # ``proxies=False``：直接返回 dict，而不是 JsonRef 代理对象（代理对象
+    # 会让下游 Pydantic 校验失败，因为 Pydantic 不认识代理类型）。
+    # ``lazy_load=False``：立即求值所有 ``$ref``，避免后续访问时的延迟副作用。
     try:
         expanded = jsonref.replace_refs(synthetic, proxies=False, lazy_load=False)
     except jsonref.JsonRefError as exc:
+        # 外部 ref（如 ``common.yaml#/...``）或解析失败——包装为业务异常，
+        # 保留原始异常链便于调试（``from exc``）。
         from src.openapi.parser import OpenAPISchemaError
 
         msg = f"Failed to resolve parameter $ref: {exc}"
         raise OpenAPISchemaError(msg) from exc
 
+    # ---- 第 3 步：回写展开结果到原 raw_spec ----
+    # 仅替换 ``parameters`` 键；其他键（如 ``summary``）保持原样不动。
     expanded_paths: object = expanded["paths"] if isinstance(expanded, dict) else {}
     if not isinstance(expanded_paths, dict):
+        # 防御性 fallback：jsonref 正常情况下总返回 dict，但若上游出错时
+        # 调用方已经在 except 中处理过了，这里只是兜底。
         expanded_paths = {}
 
     for path_key, path_item in expanded_paths.items():
         if not isinstance(path_item, dict):
             continue
+        # 取原 path item 作为写入目标——原 spec 可能还有 ``summary``、
+        # ``description`` 之类的字段需要保留，不能直接覆盖整个 path item。
         target_path_item = original_paths.get(path_key)
         if not isinstance(target_path_item, dict):
             target_path_item = {}
             original_paths[str(path_key)] = target_path_item
+        # 回写 path item 级 ``parameters``（如有）。
         expanded_path_item_params = path_item.get("parameters")
         if expanded_path_item_params is not None:
             target_path_item["parameters"] = expanded_path_item_params
+        # 回写各 operation 级 ``parameters``。
         for method_key, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
@@ -197,8 +226,10 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
                 continue
             target_operation = target_path_item.get(method_key)
             if isinstance(target_operation, dict):
+                # 操作已存在（如有 ``summary``、``description`` 等），只覆盖 ``parameters``。
                 target_operation["parameters"] = expanded_params
             else:
+                # 操作是合成 spec 临时加的（method 没在原 spec 里出现），新建一个最小 dict。
                 target_path_item[str(method_key)] = {"parameters": expanded_params}
 
     return raw_spec
