@@ -197,6 +197,50 @@ class TestExpandParameterRefs:
         ):
             _expand_parameter_refs(spec)
 
+    def test_expand_parameter_refs_resolves_path_item_level_ref(self) -> None:
+        """path item 级 ``parameters`` 中的 ``$ref`` 也应被展开。
+
+        OpenAPI 允许 ``parameters`` 直接挂在 ``paths[/x]`` 上（对所有 method 生效），
+        而非只在 ``paths[/x][<method>]`` 上。回归测试：路径项级 ``$ref`` 必须
+        走到 jsonref，回写后 ``raw_spec`` 中该列表里 ``$ref`` 已替换。
+        """
+        spec: dict[str, Any] = {
+            "paths": {
+                "/items": {
+                    "parameters": [
+                        {"$ref": "#/components/parameters/X-Tenant-ID"},
+                    ],
+                    "get": {
+                        "operationId": "listItems",
+                        "responses": {"200": {"description": "ok"}},
+                    },
+                }
+            },
+            "components": {
+                "parameters": {
+                    "X-Tenant-ID": {
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    },
+                },
+            },
+        }
+
+        result = _expand_parameter_refs(spec)
+
+        expanded = result["paths"]["/items"]["parameters"][0]
+        assert "$ref" not in expanded
+        assert expanded == {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": True,
+            "schema": {"type": "string"},
+        }
+        # operation 级不应被误植 parameters（也没声明过）。
+        assert "parameters" not in result["paths"]["/items"]["get"]
+
 
 class TestDetectParameterCycle:
     """测试 :func:`_detect_parameter_cycle` 参数 ``$ref`` 环检测。"""

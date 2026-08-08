@@ -122,18 +122,21 @@ def _detect_parameter_cycle(raw_spec: dict[str, Any]) -> str | None:
 
 
 def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
-    """在 ``raw_spec`` 内仅展开 ``paths[*]`` 下操作级 ``parameters`` 中的 ``$ref``。
+    """在 ``raw_spec`` 内仅展开 ``paths[*]`` 下 ``parameters`` 中的 ``$ref``。
 
-    构造一份合成规范，仅保留每个操作的 ``parameters`` 键（丢弃
-    ``requestBody``、``responses``、``summary``、``description``、``security`` 等），
+    OpenAPI 允许 ``parameters`` 出现在两个层级：
+    path item 级（直接挂在 ``paths[/x]`` 上，对该路径下所有 operation 生效）
+    和 operation 级（挂在 ``paths[/x][<method>]`` 上）。两者都会被纳入合成规范
+    并展开，而 ``requestBody``、``responses``、``summary``、``description``、``security`` 等键被丢弃，
     原样附带 ``components``，交给 :func:`jsonref.replace_refs` 立即解析。
     ``requestBody`` 和 ``responses`` 中的 ``$ref`` 字符串因此原封不动地留在
     原 ``raw_spec`` 中——datamodel-code-generator 会自行处理它们。
 
-    解析结果以每个方法为单位回写到 ``raw_spec`` 的对应方法上，仅替换
-    ``parameters`` 键，其余字段保持不变。``jsonref.JsonRefError``（例如
-    指向外部文件且无法解析的 ``$ref``）会被包装为
-    :class:`OpenAPISchemaError` 抛出。
+    解析结果以 path item 和 method 两个维度回写到 ``raw_spec``：
+    path item 级 ``parameters`` 直接落到 ``raw_spec["paths"][<path>]["parameters"]``，
+    operation 级 ``parameters`` 落到对应方法上；其余字段保持不变。
+    ``jsonref.JsonRefError``（例如指向外部文件且无法解析的 ``$ref``）
+    会被包装为 :class:`OpenAPISchemaError` 抛出。
 
     :param raw_spec: 待修改的 OpenAPI 规范字典（会被就地修改）。
     :return: 修改后的 ``raw_spec``。
@@ -149,6 +152,8 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(path_item, dict):
             continue
         filtered_item: dict[str, Any] = {}
+        if "parameters" in path_item:
+            filtered_item["parameters"] = path_item["parameters"]
         for method_key, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
@@ -181,6 +186,9 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(target_path_item, dict):
             target_path_item = {}
             original_paths[str(path_key)] = target_path_item
+        expanded_path_item_params = path_item.get("parameters")
+        if expanded_path_item_params is not None:
+            target_path_item["parameters"] = expanded_path_item_params
         for method_key, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
