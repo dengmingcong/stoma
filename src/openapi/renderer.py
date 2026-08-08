@@ -156,7 +156,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         file_name = f"{to_snake(operation_id)}.py"
         response_type = self._extract_response_info(endpoint.responses, endpoint)
         request_body_type = self._extract_request_body_info(endpoint.request_body, endpoint)
-        header_fields, param_fields = self._extract_params(endpoint.parameters, endpoint)
+        header_fields, param_fields = self._extract_params(endpoint.parameters)
 
         imported_models = list(dict.fromkeys(t for t in (response_type, request_body_type) if t))
 
@@ -179,14 +179,10 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
     def _extract_params(
         self,
         parameters: list[Any],
-        endpoint: Endpoint[Any, Any, Any],
     ) -> tuple[list[str], list[str]]:
         """提取参数信息（query/header/path），仍由 renderer 渲染为字段声明。
 
         :param parameters: OpenAPI 参数列表。
-        :param endpoint: 当前 :class:`Endpoint` IR 对象；保留参数以对齐
-            :meth:`_extract_request_body_info` / :meth:`_extract_response_info`
-            的调用契约。
         :return: ``(Header 字段声明列表, Query/Path 字段声明列表)``。
         """
         header_fields: list[str] = []
