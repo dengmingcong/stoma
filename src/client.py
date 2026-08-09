@@ -251,40 +251,30 @@ class Client:
     ) -> APIResponse:
         """用 self._context 发送 HTTP 请求。
 
+        统一通过 Playwright ``fetch`` 入口发送任意 HTTP 方法请求。
         Playwright 自动处理：
         - base_url 拼接（在 context 创建时设置）
         - query string 拼接（通过 params 参数）
         - body 序列化为 JSON 并设置 Content-Type: application/json（通过 data=dict）
 
-        :param method: HTTP 方法。
+        :param method: HTTP 方法（支持 GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS/TRACE 等）。
         :param path: 相对路径。
         :param params: 查询参数 dict。
         :param headers: 请求头 dict。
         :param data: body dict（Playwright 自动序列化为 JSON）。
         :return: Playwright APIResponse 对象。
-        :raise HTTPError: 网络层失败。
+        :raise HTTPError: 网络层失败时抛出，消息包含 method/path 便于排错。
         """
-        method_map = {
-            "GET": self._context.get,
-            "POST": self._context.post,
-            "PUT": self._context.put,
-            "PATCH": self._context.patch,
-            "DELETE": self._context.delete,
-        }
-        request_method = method_map.get(method)
-        if request_method is None:
-            msg = f"不支持的 HTTP 方法: {method}"
-            raise HTTPError(msg)
-
         try:
-            return request_method(
+            return self._context.fetch(
                 path,
+                method=method,
                 params=params if params else None,
                 headers=headers if headers else None,
                 data=data,
             )
         except Exception as e:
-            msg = f"HTTP 请求失败: {e}"
+            msg = f"HTTP 请求失败 ({method} {path}): {e}"
             raise HTTPError(msg) from e
 
     # ===== 私有方法：构造响应 =====

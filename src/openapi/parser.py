@@ -168,7 +168,7 @@ class OpenAPIParser[
     def _operations(path_item: object) -> dict[str, object]:
         """返回路径项中受支持的 HTTP 操作。"""
         operations: dict[str, object] = {}
-        for method in ("get", "post", "put", "patch", "delete"):
+        for method in ("get", "post", "put", "patch", "delete", "head", "options", "trace"):
             operation = getattr(path_item, method, None)
             if operation is not None:
                 operations[method] = operation
@@ -244,7 +244,7 @@ class OpenAPIParser[
                 )
                 endpoint = Endpoint[ParameterT, RequestBodyT, ResponseT](
                     operation_id=operation_id if isinstance(operation_id, str) else "",
-                    method=method,
+                    method=method.upper(),
                     path=str(path),
                     summary=summary if isinstance(summary, str) else None,
                     description=description if isinstance(description, str) else None,

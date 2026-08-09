@@ -196,7 +196,7 @@ class APIRoute[T](BaseModel):
 
 def api_route_decorator[T: APIRoute](
     *,
-    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"],
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"],
     path: str,
 ) -> Callable[[type[T]], type[T]]:
     """类装饰器工厂函数，用于注入路由元数据到接口类。
@@ -204,8 +204,8 @@ def api_route_decorator[T: APIRoute](
     在类定义处通过装饰器语法传入 HTTP 方法和路径。
     被装饰的类必须继承自 APIRoute。
 
-    :param method: HTTP 方法，必须是 GET、POST、PUT、PATCH、DELETE 之一。
-    :type method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
+    :param method: HTTP 方法，必须是 GET、POST、PUT、PATCH、DELETE、HEAD、OPTIONS、TRACE 之一。
+    :type method: Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"]
     :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
     :type path: str
     :return: 类装饰器函数，接收并返回 APIRoute 子类。
@@ -241,7 +241,7 @@ def api_route_decorator[T: APIRoute](
 class APIRouter:
     """路由器，提供便捷的路由装饰器方法。
 
-    提供类似 FastAPI 风格的路由装饰器方法（get/post/put/patch/delete），
+    提供类似 FastAPI 风格的路由装饰器方法（get/post/put/patch/delete/head/options/trace），
     简化接口定义语法。
 
     Example::
@@ -258,6 +258,18 @@ class APIRouter:
         class CreateUser(APIRoute[UserData]):
             name: str
             email: str
+
+        @router.head("/users")
+        class HeadUsers(APIRoute[dict]):
+            pass
+
+        @router.options("/users")
+        class OptionsUsers(APIRoute[dict]):
+            pass
+
+        @router.trace("/users")
+        class TraceUsers(APIRoute[dict]):
+            pass
     """
 
     def get[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
@@ -345,3 +357,51 @@ class APIRouter:
                 user_id: Annotated[int, Path()]
         """
         return api_route_decorator(method="DELETE", path=path)
+
+    def head[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+        """HEAD 请求装饰器。
+
+        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :type path: str
+        :return: 类装饰器函数。
+        :rtype: Callable[[type[T]], type[T]]
+
+        Example::
+
+            @router.head("/users")
+            class HeadUsers(APIRoute[dict]):
+                pass
+        """
+        return api_route_decorator(method="HEAD", path=path)
+
+    def options[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+        """OPTIONS 请求装饰器。
+
+        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :type path: str
+        :return: 类装饰器函数。
+        :rtype: Callable[[type[T]], type[T]]
+
+        Example::
+
+            @router.options("/users")
+            class OptionsUsers(APIRoute[dict]):
+                pass
+        """
+        return api_route_decorator(method="OPTIONS", path=path)
+
+    def trace[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+        """TRACE 请求装饰器。
+
+        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :type path: str
+        :return: 类装饰器函数。
+        :rtype: Callable[[type[T]], type[T]]
+
+        Example::
+
+            @router.trace("/users")
+            class TraceUsers(APIRoute[dict]):
+                pass
+        """
+        return api_route_decorator(method="TRACE", path=path)

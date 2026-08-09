@@ -48,7 +48,7 @@ class Dependant:
     表示一个路由端点的完整元数据，包含路由信息和参数依赖分析结果。
     `frozen=True` 确保对象不可变，线程安全。
 
-    :var method: HTTP 方法（GET、POST、PUT、PATCH、DELETE 等）。
+    :var method: HTTP 方法（GET / POST / PUT / PATCH / DELETE / HEAD / OPTIONS / TRACE）。
     :vartype method: str
     :var path: 路由路径，如 /users/{user_id}。
     :vartype path: str
