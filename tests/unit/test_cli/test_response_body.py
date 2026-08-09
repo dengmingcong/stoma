@@ -968,3 +968,134 @@ components:
         assert "APIRoute[User | GetXResponse | GetXResponse1]" in route
         # import 行同步列出全部三个,顺序与泛型一致。
         assert "from .models import User, GetXResponse, GetXResponse1" in route
+
+    def test_response_with_only_error_status_codes_generates_models(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证仅有 4xx/5xx JSON 响应（无 200/201）时仍生成 ``models.py`` 与对应 route import。
+
+        行为契约：
+        - spec 仅声明 ``400`` + ``500`` 两种 JSON 响应、没有 ``200``/``201`` 成功
+          响应,且 ``components.schemas`` 故意为空（只有 ``$ref`` 指向的占位
+          名）——目的是把模型生成的唯一开关留给 ``parser.has_payloads``,
+          而不是 ``components.schemas`` 兜底分支。
+        - ``parser.has_payloads`` 必须为 ``True``（与 renderer 对所有 JSON status
+          一视同仁保持一致）,CLI 必须生成 ``models.py``,并由 route 文件引用
+          两个错误模型。
+        - 这是 ``src/openapi/parser.py:get_endpoints`` 中 ``has_payloads`` 过滤器
+          从 ``{"200", "201"}`` 改为"全部 status"后的一致性回归锁。
+        - 防御：若 ``has_payloads`` 过滤器未更新,CLI 会跳过 ``models.py``
+          生成,但 route 仍生成 ``from .models import Error, ServerError`` ——导入
+          指向不存在的文件,运行时 ``ImportError``。本测试在生成阶段就拦截
+          这种「silent missing import」漂移。
+
+        设计说明：
+        - ``$ref`` 指向 ``#/components/schemas/Error`` 等是 *dangling ref*;
+          openapi-pydantic 加载期不验证,datamodel-code-generator 会发出
+          ``DanglingRefWarning`` 并生成 ``class Error(RootModel[Any])`` 占位,
+          满足断言 ``class Error in models`` / ``class ServerError in models``。
+        - 这样 spec 仍然合法、可加载,但 ``components.schemas`` 是空 dict,
+          ``schemas = {} or has_payloads`` 中只有 ``has_payloads=True`` 才能
+          让 CLI 生成 ``models.py``。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Error-Only Response API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      summary: 获取用户
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "400":
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerError'
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        # ``has_payloads`` 为 True 时 CLI 必须生成 ``models.py``,包含两个错误类。
+        assert (out_dir / "models.py").exists(), (
+            "models.py 未生成 ——parser.has_payloads 在仅有错误响应时仍为 False,"
+            "CLI 跳过了 generate_models 调用"
+        )
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+        assert "class Error" in models
+        assert "class ServerError" in models
+        # route.py 引用两个错误模型(顺序对齐 spec 出现顺序:Error 在前,ServerError 在后)。
+        route = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        assert "APIRoute[Error | ServerError]" in route
+        assert "from .models import Error, ServerError" in route
+
+    def test_parser_has_payloads_true_when_only_error_responses(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """直接走 parser 探测 ``has_payloads``,验证错误响应纳入判定。
+
+        行为契约：
+        - 与 ``test_response_with_only_error_status_codes_generates_models``
+          互补,直接走 ``make_openapi_parser`` 验证 ``parser.has_payloads``
+          属性值,避免 CLI 副作用掩盖判定错误。
+        - 这是 MUST DO 中的「Probe misleading-success-output」步骤。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Error-Only Parser Probe
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      summary: 获取用户
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "400":
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerError'
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+
+        parser = make_openapi_parser(spec_file)
+        parser.load()
+        # ``get_endpoints()`` 必须先调,``has_payloads`` 由它内部计算。
+        parser.get_endpoints()
+        assert parser.has_payloads is True, (
+            "parser.has_payloads 应为 True ——4xx/5xx JSON 响应必须纳入判定"
+        )

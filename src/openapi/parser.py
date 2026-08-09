@@ -127,7 +127,14 @@ class OpenAPIParser[
 
     @property
     def has_payloads(self) -> bool:
-        """返回 paths 中是否包含 JSON 请求体或成功响应。"""
+        """返回 paths 中是否包含 JSON 请求体或任意状态码的 JSON 响应。
+
+        响应侧判定遍历所有 ``responses`` 键,数字状态码与 ``default`` 一视同仁,
+        与 :meth:`src.openapi.renderer.EndpointRenderer._extract_response_info` 的
+        收集范围保持一致——4xx/5xx 错误响应同样能触发 ``models.py`` 生成,
+        避免 renderer 输出 ``from .models import Error`` 而 ``models.py``
+        未生成的 silent missing import。
+        """
         return self._has_payloads
 
     def load(self) -> None:
@@ -225,8 +232,7 @@ class OpenAPIParser[
                 )
                 if responses and any(
                     self._has_json_schema(response)
-                    for status, response in responses.items()
-                    if status in {"200", "201"}
+                    for response in responses.values()
                 ):
                     has_payloads = True
 
