@@ -72,7 +72,7 @@ class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseMo
 
     :var operation_id: OpenAPI ``operationId``，作为生成文件名的依据。
     :vartype operation_id: str
-    :var method: HTTP 方法（``GET`` / ``POST`` / ``PUT`` / ``PATCH`` / ``DELETE`` / ``HEAD`` / ``OPTIONS`` / ``TRACE``）。
+    :var method: HTTP 方法（``GET``/``POST``/``PUT``/``PATCH``/``DELETE``/``HEAD``/``OPTIONS``/``TRACE``）。
     :vartype method: str
     :var path: OpenAPI 路径模板（包含 ``{param}`` 占位符）。
     :vartype path: str
