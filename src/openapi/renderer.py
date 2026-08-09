@@ -159,7 +159,11 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         request_body_type = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields = self._extract_params(endpoint.parameters)
 
-        imported_models = list(dict.fromkeys(t for t in (response_type, request_body_type) if t))
+        # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
+        models_for_import: list[str] = list(response_type)
+        if request_body_type:
+            models_for_import.append(request_body_type)
+        imported_models: list[str] = list(dict.fromkeys(models_for_import))
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
         rendered_code = template.render(
@@ -253,38 +257,52 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         self,
         responses: dict[str, Any] | None,
         endpoint: Endpoint[Any, Any, Any],
-    ) -> str:
-        """提取响应对应的模型名（同时也是要从 ``.models`` 导入的类名）。
+    ) -> list[str]:
+        """提取响应模型名列表（也是要从 ``.models`` 导入的类名集合）。
 
-        ``$ref`` 路径取末段并 PascalCase 化（对齐 ``datamodel-code-generator``
-        对 ``components.schemas`` key 的自动 PascalCase 行为，例如
-        ``user-profile`` → ``UserProfile``）；inline object 路径派生为
-        ``{PascalOpId}Response``（对齐 ``datamodel-code-generator`` 的
-        ``use_operation_id_as_name=True`` —— ``datamodel-code-generator``
-        在该模式下对 inline response 用 ``{operationId}Response`` 命名）。
+        遍历 ``responses`` 的所有键（数字状态码与 ``default`` 一视同仁），
+        按字典插入顺序处理；没有 ``application/json`` 内容的响应会被跳过。
+        命名规则：
 
-        :param responses: OpenAPI 响应字典（状态码 → Response 对象）。
+        - ``$ref`` 路径：取末段并 PascalCase 化（对齐 ``datamodel-code-generator``
+          对 ``components.schemas`` key 的自动 PascalCase 行为，例如
+          ``user-profile`` → ``UserProfile``），不消耗 inline 计数器。
+        - Inline 对象：按出现顺序使用 ``{PascalOpId}Response``、
+          ``{PascalOpId}Response1``、``{PascalOpId}Response2`` 命名（对齐
+          ``datamodel-code-generator`` 的 ``use_operation_id_as_name=True``
+          —— 该模式下多状态 inline response 按递增后缀区分）。
+
+        返回结果按 ``responses`` 迭代顺序保序，重复项用 ``dict.fromkeys``
+        去重（保留首次出现的相对位置）。
+
+        :param responses: OpenAPI 响应字典（状态码 → Response 对象），可为
+            ``None`` 或空。
         :param endpoint: 当前 :class:`Endpoint` IR 对象。
-        :return: 响应模型名；无 200/201 响应 / 无 application/json 时返回
-            空字符串（无响应不需要 import）。
+        :return: 响应模型名列表，无任何可命名响应时返回空列表。
         """
         if not responses:
-            return ""
+            return []
 
-        response_200 = responses.get("200") or responses.get("201")
-        if not response_200:
-            return ""
+        operation_id_pascal = _to_pascal_case(endpoint.operation_id)
+        inline_counter = 0
+        ordered_names: list[str] = []
 
-        content = response_200.content or {}
-        json_content = content.get("application/json")
-        if not json_content:
-            return ""
+        for response in responses.values():
+            content = getattr(response, "content", None) or {}
+            json_content = content.get("application/json")
+            if not json_content:
+                continue
+            schema = getattr(json_content, "media_type_schema", None)
+            if self._is_reference(schema):
+                ordered_names.append(_to_pascal_case(schema.ref.rsplit("/", 1)[-1]))
+                continue
+            inline_counter += 1
+            if inline_counter == 1:
+                ordered_names.append(f"{operation_id_pascal}Response")
+            else:
+                ordered_names.append(f"{operation_id_pascal}Response{inline_counter - 1}")
 
-        schema = getattr(json_content, "media_type_schema", None)
-
-        if self._is_reference(schema):
-            return _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
-        return f"{_to_pascal_case(endpoint.operation_id)}Response"
+        return list(dict.fromkeys(ordered_names))
 
 
 def make_endpoint_renderer(spec_version: SpecVersion) -> EndpointRenderer[Any]:
