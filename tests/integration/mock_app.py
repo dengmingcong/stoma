@@ -196,15 +196,15 @@ async def create_multi(request: Request) -> dict[str, Any]:
 
 @app.head("/probe")
 def probe_head() -> Response:
-    """HEAD /probe：探测端点，FastAPI/Starlette 会丢弃 body，只返回 headers。
+    """HEAD /probe：探测端点，验证 HEAD 方法支持。
 
-    Starlette 内置行为：HEAD 请求自动移除 body 并设置 Content-Length。
-    返回 200 + 空 body，依赖 status code 验证。
+    HEAD 请求不返回 body（Starlette 自动丢弃）。
+    使用无 content-type 的 Response，避免 Client 尝试解析 JSON。
     """
-    return Response(content=b"", status_code=200)
+    return Response(status_code=200)
 
 
 @app.options("/probe")
-def probe_options() -> dict[str, str]:
-    """OPTIONS /probe：探测端点，返回允许的方法列表。"""
-    return {"method": "OPTIONS"}
+def probe_options() -> JSONResponse:
+    """OPTIONS /probe：探测端点，验证 OPTIONS 方法支持。"""
+    return JSONResponse(content={"method": "OPTIONS"}, status_code=200)

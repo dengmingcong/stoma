@@ -157,6 +157,16 @@ class HealthCheck(APIRoute):
     status: str = "ok"
 
 
+@router.head("/probe")
+class ProbeHead(APIRoute[dict[str, str]]):
+    pass
+
+
+@router.options("/probe")
+class ProbeOptions(APIRoute[dict[str, str]]):
+    pass
+
+
 @pytest.fixture
 def api_context(mock_server: Any) -> Any:
     """创建 Playwright APIRequestContext（使用 mock_server 提供 base_url）。"""
@@ -579,6 +589,29 @@ class TestAPIRouteWithoutGeneric:
         assert dependant.path == "/health"
         assert len(dependant.query_params) == 1
         assert dependant.query_params[0].name == "status"
+
+
+class TestAllMethodsSend:
+    """验证 HEAD/OPTIONS 方法的端到端发送。"""
+
+    def test_head_e2e(self, client: Client) -> None:
+        """验证 HEAD /probe 端到端发送。
+
+        Starlette 对 HEAD 请求自动丢弃 body，只保留 headers。
+        因此只验证 status code，不验证 body。
+        """
+        endpoint = ProbeHead()
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+
+    def test_options_e2e(self, client: Client) -> None:
+        """验证 OPTIONS /probe 端到端发送。"""
+        endpoint = ProbeOptions()
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {"method": "OPTIONS"}
 
 
 if __name__ == "__main__":
