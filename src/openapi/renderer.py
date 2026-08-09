@@ -157,7 +157,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         file_name = f"{to_snake(operation_id)}.py"
         response_type = self._extract_response_info(endpoint.responses, endpoint)
         request_body_type = self._extract_request_body_info(endpoint.request_body, endpoint)
-        header_fields, param_fields = self._extract_params(endpoint.parameters)
+        header_fields, param_fields, uses_field_import = self._extract_params(endpoint.parameters)
 
         # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
         models_for_import: list[str] = list(response_type)
@@ -178,20 +178,25 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             header_fields=header_fields,
             param_fields=param_fields,
             imported_models=imported_models,
+            uses_field_import=uses_field_import,
         )
         return file_name, rendered_code
 
     def _extract_params(
         self,
         parameters: list[Any],
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[str], bool]:
         """提取参数信息（query/header/path），仍由 renderer 渲染为字段声明。
 
         :param parameters: OpenAPI 参数列表。
-        :return: ``(Header 字段声明列表, Query/Path 字段声明列表)``。
+        :return: ``(Header 字段声明列表, Query/Path 字段声明列表, uses_field_import)``。
+            ``uses_field_import`` 为 ``True`` 时表示存在至少一个非 snake_case
+            参数，其字段声明会引用 ``Field(serialization_alias=...)``，
+            渲染时需要在模板里加上 ``from pydantic import Field`` 导入。
         """
         header_fields: list[str] = []
         param_fields: list[str] = []
+        uses_field_import = False
 
         for param in parameters:
             name = param.name or ""
@@ -214,6 +219,9 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 raise OpenAPISchemaError(msg)
             param_type = _map_json_schema_type(str(json_type))
 
+            if not _is_snake_case(name):
+                uses_field_import = True
+
             field_line = _build_param_field_line(name, param_type, required, location)
 
             if location == "header":
@@ -221,7 +229,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             else:
                 param_fields.append(field_line)
 
-        return header_fields, param_fields
+        return header_fields, param_fields, uses_field_import
 
     def _extract_request_body_info(
         self,
@@ -346,8 +354,25 @@ def _build_param_field_line(
 ) -> str:
     """构建参数（query / path / header）字段声明字符串。
 
-    Header 字段使用 ``Annotated[..., Header()]``；非 snake_case 参数名
-    转 snake_case 后保留原名作为 ``serialization_alias``。
+    使用 FastAPI 推荐的 ``Annotated[...]`` 形式：所有 metadata
+    （``Header()`` / ``Field(serialization_alias=...)``）放进
+    ``Annotated[...]`` 内，只在可选字段上保留 ``= None`` 默认值。
+
+    八种分支形态：
+
+    - header × required × snake: ``name: Annotated[T, Header()]``
+    - header × required × non-snake:
+      ``name: Annotated[T, Header(), Field(serialization_alias='X')]``
+    - header × optional × snake:
+      ``name: Annotated[T | None, Header()] = None``
+    - header × optional × non-snake:
+      ``name: Annotated[T | None, Header(), Field(serialization_alias='X')] = None``
+    - query/path × required × snake: ``name: T``
+    - query/path × required × non-snake:
+      ``name: Annotated[T, Field(serialization_alias='X')]``
+    - query/path × optional × snake: ``name: T | None = None``
+    - query/path × optional × non-snake:
+      ``name: Annotated[T | None, Field(serialization_alias='X')] = None``
 
     :param name: 原始 OpenAPI 参数名。
     :param param_type: Python 类型字符串。
@@ -360,15 +385,19 @@ def _build_param_field_line(
     field_name = name if is_snake else _to_field_name(name)
 
     base_type = param_type if required else f"{param_type} | None"
-    annotation = f"Annotated[{base_type}, Header()]" if is_header else base_type
 
-    if is_snake:
-        default = "" if required else " = None"
-    elif required:
-        default = f" = Field(serialization_alias={name!r})"
+    metadata: list[str] = []
+    if is_header:
+        metadata.append("Header()")
+    if not is_snake:
+        metadata.append(f"Field(serialization_alias={name!r})")
+
+    if metadata:
+        annotation = f"Annotated[{base_type}, {', '.join(metadata)}]"
     else:
-        default = f" = Field(default=None, serialization_alias={name!r})"
+        annotation = base_type
 
+    default = "" if required else " = None"
     return f"{field_name}: {annotation}{default}"
 
 

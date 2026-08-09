@@ -39,6 +39,10 @@ class Param:
 
     Example::
 
+        # ✅ 推荐写法（FastAPI 官方示例）：metadata 全部放进 ``Annotated[...]``
+        authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]
+
+        # ✅ 兼容写法（旧代码示例）：``Field()`` 放在 ``=`` 右侧，Pydantic v2 同样支持
         authorization: Annotated[str, Header()] = Field(alias="Authorization")
     """
 
@@ -52,7 +56,11 @@ class Path(Param):
 
     Example::
 
+        # ✅ 推荐写法：``Annotated[T, Path()]``
         user_id: Annotated[int, Path()]
+
+        # ✅ 兼容写法：``Annotated[T, Path()] = Field(...)``
+        user_id: Annotated[int, Path()] = Field(ge=1)
     """
 
     in_ = ParamTypes.path
@@ -65,6 +73,10 @@ class Query(Param):
 
     Example::
 
+        # ✅ 推荐写法：``Annotated[T, Query(), Field(...)]``
+        limit: Annotated[int, Query(), Field(ge=1, le=100)]
+
+        # ✅ 兼容写法：``Annotated[T, Query()] = Field(...)``
         limit: Annotated[int, Query()] = Field(ge=1, le=100)
     """
 
@@ -78,6 +90,10 @@ class Header(Param):
 
     Example::
 
+        # ✅ 推荐写法：``Annotated[T, Header(), Field(serialization_alias=...)]``
+        authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]
+
+        # ✅ 兼容写法：``Annotated[T, Header()] = Field(alias=...)``
         authorization: Annotated[str, Header()] = Field(alias="Authorization")
     """
 
@@ -97,8 +113,12 @@ class Body(Param):
             name: str
             email: str
 
+        # ✅ 推荐写法：``Annotated[T, Body()]``
         body: Annotated[UserCreateRequest, Body()]
         data: Annotated[User, Body(embed=True)]
+
+        # ✅ 兼容写法：``Annotated[T, Body()] = Field(...)``
+        body: Annotated[UserCreateRequest, Body()] = Field(description="请求体")
     """
 
     in_ = ParamTypes.body

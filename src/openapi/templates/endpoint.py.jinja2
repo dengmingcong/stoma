@@ -8,10 +8,10 @@ from __future__ import annotations
 {% if imported_models -%}
 from .models import {{ imported_models | join(', ') }}
 {% endif -%}
-{% if header_fields or request_body_type -%}
+{% if header_fields or request_body_type or uses_field_import -%}
 from typing import Annotated
 {% endif -%}
-{% if header_fields -%}
+{% if uses_field_import -%}
 from pydantic import Field
 {% endif %}
 from stoma import APIRouter, APIRoute{% if header_fields %}, Header{% endif %}{% if request_body_type %}, Body{% endif %}

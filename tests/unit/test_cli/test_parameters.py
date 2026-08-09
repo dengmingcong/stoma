@@ -106,11 +106,11 @@ paths:
         # models 来自 .models 导入，所以这里只需要 Field（不再内联 BaseModel 定义）。
         assert "from pydantic import Field" in content
         assert "from typing import Annotated" in content
-        # required header 参数：转为 snake_case + Field(serialization_alias=...)
-        assert "authorization: Annotated[str, Header()] = Field(serialization_alias='Authorization')" in content
-        # non-required header 参数：转为 snake_case + Field(default=None, serialization_alias=...)
+        # required header 参数：转为 snake_case + Annotated[..., Header(), Field(serialization_alias=...)]
+        assert "authorization: Annotated[str, Header(), Field(serialization_alias='Authorization')]" in content
+        # non-required header 参数：转为 snake_case + Annotated[..., Header(), Field(serialization_alias=...)] = None
         assert (
-            "x_request_id: Annotated[str | None, Header()] = Field(default=None, serialization_alias='X-Request-ID')"
+            "x_request_id: Annotated[str | None, Header(), Field(serialization_alias='X-Request-ID')] = None"
             in content
         )
 
@@ -409,11 +409,11 @@ paths:
         content = (out_dir / "list_items.py").read_text(encoding="utf-8")
         # 1. operation 级覆盖 path_item 级 X-Tenant-ID（required=False）
         assert (
-            "x_tenant_id: Annotated[str | None, Header()] = Field(default=None, serialization_alias='X-Tenant-ID')"
+            "x_tenant_id: Annotated[str | None, Header(), Field(serialization_alias='X-Tenant-ID')] = None"
             in content
         )
         # 2. path_item 级 Authorization 被 operation 继承（required=True）
-        assert "authorization: Annotated[str, Header()] = Field(serialization_alias='Authorization')" in content
+        assert "authorization: Annotated[str, Header(), Field(serialization_alias='Authorization')]" in content
         # 3. operation 级独有的 q
         assert "q: str | None = None" in content
 
@@ -453,4 +453,4 @@ paths:
         assert result.exit_code == 0, result.output
         content = (out_dir / "list_items.py").read_text(encoding="utf-8")
         # 继承 path_item 级，required=True → str（无 | None，无 default）
-        assert "x_tenant_id: Annotated[str, Header()] = Field(serialization_alias='X-Tenant-ID')" in content
+        assert "x_tenant_id: Annotated[str, Header(), Field(serialization_alias='X-Tenant-ID')]" in content
