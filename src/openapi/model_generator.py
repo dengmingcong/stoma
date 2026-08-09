@@ -163,7 +163,7 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
         # operation 生效），这里一并收入合成 spec。
         if "parameters" in path_item:
             filtered_item["parameters"] = path_item["parameters"]
-        # 各 operation（``get``/``post``/``put``/``patch``/``delete``）
+        # 各 operation（``GET``/``POST``/``PUT``/``PATCH``/``DELETE``/``HEAD``/``OPTIONS``/``TRACE``）
         # 也可能有自己的 ``parameters``，同样收入合成 spec。
         for method_key, operation in path_item.items():
             if not isinstance(operation, dict):
