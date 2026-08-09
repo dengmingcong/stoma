@@ -1,0 +1,53 @@
+openapi: 3.1.0
+info:
+  title: All HTTP Methods Test
+  version: 1.0.0
+paths:
+  /opGet:
+    get:
+      operationId: opGet
+      responses:
+        '200':
+          description: OK
+  /opPost:
+    post:
+      operationId: opPost
+      responses:
+        '201':
+          description: Created
+  /opPut:
+    put:
+      operationId: opPut
+      responses:
+        '200':
+          description: OK
+  /opPatch:
+    patch:
+      operationId: opPatch
+      responses:
+        '200':
+          description: OK
+  /opDelete:
+    delete:
+      operationId: opDelete
+      responses:
+        '204':
+          description: No Content
+  /opHead:
+    head:
+      operationId: opHead
+      responses:
+        '200':
+          description: OK
+  /opOptions:
+    options:
+      operationId: opOptions
+      responses:
+        '200':
+          description: OK
+  /opTrace:
+    trace:
+      operationId: opTrace
+      responses:
+        '200':
+          description: OK

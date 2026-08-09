@@ -169,7 +169,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         rendered_code = template.render(
             operation_id=endpoint.operation_id,
             class_name=class_name,
-            method=endpoint.method,
+            method=endpoint.method.lower(),
             path=endpoint.path,
             summary=endpoint.summary,
             description=endpoint.description,
