@@ -502,3 +502,469 @@ components:
         # route.py 正确引用包装类。
         assert "APIRoute[GetRecordResponse]" in route
         assert "from .models import GetRecordResponse" in route
+
+    def test_response_with_multiple_status_codes_union(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 200 ``$ref: User`` + 404 ``$ref: Error`` 时 route 泛型合并成 Union。
+
+        行为契约：
+        - ``responses`` 字典按 OpenAPI spec 顺序收集所有 JSON status 的模型名。
+        - 拼接为 PEP 604 ``A | B`` 形式作为 ``APIRoute[...]`` 泛型参数。
+        - ``from .models import`` 行必须同时包含 ``User`` 和 ``Error``。
+        - 顺序以 spec 里 status 的书写顺序为准（200 先于 404）。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Multi-Status Union API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      summary: 获取用户
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "404":
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+    Error:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        route = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        # 泛型拼接为 PEP 604 union，按 spec 顺序 ``User`` 在 ``Error`` 前。
+        assert "APIRoute[User | Error]" in route
+        # import 行包含两个模型名（顺序亦对齐 spec 出现顺序）。
+        assert "from .models import User, Error" in route
+        # 防御：当前实现若把 ``response_type`` 当字符串迭代（``U | s | e | r`` 之类）
+        # 而不是真正的 Union，会被这两个断言同时挡下。
+        assert "U | s | e | r" not in route
+
+    def test_response_with_duplicate_status_codes_dedup(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 200 ``$ref: User`` + 201 ``$ref: User`` 时 Union 去重。
+
+        行为契约：
+        - 同一模型名出现在多个 status 时，``APIRoute[...]`` 泛型里只出现一次。
+        - ``from .models import`` 行只 import ``User`` 一次（不重复出现 ``User, User``）。
+        - 不允许出现 ``User | User`` 这种无效自连接。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Duplicate Status Dedup API
+  version: "1.0.0"
+paths:
+  /users:
+    post:
+      operationId: createUser
+      summary: 创建用户
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        route = (out_dir / "create_user.py").read_text(encoding="utf-8")
+        # 单一 ``User`` 泛型，不出现 ``User | User``。
+        assert "APIRoute[User]" in route
+        assert "APIRoute[User | User]" not in route
+        # import 行 ``User`` 只出现一次：先验整行，再验逐项计数。
+        assert "from .models import User" in route
+        assert route.count("from .models import User") == 1
+        # 防御：import 行不冗余成 ``User, User``。
+        assert "import User, User" not in route
+
+    def test_response_with_mixed_json_and_non_json_status(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 200 JSON ``$ref: User`` + 400 description-only 时 Union 退化为单元素。
+
+        行为契约：
+        - 只有 ``application/json`` content 的 status 才参与 Union。
+        - 仅含 ``description``（无 content）的 status 被跳过，不影响结果。
+        - 结果是单元素 ``APIRoute[User]``，不是空 union 或错误拼接。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Mixed JSON and Description-Only API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      summary: 获取用户
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          description: bad request
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        route = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        # 400 没有 JSON content,被跳过,泛型保持单元素 ``User``。
+        assert "APIRoute[User]" in route
+        # 不应出现 ``User | None`` 或别的拼接污染。
+        assert "User | None" not in route
+        assert "User | " not in route
+        assert "from .models import User" in route
+
+    def test_response_with_only_non_json_status_codes(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证所有 status 都只有 description、无 application/json 时,route 保持裸 ``APIRoute)``。
+
+        行为契约：
+        - 所有 status 均无 ``application/json`` content（典型：纯 health check 接口）。
+        - 不输出 ``APIRoute[...]`` 泛型语法,保持裸 ``APIRoute)``。
+        - ``from .models import ...`` 行不出现（无响应模型需要 import）。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Only Description-Only Status API
+  version: "1.0.0"
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      summary: 健康检查
+      responses:
+        "200":
+          description: ok
+        "204":
+          description: no content
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        route = (out_dir / "health_check.py").read_text(encoding="utf-8")
+        # 裸 ``APIRoute)``,无泛型参数。
+        assert "APIRoute)" in route
+        # 不输出 ``APIRoute[...]`` 形式。
+        assert "APIRoute[" not in route
+        # 没有响应模型可 import,不应有 ``from .models import ...`` 行。
+        assert "from .models import" not in route
+
+    def test_response_with_three_status_codes_union(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 200 + 400 + 500 三个 ``$ref`` 都参与 Union,且 import 行三个都列出。
+
+        行为契约：
+        - 三个 JSON status 都进入 ``APIRoute[...]``,按 spec 顺序拼接成 pipe union。
+        - ``from .models import ...`` 行包含全部三个模型名。
+        - 验证不仅测首尾,中间元素 ``Error`` 也必须在两个断言里都出现。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Three-Status Union API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      summary: 获取用户
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerError'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+    Error:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+    ServerError:
+      type: object
+      required: [trace_id]
+      properties:
+        trace_id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        route = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        # 三个模型按 spec 顺序 pipe-union。
+        assert "APIRoute[User | Error | ServerError]" in route
+        # import 行同时列出全部三个,且顺序与泛型一致。
+        assert "from .models import User, Error, ServerError" in route
+
+    def test_response_with_inline_multi_status_uses_counter_suffix(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证多个 inline 响应用 dmcg 计数器后缀（``GetXResponse`` / ``GetXResponse1``）。
+
+        行为契约：
+        - dmcg 对多个 inline response 按 ``{OpId}Response`` / ``{OpId}Response1``
+          计数器命名（``use_operation_id_as_name=True``）。
+        - renderer 必须镜像同一规则,否则 inline 错误响应模型会被丢弃。
+        - ``APIRoute[...]`` 同时引用 ``GetXResponse`` 和 ``GetXResponse1``。
+        - ``from .models import ...`` 行同时列出两者。
+        - 计数器从 1 开始（不是 0）,与 dmcg ``openapi.py:_parse_schema_or_ref``
+          inline 路径命名规则一致。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Inline Multi-Status Counter API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getX
+      summary: 获取
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id:
+                    type: string
+        "400":
+          description: bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code]
+                properties:
+                  code:
+                    type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+        route = (out_dir / "get_x.py").read_text(encoding="utf-8")
+        # dmcg 已经按计数器命名生成两个 model：第一个 ``GetXResponse``,
+        # 第二个 ``GetXResponse1``（不是 ``GetXResponse2``,不是 ``GetXErrorResponse``）。
+        assert "class GetXResponse" in models
+        assert "class GetXResponse1" in models
+        # ``GetXResponse2`` 不应出现（只有两个 inline response）。
+        assert "class GetXResponse2" not in models
+        # route.py 同时引用两个 inline 模型,顺序与 spec 一致。
+        assert "APIRoute[GetXResponse | GetXResponse1]" in route
+        # import 行同时列出两者。
+        assert "from .models import GetXResponse, GetXResponse1" in route
+
+    def test_response_with_mixed_ref_and_inline_multi_status(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 200 ``$ref User`` + 400/500 inline 时 ``$ref`` 不消耗 inline 计数器。
+
+        行为契约：
+        - dmcg 对 ``$ref`` 走 ``resolve_ref`` 短路,inline 命名从 1 开始,不受 ``$ref`` 影响。
+        - renderer 必须镜像:``$ref`` 不消耗 inline 计数器,inline 仍命名为
+          ``GetXResponse`` / ``GetXResponse1``。
+        - ``APIRoute[...]`` 顺序为 spec 出现顺序:``User`` (200) → ``GetXResponse`` (400) → ``GetXResponse1`` (500)。
+        - import 行同步列出全部三个。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Mixed Ref and Inline Multi-Status API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getX
+      summary: 获取
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          description: bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code]
+                properties:
+                  code:
+                    type: string
+        "500":
+          description: server error
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [retry]
+                properties:
+                  retry:
+                    type: boolean
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        models = (out_dir / "models.py").read_text(encoding="utf-8")
+        route = (out_dir / "get_x.py").read_text(encoding="utf-8")
+        # dmcg 行为：$ref 不消耗计数器,所以 inline 仍从 ``GetXResponse`` 开始。
+        assert "class GetXResponse" in models
+        assert "class GetXResponse1" in models
+        # 防御：inline 计数器若错从 2 开始（误以为 ``$ref`` 占位）,
+        # 会生成 ``GetXResponse2`` 而不是 ``GetXResponse1``,或反过来跳过 ``GetXResponse1``。
+        assert "class GetXResponse2" not in models
+        # route.py 按 spec 顺序拼接：
+        # ``User`` ($ref 200) → ``GetXResponse`` (inline 400) → ``GetXResponse1`` (inline 500)。
+        assert "APIRoute[User | GetXResponse | GetXResponse1]" in route
+        # import 行同步列出全部三个,顺序与泛型一致。
+        assert "from .models import User, GetXResponse, GetXResponse1" in route
