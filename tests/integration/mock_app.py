@@ -192,3 +192,19 @@ async def create_multi(request: Request) -> dict[str, Any]:
         "name": body.get("item", {}).get("name", ""),
         "importance": body.get("importance", 0),
     }
+
+
+@app.head("/probe")
+def probe_head() -> Response:
+    """HEAD /probe：探测端点，FastAPI/Starlette 会丢弃 body，只返回 headers。
+
+    Starlette 内置行为：HEAD 请求自动移除 body 并设置 Content-Length。
+    返回 200 + 空 body，依赖 status code 验证。
+    """
+    return Response(content=b"", status_code=200)
+
+
+@app.options("/probe")
+def probe_options() -> dict[str, str]:
+    """OPTIONS /probe：探测端点，返回允许的方法列表。"""
+    return {"method": "OPTIONS"}

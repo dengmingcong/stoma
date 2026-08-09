@@ -284,3 +284,92 @@ def test_decorator_validation() -> None:
     print("5. ✓ Query/Path/Header/Body 参数标记全部正常工作")
     print("6. ✓ 参数默认值使用函数默认值形式（= value）")
     print("\n🎉 User Story 1 的接口定义格式已验证完毕！")
+
+
+# ===== TestAllMethods: 覆盖全部 8 个 HTTP method 的装饰器层验证 =====
+class TestAllMethods:
+    """验证全部 8 个 OAS HTTP method 的装饰器层验证。
+
+    每个 test method 独立装饰 1 个空类，断言 _get_dependant().method == <METHOD>
+    且 _get_dependant().path == '/x'。
+    """
+
+    def test_get(self):
+        """验证 GET 方法装饰器。"""
+        @router.get("/x")
+        class X(APIRoute[dict]):
+            pass
+
+        meta = X()._get_dependant()
+        assert meta.method == "GET"
+        assert meta.path == "/x"
+
+    def test_post(self):
+        """验证 POST 方法装饰器。"""
+        @router.post("/x")
+        class X(APIRoute[dict]):
+            pass
+
+        meta = X()._get_dependant()
+        assert meta.method == "POST"
+        assert meta.path == "/x"
+
+    def test_put(self):
+        """验证 PUT 方法装饰器。"""
+        @router.put("/x")
+        class X(APIRoute[dict]):
+            pass
+
+        meta = X()._get_dependant()
+        assert meta.method == "PUT"
+        assert meta.path == "/x"
+
+    def test_patch(self):
+        """验证 PATCH 方法装饰器。"""
+        @router.patch("/x")
+        class X(APIRoute[dict]):
+            pass
+
+        meta = X()._get_dependant()
+        assert meta.method == "PATCH"
+        assert meta.path == "/x"
+
+    def test_delete(self):
+        """验证 DELETE 方法装饰器。"""
+        @router.delete("/x")
+        class X(APIRoute[dict]):
+            pass
+
+        meta = X()._get_dependant()
+        assert meta.method == "DELETE"
+        assert meta.path == "/x"
+
+    def test_head(self):
+        """验证 HEAD 方法装饰器。"""
+        @router.head("/x")
+        class X(APIRoute[dict]):
+            pass
+
+        meta = X()._get_dependant()
+        assert meta.method == "HEAD"
+        assert meta.path == "/x"
+
+    def test_options(self):
+        """验证 OPTIONS 方法装饰器。"""
+        @router.options("/x")
+        class X(APIRoute[dict]):
+            pass
+
+        meta = X()._get_dependant()
+        assert meta.method == "OPTIONS"
+        assert meta.path == "/x"
+
+    def test_trace(self):
+        """验证 TRACE 方法装饰器。"""
+        @router.trace("/x")
+        class X(APIRoute[dict]):
+            pass
+
+        meta = X()._get_dependant()
+        assert meta.method == "TRACE"
+        assert meta.path == "/x"
