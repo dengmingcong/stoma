@@ -244,9 +244,9 @@ class Client:
         分派规则：
 
         - 存在文件字段（``file_body_params``）：multipart/form-data，
-          使用 Playwright 的 ``FormData`` 同时容纳 Form 字段和文件（原始值，不 JSON 编码）。
+          使用单一 ``FormData`` 同时容纳 Form 字段和文件（Form 字段原值，不 JSON 编码）。
         - 仅有表单字段（``form_body_params``）：application/x-www-form-urlencoded，
-          使用 Playwright 的 ``FormData``（与 Playwright ``form=`` 兼容）；标量/列表/字典值仍走
+          使用同一 ``FormData``（与 Playwright ``form=`` 兼容）；标量/列表/字典值仍走
           ``json.dumps``，服务端 ``Form()`` 收到后由用户自行 ``json.loads`` 还原。
         - 其余情况：application/json，沿用 FastAPI Body Multiple Parameters 规则。
 
@@ -256,105 +256,90 @@ class Client:
         :raise ValueError: 当 urlencoded Form 字段的值无法 JSON 序列化。
         """
         has_files = bool(dependant.file_body_params)
-        urlencoded_form = FormData()
-        multipart_form = FormData() if has_files else None
+        form_data: FormData = FormData()
 
         for model_field in dependant.form_body_params:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
-            if has_files:
-                self._fill_multipart_form_field(multipart_form, model_field, value)
-            else:
-                self._fill_urlencoded_form_field(urlencoded_form, model_field, value)
+            self._fill_form_field(form_data, model_field, value, json_encode=not has_files)
 
         for model_field in dependant.file_body_params:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
-            assert multipart_form is not None
             # 注意：annotation 可能是 ``UploadFile | None`` / ``list[UploadFile] | None``，
             # ``field_info.annotation is UploadFile`` / ``get_origin(...) is list`` 会失效。
             # 这里改为按运行时值类型分发，对必填 / 可选（空列表视为跳过）都成立。
             if isinstance(value, UploadFile):
-                multipart_form.set(model_field.alias, value.path)
+                form_data.set(model_field.alias, value.path)
             elif isinstance(value, list):
                 # FormData.append 支持同一 key 多次出现，多次 part 对应多次同名字段。
                 for upload_file in value:
-                    multipart_form.append(model_field.alias, upload_file.path)
+                    form_data.append(model_field.alias, upload_file.path)
 
         if has_files:
-            return RequestBody(kind=RequestBodyKind.MULTIPART, form_data=multipart_form)
+            return RequestBody(kind=RequestBodyKind.MULTIPART, form_data=form_data)
         # FormData 没有 ``__bool__`` / ``__len__``，空实例仍为真，必须用 ``_fields`` 判断非空。
-        if urlencoded_form._fields:
-            return RequestBody(kind=RequestBodyKind.URLENCODED, form_data=urlencoded_form)
+        if form_data._fields:
+            return RequestBody(kind=RequestBodyKind.URLENCODED, form_data=form_data)
         return RequestBody(kind=RequestBodyKind.JSON, json_body=self._build_json_body(api_route, dependant))
 
     @staticmethod
-    def _fill_multipart_form_field(
+    def _fill_form_field(
         form_data: FormData,
         model_field: ModelField,
         value: Any,
+        json_encode: bool = False,
     ) -> None:
-        """把单个 Form 字段填入 multipart ``FormData``，值保持原样（不做 JSON 编码）。
+        """把单个 Form 字段填入 ``FormData``，是否对值做 JSON 编码由 ``json_encode`` 控制。
 
-        multipart/form-data 各 part 是独立的，FastAPI 等框架会在服务端按字段声明的类型
-        （``Form()`` / ``File()`` / 等）解析，因此客户端只需原值存储。
+        - ``json_encode=False``（multipart 语义）：标量/列表/字典原值存储，
+          服务端按 part 各自解析；BaseModel ``embed=True`` 整体 ``model_dump``，
+          ``embed=False`` 按子字段平展（嵌套 BaseModel 子字段原值存储）。
+        - ``json_encode=True``（urlencoded 语义）：标量/列表/字典走 ``json.dumps``
+          以适配 Playwright ``form=``；BaseModel ``embed=True`` 先 ``model_dump``
+          再 ``json.dumps``，``embed=False`` 平展子字段中嵌套 BaseModel 也
+          ``json.dumps``。
 
-        Pydantic 模型在 ``embed=False`` 时按子字段平展，``embed=True`` 时整体打包。
+        Pydantic 模型在 ``embed=False`` 时按子字段平展，遍历 ``model_fields``
+        而非 ``model_dump()``，避免别名和缺省值带来的偏差。
 
-        :param form_data: 待填充的 multipart 表单。
+        :param form_data: 待填充的表单。
         :param model_field: Form 字段定义。
         :param value: 字段值。
+        :param json_encode: 是否对标量/列表/字典（含 BaseModel dump 字典）走 ``json.dumps``。
+        :raise ValueError: 当 ``json_encode=True`` 且值无法 JSON 序列化。
         """
-        if not isinstance(value, BaseModel):
-            form_data.set(model_field.alias, value)
-            return
 
-        if getattr(model_field.param_info, "embed", False):
-            form_data.set(model_field.alias, value.model_dump(by_alias=True, exclude_none=True))
-            return
-
-        # 遍历 model_fields 而不是 model_dump()，避免别名和缺省值带来的偏差。
-        for field_name in type(value).model_fields:
-            sub_value = getattr(value, field_name)
-            form_data.set(field_name, sub_value)
-
-    @staticmethod
-    def _fill_urlencoded_form_field(
-        form_data: FormData,
-        model_field: ModelField,
-        value: Any,
-    ) -> None:
-        """把单个 Form 字段填入 urlencoded ``FormData``，标量/列表/字典走 ``json.dumps``。
-
-        application/x-www-form-urlencoded 只能传字符串；为了与服务端 ``Form()`` 解析兼容，
-        标量、列表、字典统一 JSON 编码（FastAPI ``Form()`` 收到后由用户在服务端 ``json.loads``）。
-
-        Pydantic 模型在 ``embed=False`` 时按字段平展，``embed=True`` 时整体 JSON 序列化；
-        嵌套 BaseModel 子字段 JSON 序列化。
-
-        :param form_data: 待填充的 urlencoded 表单（Playwright ``FormData``）。
-        :param model_field: Form 字段定义。
-        :param value: 字段值。
-        :raise ValueError: 当字段值无法 JSON 序列化。
-        """
-        if not isinstance(value, BaseModel):
+        def encode(v: Any) -> Any:
+            """按 ``json_encode`` 标志对值做 JSON 编码或原样返回。"""
+            if not json_encode:
+                return v
             try:
-                form_data.set(model_field.alias, json.dumps(value))
+                return json.dumps(v)
             except (TypeError, ValueError) as e:
-                msg = f"Form 字段 {model_field.alias!r} 值 {type(value).__name__} 不能 JSON 序列化"
+                msg = f"Form 字段 {model_field.alias!r} 值 {type(v).__name__} 不能 JSON 序列化"
                 raise ValueError(msg) from e
+
+        if not isinstance(value, BaseModel):
+            form_data.set(model_field.alias, encode(value))
             return
 
         if getattr(model_field.param_info, "embed", False):
-            form_data.set(model_field.alias, json.dumps(value.model_dump(by_alias=True, exclude_none=True)))
+            form_data.set(
+                model_field.alias,
+                encode(value.model_dump(by_alias=True, exclude_none=True)),
+            )
             return
 
         for field_name in type(value).model_fields:
             sub_value = getattr(value, field_name)
             if isinstance(sub_value, BaseModel):
-                form_data.set(field_name, json.dumps(sub_value.model_dump(by_alias=True, exclude_none=True)))
+                form_data.set(
+                    field_name,
+                    encode(sub_value.model_dump(by_alias=True, exclude_none=True)),
+                )
             else:
                 form_data.set(field_name, sub_value)
 
