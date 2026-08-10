@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 from typing import Any, NamedTuple, get_origin
 
-from playwright.sync_api import APIRequestContext, APIResponse
+from playwright.sync_api import APIRequestContext, APIResponse, FormData
 from pydantic import BaseModel
 
 from src.dependencies import Dependant, ModelField
@@ -33,10 +33,6 @@ from src.exceptions import HTTPError, ParseError, ValidationError
 from src.params import Body, UploadFile
 from src.response import Response
 from src.routing import APIRoute
-
-# FormData 类型别名，对应 Playwright fetch 的 form 参数类型
-# form: Optional[Dict[str, Union[str, float, bool]]]
-FormData = dict[str, str | float | bool]
 
 
 class BodyItem(NamedTuple):
@@ -218,53 +214,93 @@ class Client:
 
         分派规则：
 
-        - 存在文件字段（``file_body_params``）：multipart/form-data
-        - 仅有表单字段（``form_body_params``）：application/x-www-form-urlencoded
-        - 其余情况：application/json，沿用 FastAPI Body Multiple Parameters 规则
+        - 存在文件字段（``file_body_params``）：multipart/form-data，
+          使用 Playwright 的 ``FormData`` 同时容纳 Form 字段和文件（原始值，不 JSON 编码）。
+        - 仅有表单字段（``form_body_params``）：application/x-www-form-urlencoded，
+          使用 ``dict[str, str | float | bool]``（与 Playwright ``form=`` 兼容）。
+        - 其余情况：application/json，沿用 FastAPI Body Multiple Parameters 规则。
 
         :param api_route: APIRoute 实例。
         :param dependant: 参数依赖定义。
         :return: 序列化后的请求体。
-        :raise ValueError: 当 Form 字段的值无法 JSON 序列化。
+        :raise ValueError: 当 urlencoded Form 字段的值无法 JSON 序列化。
         """
-        form_data: dict[str, Any] = {}
+        has_files = bool(dependant.file_body_params)
+        urlencoded_form: dict[str, Any] = {}
+        multipart_form = FormData() if has_files else None
+
         for model_field in dependant.form_body_params:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
-            self._fill_form_field(form_data, model_field, value)
+            if has_files:
+                self._fill_multipart_form_field(multipart_form, model_field, value)
+            else:
+                self._fill_urlencoded_form_field(urlencoded_form, model_field, value)
 
-        has_files = False
         for model_field in dependant.file_body_params:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
+            assert multipart_form is not None
             if model_field.field_info.annotation is UploadFile:
-                form_data[model_field.alias] = value.path
+                multipart_form.set(model_field.alias, value.path)
             elif get_origin(model_field.field_info.annotation) is list:
-                # Playwright 的 multipart 是 dict，不支持同一个 key 出现多次，
-                # 因此多文件统一放进一个 list 作为单个值。
-                form_data[model_field.alias] = [upload_file.path for upload_file in value]
-            has_files = True
+                # FormData.append 支持同一 key 多次出现，多次 part 对应多次同名字段。
+                for upload_file in value:
+                    multipart_form.append(model_field.alias, upload_file.path)
 
         if has_files:
-            return RequestBody(kind=RequestBodyKind.MULTIPART, form_data=form_data)
-        if form_data:
-            return RequestBody(kind=RequestBodyKind.URLENCODED, form_data=form_data)
+            return RequestBody(kind=RequestBodyKind.MULTIPART, form_data=multipart_form)
+        if urlencoded_form:
+            return RequestBody(kind=RequestBodyKind.URLENCODED, form_data=urlencoded_form)
         return RequestBody(kind=RequestBodyKind.JSON, json_body=self._build_json_body(api_route, dependant))
 
     @staticmethod
-    def _fill_form_field(
+    def _fill_multipart_form_field(
+        form_data: FormData,
+        model_field: ModelField,
+        value: Any,
+    ) -> None:
+        """把单个 Form 字段填入 multipart ``FormData``，值保持原样（不做 JSON 编码）。
+
+        multipart/form-data 各 part 是独立的，FastAPI 等框架会在服务端按字段声明的类型
+        （``Form()`` / ``File()`` / 等）解析，因此客户端只需原值存储。
+
+        Pydantic 模型在 ``embed=False`` 时按子字段平展，``embed=True`` 时整体打包。
+
+        :param form_data: 待填充的 multipart 表单。
+        :param model_field: Form 字段定义。
+        :param value: 字段值。
+        """
+        if not isinstance(value, BaseModel):
+            form_data.set(model_field.alias, value)
+            return
+
+        if getattr(model_field.param_info, "embed", False):
+            form_data.set(model_field.alias, value.model_dump(by_alias=True, exclude_none=True))
+            return
+
+        # 遍历 model_fields 而不是 model_dump()，避免别名和缺省值带来的偏差。
+        for field_name in type(value).model_fields:
+            sub_value = getattr(value, field_name)
+            form_data.set(field_name, sub_value)
+
+    @staticmethod
+    def _fill_urlencoded_form_field(
         form_data: dict[str, Any],
         model_field: ModelField,
         value: Any,
     ) -> None:
-        """把单个 Form 字段的值填入 form_data。
+        """把单个 Form 字段填入 urlencoded ``dict``，标量/列表/字典走 ``json.dumps``。
+
+        application/x-www-form-urlencoded 只能传字符串；为了与服务端 ``Form()`` 解析兼容，
+        标量、列表、字典统一 JSON 编码（FastAPI ``Form()`` 收到后由用户在服务端 ``json.loads``）。
 
         Pydantic 模型在 ``embed=False`` 时按字段平展，``embed=True`` 时整体 JSON 序列化；
-        非模型值一律 JSON 序列化。
+        嵌套 BaseModel 子字段 JSON 序列化。
 
-        :param form_data: 待填充的表单数据。
+        :param form_data: 待填充的 urlencoded 表单。
         :param model_field: Form 字段定义。
         :param value: 字段值。
         :raise ValueError: 当字段值无法 JSON 序列化。
@@ -277,12 +313,10 @@ class Client:
                 raise ValueError(msg) from e
             return
 
-        # param_info 一定是 Form，因此一定有 embed 属性。
         if getattr(model_field.param_info, "embed", False):
             form_data[model_field.alias] = json.dumps(value.model_dump(by_alias=True, exclude_none=True))
             return
 
-        # 遍历 model_fields 而不是 model_dump()，避免别名和缺省值带来的偏差。
         for field_name in type(value).model_fields:
             sub_value = getattr(value, field_name)
             if isinstance(sub_value, BaseModel):
