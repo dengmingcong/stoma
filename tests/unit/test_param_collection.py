@@ -17,6 +17,8 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel, Field
 
+from playwright.sync_api import FormData
+
 from src.client import Client, RequestBodyKind
 from src.params import Body, Form, Header, Path, Query, UploadFile
 from src.routing import APIRoute, APIRouter
@@ -454,7 +456,7 @@ def test_form_unserializable_raises() -> None:
 
 
 def test_uploadfile_single(tmp_path: pathlib.Path) -> None:
-    """测试单 ``UploadFile`` 走 multipart，``form_data`` 值为 ``pathlib.Path``。"""
+    """测试单 ``UploadFile`` 走 multipart，``form_data`` 是 ``FormData`` 且包含文件路径。"""
 
     file_path = tmp_path / "test.txt"
     file_path.write_text("hello", encoding="utf-8")
@@ -466,12 +468,12 @@ def test_uploadfile_single(tmp_path: pathlib.Path) -> None:
     endpoint = UploadSingle(file=UploadFile(path=file_path))
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.MULTIPART
-    assert isinstance(body.form_data["file"], pathlib.Path)
-    assert body.form_data["file"] == file_path
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [("file", file_path)]
 
 
 def test_uploadfile_list(tmp_path: pathlib.Path) -> None:
-    """测试 ``list[UploadFile]`` 多文件走 multipart，同 alias 单 list 值。"""
+    """测试 ``list[UploadFile]`` 多文件走 multipart，``FormData`` 多次 ``append`` 同一 alias。"""
 
     file1 = tmp_path / "f1.txt"
     file2 = tmp_path / "f2.txt"
@@ -485,8 +487,8 @@ def test_uploadfile_list(tmp_path: pathlib.Path) -> None:
     endpoint = UploadList(files=[UploadFile(path=file1), UploadFile(path=file2)])
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.MULTIPART
-    assert isinstance(body.form_data["files"], list)
-    assert body.form_data["files"] == [file1, file2]
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [("files", file1), ("files", file2)]
 
 
 def test_pure_form_mutual_exclusion_raise() -> None:

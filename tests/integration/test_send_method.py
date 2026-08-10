@@ -14,6 +14,7 @@ import pathlib
 from typing import Annotated, Any
 
 import pytest
+from playwright.sync_api import FormData
 from pydantic import BaseModel, Field
 
 from src.client import Client, RequestBodyKind
@@ -720,37 +721,36 @@ class TestFormBody:
 
 
 class TestUploadFileBody:
-    """UploadFile 字段 wire-level 测试。
+    """UploadFile 字段端到端测试。
 
-    注：Playwright 的 ``multipart=`` 不支持 ``pathlib.Path`` 值，会静默丢弃。
-    要让 UploadFile 端到端真正发送文件，需要在 ``_serialize_body_params`` 中把
-    ``Path`` 转成 ``FilePayload`` 字典（name/mimeType/buffer），属于生产代码变更，
-    不在 Todo 9 范围内。本测试类只做 wire-level 验证。
+    走真 HTTP（mock_server）：使用 Playwright ``FormData`` 序列化 multipart，
+    验证服务端能正确接收并解析文件名、大小、内容类型。
     """
 
     def test_upload_single_file(self, client: Client, tmp_path: pathlib.Path) -> None:
-        """单文件：验证 ``form_data[alias]`` 是 ``Path`` 实例，kind 为 MULTIPART。
+        """单文件：上传到 ``/upload``，服务端返回 filename / size / content_type。
 
         :param client: 共享的 Client 实例。
         :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
         """
+        content = "hello world"
         file_path = tmp_path / "test.txt"
-        file_path.write_text("hello world", encoding="utf-8")
+        file_path.write_text(content, encoding="utf-8")
 
         endpoint = UploadRoute(file=UploadFile(path=file_path))
+        response = client.send(endpoint)
 
-        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
-
-        assert body.kind is RequestBodyKind.MULTIPART
-        assert body.form_data is not None
-        assert isinstance(body.form_data["file"], pathlib.Path)
-        assert body.form_data["file"] == file_path
+        assert response.raw.status == 200
+        assert response.validated == {
+            "filename": "test.txt",
+            "size": len(content),
+            "content_type": "text/plain",
+        }
 
     def test_upload_multi_files(self, client: Client, tmp_path: pathlib.Path) -> None:
-        """多文件：验证 ``form_data[alias]`` 是 ``Path`` 列表。
+        """多文件：上传到 ``/upload-multi``，服务端返回 filenames 和 total_size。
 
-        Playwright 的 ``multipart=`` 是 dict，不支持同一个 key 出现多次，
-        因此多文件统一放进一个 list 作为单个值。
+        FormData 的 ``append`` 让同名 key 产生多个 part，对应 FastAPI ``list[UploadFile]``。
 
         :param client: 共享的 Client 实例。
         :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
@@ -763,23 +763,24 @@ class TestUploadFileBody:
         endpoint = UploadMultiRoute(
             files=[UploadFile(path=file1), UploadFile(path=file2)],
         )
+        response = client.send(endpoint)
 
-        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
-
-        assert body.kind is RequestBodyKind.MULTIPART
-        assert body.form_data is not None
-        assert body.form_data["files"] == [file1, file2]
+        assert response.raw.status == 200
+        assert response.validated == {
+            "filenames": ["file1.txt", "file2.md"],
+            "total_size": len("first file") + len("second file content"),
+        }
 
 
 class TestMixedFormAndFile:
     """Form + UploadFile 混合字段 wire-level 测试。
 
-    注：mock_app 没有同时支持 Form 字段和 UploadFile 字段的端点；
-    且 Playwright multipart 不支持 Path，因此本测试只做 wire-level 验证。
+    当存在文件字段时，整体走 multipart：Form 字段以原值（非 JSON 编码）写入 FormData。
+    mock_app 暂未提供 Form + File 混合端点，因此保持 wire-level 验证。
     """
 
     def test_form_and_uploadfile_mix(self, client: Client, tmp_path: pathlib.Path) -> None:
-        """Form + UploadFile 共存 → MULTIPART，form_data 同时包含表单字段和文件路径。
+        """Form + UploadFile 共存 → MULTIPART，``FormData`` 同时包含表单字段（原始值）和文件路径。
 
         :param client: 共享的 Client 实例。
         :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
@@ -799,13 +800,14 @@ class TestMixedFormAndFile:
         body = client._serialize_body_params(endpoint, endpoint._get_dependant())
 
         assert body.kind is RequestBodyKind.MULTIPART
-        assert body.form_data is not None
-        # Form BaseModel embed=False 平展的子字段
-        assert body.form_data["username"] == "charlie"
-        assert body.form_data["tags"] == ["mix"]
-        assert body.form_data["prefs"] == {"role": "user"}
-        # UploadFile 字段以 Path 存储
-        assert body.form_data["avatar"] == file_path
+        assert isinstance(body.form_data, FormData)
+        # multipart 不做 json.dumps：Form BaseModel embed=False 平展的子字段为原值
+        assert body.form_data._fields == [
+            ("username", "charlie"),
+            ("tags", ["mix"]),
+            ("prefs", {"role": "user"}),
+            ("avatar", file_path),
+        ]
 
 
 if __name__ == "__main__":
