@@ -22,7 +22,7 @@ URL/Query 处理说明：
 import json
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
-from typing import Any, NamedTuple, get_origin
+from typing import Any, NamedTuple
 
 from playwright.sync_api import APIRequestContext, APIResponse, FormData
 from pydantic import BaseModel
@@ -243,9 +243,12 @@ class Client:
             if value is None:
                 continue
             assert multipart_form is not None
-            if model_field.field_info.annotation is UploadFile:
+            # 注意：annotation 可能是 ``UploadFile | None`` / ``list[UploadFile] | None``，
+            # ``field_info.annotation is UploadFile`` / ``get_origin(...) is list`` 会失效。
+            # 这里改为按运行时值类型分发，对必填 / 可选（空列表视为跳过）都成立。
+            if isinstance(value, UploadFile):
                 multipart_form.set(model_field.alias, value.path)
-            elif get_origin(model_field.field_info.annotation) is list:
+            elif isinstance(value, list):
                 # FormData.append 支持同一 key 多次出现，多次 part 对应多次同名字段。
                 for upload_file in value:
                     multipart_form.append(model_field.alias, upload_file.path)

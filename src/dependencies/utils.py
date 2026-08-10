@@ -62,15 +62,40 @@ def field_annotation_is_complex(annotation: Any) -> bool:
 
 
 def _is_uploadfile_or_list_annotation(annotation: Any) -> bool:
-    """检查注解是否为 UploadFile 或 list[UploadFile]。
+    """判断注解是否可识别为上传文件字段。
 
-    不处理 Optional/Union 包装，仅对单一 UploadFile 或 list[UploadFile] 返回 True。
+    支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法）：
+
+    - ``UploadFile``
+    - ``list[UploadFile]``
+    - ``UploadFile | None`` / ``Optional[UploadFile]``
+    - ``list[UploadFile] | None`` / ``Optional[list[UploadFile]]``
+    - 任意层 ``Union[UploadFile | None, list[UploadFile] | None]``（只要全部成员都是文件字段类型，则返回 True）
+
+    明确不支持的形式（语义含糊，留给后续由用户在 ``Param`` 标记或运行时显式声明）：
+
+    - ``Union[UploadFile, str]`` 等混入非文件类型 → 返回 False
+    - 非 ``UploadFile`` / 非 ``list[UploadFile]`` 的任意类型 → 返回 False
+
+    实现要点：递归解包 ``Union`` / ``Optional``，跳过 ``None`` 成员，
+    要求每个非 ``None`` 成员都是 ``UploadFile`` 或 ``list[UploadFile]``。
 
     :param annotation: 待检查的类型注解。
-    :return: 如果是 UploadFile 或 list[UploadFile] 则返回 True。
+    :return: 如果是合法的上传文件字段类型则返回 True。
     """
+    origin = get_origin(annotation)
+    if origin is Union or origin is UnionType:
+        # ``Optional`` 上下文：跳过 ``None`` 成员后，剩余成员全部必须是文件字段类型。
+        return all(
+            arg is type(None) or _is_uploadfile_or_list_annotation(arg)
+            for arg in get_args(annotation)
+        )
+
     if annotation is UploadFile:
         return True
-    if get_origin(annotation) is list and get_args(annotation)[0] is UploadFile:
-        return True
+
+    if origin is list:
+        args = get_args(annotation)
+        return len(args) == 1 and args[0] is UploadFile
+
     return False

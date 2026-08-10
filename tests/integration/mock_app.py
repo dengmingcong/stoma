@@ -247,6 +247,37 @@ async def upload_multi(files: list[UploadFile] = File(...)) -> dict[str, Any]:
     }
 
 
+@app.post("/upload-optional")
+async def upload_optional(file: UploadFile | None = File(None)) -> dict[str, Any]:
+    """POST /upload-optional：接收可选文件上传，不传时返回 None 占位。
+
+    :param file: 可选上传文件；不传时为 ``None``。
+    :return: 文件名、大小、内容类型；缺省时三个字段都为 ``None`` / 0。
+    """
+    if file is None:
+        return {"filename": None, "size": 0, "content_type": None}
+    content = await file.read()
+    return {"filename": file.filename, "size": len(content), "content_type": file.content_type}
+
+
+@app.post("/upload-files-optional")
+async def upload_files_optional(files: list[UploadFile] | None = File(None)) -> dict[str, Any]:
+    """POST /upload-files-optional：接收可选多文件上传，不传时返回空列表占位。
+
+    :param files: 可选多文件列表；不传时为 ``None``（与空列表统一处理）。
+    :return: 文件名列表和总大小（无文件时为 ``[]`` / 0）。
+    """
+    if not files:
+        return {"filenames": [], "total_size": 0}
+    filenames = []
+    total_size = 0
+    for f in files:
+        content = await f.read()
+        total_size += len(content)
+        filenames.append(f.filename)
+    return {"filenames": filenames, "total_size": total_size}
+
+
 @app.post("/login")
 async def login(
     username: str = Form(...),

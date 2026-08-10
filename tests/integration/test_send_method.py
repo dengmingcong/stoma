@@ -665,6 +665,20 @@ class MixedFormFileRoute(APIRoute[dict[str, Any]]):
     avatar: UploadFile
 
 
+@router.post("/upload-optional")
+class UploadOptRoute(APIRoute[dict[str, Any]]):
+    """POST /upload-optional：可选 ``UploadFile | None = None``。"""
+
+    file: UploadFile | None = None
+
+
+@router.post("/upload-files-optional")
+class UploadFilesOptRoute(APIRoute[dict[str, Any]]):
+    """POST /upload-files-optional：可选 ``list[UploadFile] | None = None``。"""
+
+    files: list[UploadFile] | None = None
+
+
 class TestFormBody:
     """Form 字段 wire-level 测试。
 
@@ -808,6 +822,88 @@ class TestMixedFormAndFile:
             ("prefs", {"role": "user"}),
             ("avatar", file_path),
         ]
+
+
+class TestOptionalUploadFile:
+    """``UploadFile | None`` / ``list[UploadFile] | None`` 端到端测试。
+
+    验证可选文件字段在 stoma 客户端正确路由到 ``file_body_params``，
+    ``None`` / 空列表时被跳过、文件存在时被序列化到 ``FormData``，
+    对接 mock_app 的 ``/upload-optional`` / ``/upload-files-optional`` 端点。
+    """
+
+    def test_upload_opt_none(self, client: Client) -> None:
+        """``file: UploadFile | None = None`` + ``file=None`` → 服务端收到 None 占位。
+
+        :param client: 共享的 Client 实例。
+        """
+        endpoint = UploadOptRoute(file=None)
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {"filename": None, "size": 0, "content_type": None}
+
+    def test_upload_opt_missing(self, client: Client) -> None:
+        """``file: UploadFile | None = None`` + 构造时不传 → 服务端收到 None 占位。
+
+        :param client: 共享的 Client 实例。
+        """
+        endpoint = UploadOptRoute()  # 缺省值 None
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {"filename": None, "size": 0, "content_type": None}
+
+    def test_upload_opt_with_value(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """``file: UploadFile | None = None`` + ``file=UploadFile(...)`` → 服务端收到完整文件元信息。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
+        """
+        content = "optional payload"
+        file_path = tmp_path / "opt.txt"
+        file_path.write_text(content, encoding="utf-8")
+
+        endpoint = UploadOptRoute(file=UploadFile(path=file_path))
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {
+            "filename": "opt.txt",
+            "size": len(content),
+            "content_type": "text/plain",
+        }
+
+    def test_upload_files_opt_none(self, client: Client) -> None:
+        """``files: list[UploadFile] | None = None`` + ``files=None`` → 服务端收到空列表占位。
+
+        :param client: 共享的 Client 实例。
+        """
+        endpoint = UploadFilesOptRoute(files=None)
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {"filenames": [], "total_size": 0}
+
+    def test_upload_files_opt_with_value(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """``files: list[UploadFile] | None = None`` + ``files=[...]`` → 服务端收到完整文件列表。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
+        """
+        file1 = tmp_path / "a.txt"
+        file2 = tmp_path / "b.md"
+        file1.write_text("first", encoding="utf-8")
+        file2.write_text("second", encoding="utf-8")
+
+        endpoint = UploadFilesOptRoute(files=[UploadFile(path=file1), UploadFile(path=file2)])
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {
+            "filenames": ["a.txt", "b.md"],
+            "total_size": len("first") + len("second"),
+        }
 
 
 if __name__ == "__main__":

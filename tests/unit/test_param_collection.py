@@ -491,6 +491,79 @@ def test_uploadfile_list(tmp_path: pathlib.Path) -> None:
     assert body.form_data._fields == [("files", file1), ("files", file2)]
 
 
+def test_uploadfile_optional_none() -> None:
+    """``file: UploadFile | None = None`` + ``file=None`` → MULTIPART，``form_data`` 为空（跳过 None）。"""
+
+    @router.post("/upload-opt-none")
+    class UploadOptNone(APIRoute[dict[str, Any]]):
+        file: UploadFile | None = None
+
+    endpoint = UploadOptNone(file=None)
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.MULTIPART
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == []
+
+
+def test_uploadfile_optional_missing() -> None:
+    """``file: UploadFile | None = None`` + 构造时不传 → MULTIPART，``form_data`` 为空（缺省值 None 跳过）。"""
+
+    @router.post("/upload-opt-missing")
+    class UploadOptMissing(APIRoute[dict[str, Any]]):
+        file: UploadFile | None = None
+
+    endpoint = UploadOptMissing()  # 缺省值 None
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.MULTIPART
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == []
+
+
+def test_uploadfile_optional_with_value(tmp_path: pathlib.Path) -> None:
+    """``file: UploadFile | None = None`` + ``file=UploadFile(...)`` → MULTIPART，含单个文件 part。"""
+
+    file_path = tmp_path / "opt.txt"
+    file_path.write_text("optional content", encoding="utf-8")
+
+    @router.post("/upload-opt-value")
+    class UploadOptValue(APIRoute[dict[str, Any]]):
+        file: UploadFile | None = None
+
+    endpoint = UploadOptValue(file=UploadFile(path=file_path))
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.MULTIPART
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [("file", file_path)]
+
+
+def test_uploadfile_list_optional_none() -> None:
+    """``files: list[UploadFile] | None = None`` + ``files=None`` → MULTIPART，``form_data`` 为空。"""
+
+    @router.post("/upload-files-opt-none")
+    class UploadFilesOptNone(APIRoute[dict[str, Any]]):
+        files: list[UploadFile] | None = None
+
+    endpoint = UploadFilesOptNone(files=None)
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.MULTIPART
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == []
+
+
+def test_uploadfile_list_optional_empty() -> None:
+    """``files: list[UploadFile] | None = None`` + ``files=[]`` → MULTIPART，``form_data`` 为空（空列表视为跳过）。"""
+
+    @router.post("/upload-files-opt-empty")
+    class UploadFilesOptEmpty(APIRoute[dict[str, Any]]):
+        files: list[UploadFile] | None = None
+
+    endpoint = UploadFilesOptEmpty(files=[])
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.MULTIPART
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == []
+
+
 def test_pure_form_mutual_exclusion_raise() -> None:
     """测试 ``Body()`` 与 ``Form()`` 不能在同一 APIRoute 混用。"""
     with pytest.raises(ValueError, match="Body 与 Form/UploadFile 字段不能在同一 APIRoute 混用"):
