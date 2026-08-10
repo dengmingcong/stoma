@@ -671,15 +671,15 @@ wheels = [
 ]
 
 [[package]]
-name = "openapi-schema-pydantic"
-version = "1.2.4"
+name = "openapi-pydantic"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8e/8f/9d2fd2d5a233d916c03d7463c0c0bc2a1bfffb91abee80ef2d3bd9b40cda/openapi-schema-pydantic-1.2.4.tar.gz", hash = "sha256:3e22cf58b74a69f752cc7e5f1537f6e44164282db2700cbbcd3bb99ddd065196", size = 54054, upload-time = "2022-06-29T12:46:35.831Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/2e/58d83848dd1a79cb92ed8e63f6ba901ca282c5f09d04af9423ec26c56fd7/openapi_pydantic-0.5.1.tar.gz", hash = "sha256:ff6835af6bde7a459fb93eb93bb92b8749b754fc6e51b2f1590a19dc3005ee0d", size = 60892, upload-time = "2025-01-08T19:29:27.083Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/e7/22abb5a10733bf8142984201aedf27d4a58f5810ebdfe9679f9876c7bf4d/openapi_schema_pydantic-1.2.4-py3-none-any.whl", hash = "sha256:a932ecc5dcbb308950282088956e94dea069c9823c84e507d64f6b622222098c", size = 90015, upload-time = "2022-06-29T12:46:33.826Z" },
+    { url = "https://files.pythonhosted.org/packages/12/cf/03675d8bd8ecbf4445504d8071adab19f5f993676795708e36402ab38263/openapi_pydantic-0.5.1-py3-none-any.whl", hash = "sha256:a3a09ef4586f5bd760a8df7f43028b60cafb6d9f61de2acba9574766255ab146", size = 96381, upload-time = "2025-01-08T19:29:25.275Z" },
 ]
 
 [[package]]
@@ -1159,7 +1159,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "jsonref" },
     { name = "jsonschema" },
-    { name = "openapi-schema-pydantic" },
+    { name = "openapi-pydantic" },
     { name = "playwright" },
     { name = "pydantic" },
     { name = "pytest" },
@@ -1189,7 +1189,7 @@ requires-dist = [
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "jsonschema", specifier = ">=4.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0" },
-    { name = "openapi-schema-pydantic", specifier = ">=1.2.4" },
+    { name = "openapi-pydantic", specifier = ">=0.5.1" },
     { name = "playwright", specifier = ">=1.55.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "pydantic", specifier = ">=2.6.0" },

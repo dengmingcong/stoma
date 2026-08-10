@@ -9,7 +9,7 @@ dependencies = [
     "playwright>=1.55.0",
     "pytest>=8.4.2",
     # OpenAPI handling and typing
-    "openapi-schema-pydantic>=1.2.4",
+    "openapi-pydantic>=0.5.1",
     "pydantic>=2.6.0",
     "datamodel-code-generator>=0.25.0",
     "pyyaml>=6.0.2",
