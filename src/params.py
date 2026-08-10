@@ -11,6 +11,8 @@
 其他属性（如 alias、ge、le 等）使用 Pydantic 原生 ``Field()`` 设置。
 """
 
+import pathlib
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -122,6 +124,7 @@ class Body(Param):
     """
 
     in_ = ParamTypes.body
+    media_type: str = "application/json"
 
     def __init__(self, embed: bool = False) -> None:
         """初始化 Body 标记。
@@ -131,4 +134,28 @@ class Body(Param):
         self.embed = embed
 
 
-__all__ = ["Param", "ParamTypes", "Query", "Path", "Header", "Body"]
+class Form(Body):
+    """表单参数标记。
+
+    用于标记接口类中的表单字段。表单数据会被编码为 ``application/x-www-form-urlencoded`` 发送到服务器。
+
+    继承自 ``Body.__init__(embed)``，因此支持 ``embed`` 参数。
+    """
+
+    in_ = ParamTypes.body
+    media_type: str = "application/x-www-form-urlencoded"
+
+
+@dataclass
+class UploadFile:
+    """上传文件标记。
+
+    用于标记接口类中的文件上传字段。
+
+    :var path: 上传文件的本地路径。
+    """
+
+    path: pathlib.Path
+
+
+__all__ = ["Param", "ParamTypes", "Query", "Path", "Header", "Body", "Form", "UploadFile"]

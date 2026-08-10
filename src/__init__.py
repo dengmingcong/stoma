@@ -4,7 +4,7 @@
 """
 
 from src.client import Client
-from src.params import Body, Header
+from src.params import Body, Form, Header, UploadFile
 from src.response import Response
 from src.routing import APIRoute, APIRouter
 
@@ -14,8 +14,10 @@ __all__ = [
     "APIRouter",
     "Body",
     "Client",
+    "Form",
     "Header",
     "Response",
+    "UploadFile",
 ]
 
 __version__ = "0.1.0"
