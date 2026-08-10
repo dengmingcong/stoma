@@ -101,7 +101,7 @@ def test_auto_recognize_body_params() -> None:
 
     dependant = CreateUser._get_dependant()
 
-    # 验证自动识别结果：BaseModel 子类应该在 body_params 中
+    # 验证自动识别结果：BaseModel 子类应该在 pure_body_params 中
     assert len(dependant.pure_body_params) == 1
     assert dependant.pure_body_params[0].name == "user_data"
     assert len(dependant.query_params) == 1
@@ -352,7 +352,7 @@ def test_sequence_types_recognition() -> None:
 
     dependant = PostItems._get_dependant()
 
-    # 序列类型应该在 body_params 中
+    # 序列类型应该在 pure_body_params 中
     assert len(dependant.pure_body_params) == 3
     body_names = [f.name for f in dependant.pure_body_params]
     assert "items" in body_names
@@ -379,7 +379,7 @@ def test_dataclass_recognition() -> None:
 
     dependant = PostDataclass._get_dependant()
 
-    # dataclass 应该在 body_params 中
+    # dataclass 应该在 pure_body_params 中
     assert len(dependant.pure_body_params) == 1
     assert dependant.pure_body_params[0].name == "item"
     # 标量类型应该在 query_params 中
@@ -406,7 +406,7 @@ def test_union_type_recognition() -> None:
 
     dependant = PostUnion._get_dependant()
 
-    # BaseModel | None 应该在 body_params 中
+    # BaseModel | None 应该在 pure_body_params 中
     assert len(dependant.pure_body_params) == 1
     assert dependant.pure_body_params[0].name == "optional_data"
     # int | str 和 str 应该在 query_params 中
