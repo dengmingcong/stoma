@@ -11,12 +11,14 @@
 - 缓存机制确保性能
 """
 
+import pathlib
 from typing import Annotated, Any
 
+import pytest
 from pydantic import BaseModel, Field
 
-from src.client import Client
-from src.params import Body, Header, Path, Query
+from src.client import Client, RequestBodyKind
+from src.params import Body, Form, Header, Path, Query, UploadFile
 from src.routing import APIRoute, APIRouter
 
 # 创建测试用的路由器
@@ -319,3 +321,178 @@ def test_api_route_without_generic() -> None:
     # 但参数收集正常
     assert len(dependant.query_params) == 1
     assert dependant.query_params[0].name == "status"
+
+
+class _FormFlatModel(BaseModel):
+    """Form 测试用基础模型。"""
+
+    name: str
+    age: int
+
+
+class _FormNestedProfile(BaseModel):
+    """Form 测试用嵌套 Profile 模型。"""
+
+    bio: str
+
+
+class _FormNestedUser(BaseModel):
+    """Form 测试用嵌套用户模型，含 BaseModel 子字段。"""
+
+    name: str
+    age: int
+    profile: _FormNestedProfile
+
+
+def test_form_scalar_passes_value() -> None:
+    """测试 Form 标量字段值走 ``json.dumps``，结果带引号 JSON 字符串。"""
+
+    @router.post("/form-scalar")
+    class LoginForm(APIRoute[dict[str, Any]]):
+        username: Annotated[str, Form()]
+
+    endpoint = LoginForm(username="alice")
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.form_data == {"username": '"alice"'}
+
+
+def test_form_int() -> None:
+    """测试 Form 整数字段值走 ``json.dumps``，int 不带引号。"""
+
+    @router.post("/form-int")
+    class AgeForm(APIRoute[dict[str, Any]]):
+        age: Annotated[int, Form()]
+
+    endpoint = AgeForm(age=42)
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.form_data == {"age": "42"}
+
+
+def test_form_list() -> None:
+    """测试 Form 列表字段值走 ``json.dumps``，结果为带空格的数组 JSON 字符串。"""
+
+    @router.post("/form-list")
+    class TagsForm(APIRoute[dict[str, Any]]):
+        tags: Annotated[list[int], Form()]
+
+    endpoint = TagsForm(tags=[1, 2, 3])
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.form_data == {"tags": "[1, 2, 3]"}
+
+
+def test_form_dict() -> None:
+    """测试 Form 字典字段值走 ``json.dumps``。"""
+
+    @router.post("/form-dict")
+    class PrefsForm(APIRoute[dict[str, Any]]):
+        prefs: Annotated[dict[str, int], Form()]
+
+    endpoint = PrefsForm(prefs={"a": 1})
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.form_data == {"prefs": '{"a": 1}'}
+
+
+def test_form_basemodel_embed_false() -> None:
+    """测试 Form BaseModel ``embed=False`` 时按子字段平展（原值传递，不带引号）。"""
+
+    @router.post("/form-model-flat")
+    class CreateUserForm(APIRoute[dict[str, Any]]):
+        user: Annotated[_FormFlatModel, Form()]
+
+    endpoint = CreateUserForm(user=_FormFlatModel(name="Alice", age=30))
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.form_data == {"name": "Alice", "age": 30}
+
+
+def test_form_basemodel_embed_true() -> None:
+    """测试 Form BaseModel ``embed=True`` 时整体 dump 为单个 JSON form 字段。"""
+
+    @router.post("/form-model-embed")
+    class CreateUserFormEmbed(APIRoute[dict[str, Any]]):
+        data: Annotated[_FormFlatModel, Form(embed=True)]
+
+    endpoint = CreateUserFormEmbed(data=_FormFlatModel(name="Alice", age=30))
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.form_data == {"data": '{"name": "Alice", "age": 30}'}
+
+
+def test_form_basemodel_nested_embed_false() -> None:
+    """测试 Form BaseModel ``embed=False`` 时嵌套子字段走 ``json.dumps``。"""
+
+    @router.post("/form-model-nested")
+    class CreateUserFormNested(APIRoute[dict[str, Any]]):
+        user: Annotated[_FormNestedUser, Form()]
+
+    endpoint = CreateUserFormNested(
+        user=_FormNestedUser(name="Alice", age=30, profile=_FormNestedProfile(bio="Software engineer")),
+    )
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.form_data == {
+        "name": "Alice",
+        "age": 30,
+        "profile": '{"bio": "Software engineer"}',
+    }
+
+
+def test_form_unserializable_raises() -> None:
+    """测试 Form 字段值无法 JSON 序列化时抛出清晰错误。"""
+
+    @router.post("/form-bytes")
+    class UploadBinary(APIRoute[dict[str, Any]]):
+        blob: Annotated[bytes, Form()]
+
+    endpoint = UploadBinary(blob=b"hello")
+    with pytest.raises(ValueError, match="Form 字段 'blob' 值 bytes 不能 JSON 序列化"):
+        Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+
+
+def test_uploadfile_single(tmp_path: pathlib.Path) -> None:
+    """测试单 ``UploadFile`` 走 multipart，``form_data`` 值为 ``pathlib.Path``。"""
+
+    file_path = tmp_path / "test.txt"
+    file_path.write_text("hello", encoding="utf-8")
+
+    @router.post("/upload-single")
+    class UploadSingle(APIRoute[dict[str, Any]]):
+        file: UploadFile
+
+    endpoint = UploadSingle(file=UploadFile(path=file_path))
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.MULTIPART
+    assert isinstance(body.form_data["file"], pathlib.Path)
+    assert body.form_data["file"] == file_path
+
+
+def test_uploadfile_list(tmp_path: pathlib.Path) -> None:
+    """测试 ``list[UploadFile]`` 多文件走 multipart，同 alias 单 list 值。"""
+
+    file1 = tmp_path / "f1.txt"
+    file2 = tmp_path / "f2.txt"
+    file1.write_text("a", encoding="utf-8")
+    file2.write_text("b", encoding="utf-8")
+
+    @router.post("/upload-list")
+    class UploadList(APIRoute[dict[str, Any]]):
+        files: list[UploadFile]
+
+    endpoint = UploadList(files=[UploadFile(path=file1), UploadFile(path=file2)])
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.MULTIPART
+    assert isinstance(body.form_data["files"], list)
+    assert body.form_data["files"] == [file1, file2]
+
+
+def test_pure_form_mutual_exclusion_raise() -> None:
+    """测试 ``Body()`` 与 ``Form()`` 不能在同一 APIRoute 混用。"""
+    with pytest.raises(ValueError, match="Body 与 Form/UploadFile 字段不能在同一 APIRoute 混用"):
+        @router.post("/mixed")
+        class MixedRoute(APIRoute[dict[str, Any]]):
+            body: Annotated[dict[str, int], Body()]
+            note: Annotated[str, Form()]
