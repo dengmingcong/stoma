@@ -60,11 +60,25 @@ class APIRoute[T](BaseModel):
         首次调用时分析字段参数依赖并缓存在类级别 _dependant，
         后续调用直接返回缓存结果。
 
-        根据规则自动识别每个字段的参数类型：
-        - 路径参数（Path）：字段名出现在路由 path 中
-        - 请求体（Body）：字段类型为 BaseModel 子类
-        - 头参数（Header）：通过 Annotated[Type, Header(...)] 显式标记
-        - 查询参数（Query）：默认类型（不满足上述条件）
+        分类逻辑（按优先级순차匹配）：
+
+        1. **Param 标记分发**（``Annotated[Type, Path() / Query() / Header() /
+           Body() / Form()]``）：按 ``param_info.in_`` 属性归类到对应列表。
+
+        2. **路径占位符兜底**（无 Param 标记时）：若字段 alias 出现在
+           路由路径 ``{...}`` 占位符中，则归类为 path_params。
+
+        3. **类型推断三分支**（无 Param 标记时）：
+
+           - ``UploadFile`` / ``list[UploadFile]``（含 Optional 包装） →
+             file_body_params
+           - 复杂类型（BaseModel / Mapping / 序列 / dataclass） →
+             pure_body_params
+           - 标量类型（int / str / bool / float 等） → query_params
+
+        互斥约束：``pure_body_params`` 不可与 ``form_body_params`` 或
+        ``file_body_params`` 共存，否则在构建 ``Dependant`` 时抛出
+        ``ValueError``。
 
         :param method: HTTP 方法，首次调用时必须提供。
         :type method: str | None
@@ -110,13 +124,15 @@ class APIRoute[T](BaseModel):
                             pure_body_params.append(model_field)
                     continue
 
-                # 2. 检查是否是路径参数（alias 出现在路径占位符中）
+                # 路径占位符兜底（无 Param 标记时）
                 if model_field.alias in path_param_names:
                     path_params.append(model_field)
                     continue
 
-                # 3. 检查是否是复杂类型（BaseModel、Mapping、序列、dataclass）→ 请求体
-                #    标量类型（int、str、bool、float 等）→ 查询参数
+                # 类型推断三分支（无 Param 标记时）：
+                #   UploadFile / list[UploadFile]（含 Optional） → file_body_params
+                #   复杂类型（BaseModel/Mapping/序列/dataclass） → pure_body_params
+                #   标量类型（int/str/bool/float 等） → query_params
                 field_type = field_info.annotation
                 if _is_uploadfile_or_list_annotation(field_type):
                     file_body_params.append(model_field)
