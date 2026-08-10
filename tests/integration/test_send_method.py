@@ -10,13 +10,14 @@
 在后台线程通过 uvicorn 运行（`tests/integration/mock_server.py` 提供 fixture）。
 """
 
+import pathlib
 from typing import Annotated, Any
 
 import pytest
 from pydantic import BaseModel, Field
 
-from src.client import Client
-from src.params import Body, Path, Query
+from src.client import Client, RequestBodyKind
+from src.params import Body, Form, Path, Query, UploadFile
 from src.routing import APIRoute, APIRouter
 
 
@@ -612,6 +613,199 @@ class TestAllMethodsSend:
 
         assert response.raw.status == 200
         assert response.validated == {"method": "OPTIONS"}
+
+
+# ===== Form / UploadFile / Mix Body 测试端点 =====
+
+
+class _LoginForm(BaseModel):
+    """Form 测试用登录表单（BaseModel + Form 平展）。"""
+
+    username: str
+    tags: list[str]
+    prefs: dict[str, str]
+
+
+@router.post("/login")
+class LoginRoute(APIRoute[dict[str, Any]]):
+    """POST /login：单字段 Form，验证 wire-level urlencoded 序列化。"""
+
+    username: Annotated[str, Form()]
+    tags: Annotated[list[str], Form()]
+    prefs: Annotated[dict, Form()]
+
+
+@router.post("/login-flat")
+class LoginFlatRoute(APIRoute[dict[str, Any]]):
+    """POST /login-flat：BaseModel + Form（embed=False 默认）子字段平展。"""
+
+    data: Annotated[_LoginForm, Form()]
+
+
+@router.post("/upload")
+class UploadRoute(APIRoute[dict[str, Any]]):
+    """POST /upload：单文件上传，验证 wire-level multipart 序列化。"""
+
+    file: UploadFile
+
+
+@router.post("/upload-multi")
+class UploadMultiRoute(APIRoute[dict[str, Any]]):
+    """POST /upload-multi：多文件上传，验证 wire-level multipart 序列化。"""
+
+    files: list[UploadFile]
+
+
+@router.post("/upload-mix")
+class MixedFormFileRoute(APIRoute[dict[str, Any]]):
+    """POST /upload-mix：Form + UploadFile 共存，验证 wire-level multipart 序列化。"""
+
+    data: Annotated[_LoginForm, Form()]
+    avatar: UploadFile
+
+
+class TestFormBody:
+    """Form 字段 wire-level 测试。
+
+    注：mock_app /login 的 list/dict Form 字段与 Playwright ``form=`` 序列化存在
+    不兼容性（FastAPI 无法解析 stoma 生成的 JSON 编码字符串，会返回 422），
+    因此本测试类只做 wire-level 验证（``_serialize_body_params``），
+    不做端到端真实 HTTP。
+    """
+
+    def test_form_urlencoded_login(self, client: Client) -> None:
+        """单字段 Form() → URLENCODED，标量走 ``json.dumps``、列表/字典走 ``json.dumps``。
+
+        :param client: 共享的 Client 实例。
+        """
+        endpoint = LoginRoute(
+            username="alice",
+            tags=["vip", "beta"],
+            prefs={"theme": "dark", "lang": "en"},
+        )
+
+        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
+
+        assert body.kind is RequestBodyKind.URLENCODED
+        assert body.form_data is not None
+        # str 走 json.dumps → 加引号
+        assert body.form_data["username"] == '"alice"'
+        # list[str] 走 json.dumps → JSON 字符串（带空格）
+        assert body.form_data["tags"] == '["vip", "beta"]'
+        # dict 走 json.dumps → JSON 字符串
+        assert body.form_data["prefs"] == '{"theme": "dark", "lang": "en"}'
+
+    def test_form_basemodel_embed_false(self, client: Client) -> None:
+        """BaseModel + Form()（embed=False 默认）→ 子字段以原值平展在 form_data 顶层。
+
+        :param client: 共享的 Client 实例。
+        """
+        endpoint = LoginFlatRoute(
+            data=_LoginForm(
+                username="bob",
+                tags=["admin"],
+                prefs={"theme": "light"},
+            ),
+        )
+
+        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
+
+        assert body.kind is RequestBodyKind.URLENCODED
+        assert body.form_data is not None
+        # embed=False 平展：BaseModel 子字段在 form_data 顶层
+        # 注意：平展字段名是 BaseModel 的 field_name，不是 alias
+        assert body.form_data["username"] == "bob"
+        assert body.form_data["tags"] == ["admin"]
+        assert body.form_data["prefs"] == {"theme": "light"}
+
+
+class TestUploadFileBody:
+    """UploadFile 字段 wire-level 测试。
+
+    注：Playwright 的 ``multipart=`` 不支持 ``pathlib.Path`` 值，会静默丢弃。
+    要让 UploadFile 端到端真正发送文件，需要在 ``_serialize_body_params`` 中把
+    ``Path`` 转成 ``FilePayload`` 字典（name/mimeType/buffer），属于生产代码变更，
+    不在 Todo 9 范围内。本测试类只做 wire-level 验证。
+    """
+
+    def test_upload_single_file(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """单文件：验证 ``form_data[alias]`` 是 ``Path`` 实例，kind 为 MULTIPART。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
+        """
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("hello world", encoding="utf-8")
+
+        endpoint = UploadRoute(file=UploadFile(path=file_path))
+
+        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
+
+        assert body.kind is RequestBodyKind.MULTIPART
+        assert body.form_data is not None
+        assert isinstance(body.form_data["file"], pathlib.Path)
+        assert body.form_data["file"] == file_path
+
+    def test_upload_multi_files(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """多文件：验证 ``form_data[alias]`` 是 ``Path`` 列表。
+
+        Playwright 的 ``multipart=`` 是 dict，不支持同一个 key 出现多次，
+        因此多文件统一放进一个 list 作为单个值。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
+        """
+        file1 = tmp_path / "file1.txt"
+        file2 = tmp_path / "file2.md"
+        file1.write_text("first file", encoding="utf-8")
+        file2.write_text("second file content", encoding="utf-8")
+
+        endpoint = UploadMultiRoute(
+            files=[UploadFile(path=file1), UploadFile(path=file2)],
+        )
+
+        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
+
+        assert body.kind is RequestBodyKind.MULTIPART
+        assert body.form_data is not None
+        assert body.form_data["files"] == [file1, file2]
+
+
+class TestMixedFormAndFile:
+    """Form + UploadFile 混合字段 wire-level 测试。
+
+    注：mock_app 没有同时支持 Form 字段和 UploadFile 字段的端点；
+    且 Playwright multipart 不支持 Path，因此本测试只做 wire-level 验证。
+    """
+
+    def test_form_and_uploadfile_mix(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """Form + UploadFile 共存 → MULTIPART，form_data 同时包含表单字段和文件路径。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
+        """
+        file_path = tmp_path / "avatar.png"
+        file_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        endpoint = MixedFormFileRoute(
+            data=_LoginForm(
+                username="charlie",
+                tags=["mix"],
+                prefs={"role": "user"},
+            ),
+            avatar=UploadFile(path=file_path),
+        )
+
+        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
+
+        assert body.kind is RequestBodyKind.MULTIPART
+        assert body.form_data is not None
+        # Form BaseModel embed=False 平展的子字段
+        assert body.form_data["username"] == "charlie"
+        assert body.form_data["tags"] == ["mix"]
+        assert body.form_data["prefs"] == {"role": "user"}
+        # UploadFile 字段以 Path 存储
+        assert body.form_data["avatar"] == file_path
 
 
 if __name__ == "__main__":
