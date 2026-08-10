@@ -6,7 +6,7 @@
 
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Query, Request, Response
+from fastapi import FastAPI, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -208,3 +208,60 @@ def probe_head() -> Response:
 def probe_options() -> JSONResponse:
     """OPTIONS /probe：探测端点，验证 OPTIONS 方法支持。"""
     return JSONResponse(content={"method": "OPTIONS"}, status_code=200)
+
+
+# ===== Multipart/Form-Data 端点 =====
+
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)) -> dict[str, Any]:
+    """POST /upload：接收 multipart/form-data 单文件。
+
+    :param file: 上传的文件。
+    :return: 文件名、大小、内容类型。
+    """
+    content = await file.read()
+    return {
+        "filename": file.filename,
+        "size": len(content),
+        "content_type": file.content_type,
+    }
+
+
+@app.post("/upload-multi")
+async def upload_multi(files: list[UploadFile] = File(...)) -> dict[str, Any]:
+    """POST /upload-multi：接收 multipart/form-data 多文件。
+
+    :param files: 上传的文件列表。
+    :return: 文件名列表和总大小。
+    """
+    total_size = 0
+    filenames = []
+    for f in files:
+        content = await f.read()
+        total_size += len(content)
+        filenames.append(f.filename)
+    return {
+        "filenames": filenames,
+        "total_size": total_size,
+    }
+
+
+@app.post("/login")
+async def login(
+    username: str = Form(...),
+    tags: list[str] = Form(...),
+    prefs: dict = Form(...),
+) -> dict[str, Any]:
+    """POST /login：接收 form data。
+
+    :param username: 用户名。
+    :param tags: 标签列表。
+    :param prefs: 用户偏好设置。
+    :return: 解析后的表单数据。
+    """
+    return {
+        "username": username,
+        "tags": tags,
+        "prefs": prefs,
+    }
