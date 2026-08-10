@@ -55,9 +55,9 @@ def collect_params(endpoint: APIRoute[Any]) -> dict[str, dict[str, Any] | Any]:
     header_params = {field.alias: getattr(endpoint, field.name) for field in dependant.header_params}
 
     body_data = None
-    if dependant.body_params:
+    if dependant.pure_body_params:
         # 通常只有一个 body，取最后一个
-        body_data = getattr(endpoint, dependant.body_params[-1].name)
+        body_data = getattr(endpoint, dependant.pure_body_params[-1].name)
 
     return {
         "query": query_params,
@@ -231,7 +231,7 @@ def test_multiple_body_params() -> None:
         data2: Annotated[dict[str, int], Body()]
 
     endpoint = PostData(data1={"a": 1}, data2={"b": 2})
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
     assert body_data is not None
     # 多个 body 参数 → 每个独立命名
     assert body_data == {"data1": {"a": 1}, "data2": {"b": 2}}
@@ -248,7 +248,7 @@ def test_single_pydantic_body_flat() -> None:
         data: UserCreateRequest
 
     endpoint = CreateUser(data=UserCreateRequest(name="Alice", email="alice@example.com", age=30))
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
     assert body_data is not None
     # 单 Pydantic 模型自动识别 → 平展
     assert body_data == {"name": "Alice", "email": "alice@example.com", "age": 30}
@@ -262,7 +262,7 @@ def test_single_pydantic_body_embed_true() -> None:
         data: Annotated[UserCreateRequest, Body(embed=True)]
 
     endpoint = CreateUserEmbed(data=UserCreateRequest(name="Bob", email="bob@example.com"))
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
     assert body_data is not None
     # Body(embed=True) → 嵌入到 data 键下
     assert body_data == {"data": {"name": "Bob", "email": "bob@example.com"}}
@@ -276,7 +276,7 @@ def test_single_scalar_body_embedded() -> None:
         importance: Annotated[int, Body()]
 
     endpoint = SetImportance(importance=5)
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
     assert body_data is not None
     # 标量必须嵌入（无法平展）
     assert body_data == {"importance": 5}
@@ -294,7 +294,7 @@ def test_multiple_body_pydantic_and_scalar() -> None:
         item=UserCreateRequest(name="Charlie", email="charlie@example.com"),
         importance=10,
     )
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
     assert body_data is not None
     # 多个 body → 每个独立命名
     assert body_data == {

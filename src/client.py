@@ -19,17 +19,18 @@ URL/Query 处理说明：
 - 路径只需相对路径（如 /users/123），Playwright 自动拼接 base_url
 """
 
+import json
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, get_origin
 
 from playwright.sync_api import APIRequestContext, APIResponse
 from pydantic import BaseModel
 
-from src.dependencies import Dependant
+from src.dependencies import Dependant, ModelField
 from src.dependencies.utils import field_annotation_is_complex
 from src.exceptions import HTTPError, ParseError, ValidationError
-from src.params import Body
+from src.params import Body, UploadFile
 from src.response import Response
 from src.routing import APIRoute
 
@@ -115,8 +116,8 @@ class Client:
         :raise ValidationError: 当 JSON 解析成功但不符合 T。
         """
         try:
-            method, path, params, headers, data = self._extract_request_params(api_route)
-            api_response = self._execute_request(method, path, params, headers, data)
+            method, path, params, headers, body = self._extract_request_params(api_route)
+            api_response = self._execute_request(method, path, params, headers, body)
             return self._build_response(api_route, api_response)
         except (HTTPError, ParseError, ValidationError):
             raise
@@ -133,12 +134,12 @@ class Client:
     def _extract_request_params(
         self,
         api_route: APIRoute,
-    ) -> tuple[str, str, dict[str, Any], dict[str, str], dict[str, Any] | None]:
+    ) -> tuple[str, str, dict[str, Any], dict[str, str], RequestBody]:
         """从 api_route 提取（method, path, params, headers, body）。
 
         path 是相对路径，Playwright 会自动拼接 base_url。
         params 是 dict，Playwright 自动拼接为 query string。
-        body 是 dict，Playwright 会自动序列化为 JSON 并设置 Content-Type: application/json。
+        body 是 RequestBody，携带请求体类型和数据。
         """
         dependant = api_route._get_dependant()
         path = self._interpolate_path_params(api_route, dependant)
@@ -212,8 +213,89 @@ class Client:
         self,
         api_route: APIRoute,
         dependant: Dependant,
-    ) -> dict[str, Any] | None:
-        """根据 FastAPI Body Multiple Parameters 规则序列化请求体为 JSON 字符串。
+    ) -> RequestBody:
+        """按三个请求体字段列表分派，序列化为 RequestBody。
+
+        分派规则：
+
+        - 存在文件字段（``file_body_params``）：multipart/form-data
+        - 仅有表单字段（``form_body_params``）：application/x-www-form-urlencoded
+        - 其余情况：application/json，沿用 FastAPI Body Multiple Parameters 规则
+
+        :param api_route: APIRoute 实例。
+        :param dependant: 参数依赖定义。
+        :return: 序列化后的请求体。
+        :raise ValueError: 当 Form 字段的值无法 JSON 序列化。
+        """
+        form_data: dict[str, Any] = {}
+        for model_field in dependant.form_body_params:
+            value = getattr(api_route, model_field.name)
+            if value is None:
+                continue
+            self._fill_form_field(form_data, model_field, value)
+
+        has_files = False
+        for model_field in dependant.file_body_params:
+            value = getattr(api_route, model_field.name)
+            if value is None:
+                continue
+            if model_field.field_info.annotation is UploadFile:
+                form_data[model_field.alias] = value.path
+            elif get_origin(model_field.field_info.annotation) is list:
+                # Playwright 的 multipart 是 dict，不支持同一个 key 出现多次，
+                # 因此多文件统一放进一个 list 作为单个值。
+                form_data[model_field.alias] = [upload_file.path for upload_file in value]
+            has_files = True
+
+        if has_files:
+            return RequestBody(kind=RequestBodyKind.MULTIPART, form_data=form_data)
+        if form_data:
+            return RequestBody(kind=RequestBodyKind.URLENCODED, form_data=form_data)
+        return RequestBody(kind=RequestBodyKind.JSON, json_body=self._build_json_body(api_route, dependant))
+
+    @staticmethod
+    def _fill_form_field(
+        form_data: dict[str, Any],
+        model_field: ModelField,
+        value: Any,
+    ) -> None:
+        """把单个 Form 字段的值填入 form_data。
+
+        Pydantic 模型在 ``embed=False`` 时按字段平展，``embed=True`` 时整体 JSON 序列化；
+        非模型值一律 JSON 序列化。
+
+        :param form_data: 待填充的表单数据。
+        :param model_field: Form 字段定义。
+        :param value: 字段值。
+        :raise ValueError: 当字段值无法 JSON 序列化。
+        """
+        if not isinstance(value, BaseModel):
+            try:
+                form_data[model_field.alias] = json.dumps(value)
+            except (TypeError, ValueError) as e:
+                msg = f"Form 字段 {model_field.alias!r} 值 {type(value).__name__} 不能 JSON 序列化"
+                raise ValueError(msg) from e
+            return
+
+        # param_info 一定是 Form，因此一定有 embed 属性。
+        if getattr(model_field.param_info, "embed", False):
+            form_data[model_field.alias] = json.dumps(value.model_dump(by_alias=True, exclude_none=True))
+            return
+
+        # 遍历 model_fields 而不是 model_dump()，避免别名和缺省值带来的偏差。
+        for field_name in type(value).model_fields:
+            sub_value = getattr(value, field_name)
+            if isinstance(sub_value, BaseModel):
+                form_data[field_name] = json.dumps(sub_value.model_dump(by_alias=True, exclude_none=True))
+            else:
+                form_data[field_name] = sub_value
+
+    def _build_json_body(
+        self,
+        api_route: APIRoute,
+        dependant: Dependant,
+    ) -> dict[str, Any]:
+        """根据 FastAPI Body Multiple Parameters 规则序列化 JSON 请求体。
 
         规则（参考 https://fastapi.tiangolo.com/tutorial/body-multiple-params/）：
 
@@ -221,15 +303,19 @@ class Client:
         - 多个 body 参数：每个独立嵌入
         - Body(embed=True)：嵌入
         - 标量 Body()：嵌入
-        """
-        if not dependant.body_params:
-            return None
 
-        has_multiple = len(dependant.body_params) > 1
+        :param api_route: APIRoute 实例。
+        :param dependant: 参数依赖定义。
+        :return: JSON 请求体，无请求体字段时返回空字典。
+        """
+        if not dependant.pure_body_params:
+            return {}
+
+        has_multiple = len(dependant.pure_body_params) > 1
         body_items: list[BodyItem] = []
 
         # 循环中只做序列化，不做判断
-        for model_field in dependant.body_params:
+        for model_field in dependant.pure_body_params:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
@@ -246,14 +332,14 @@ class Client:
 
         # 统一处理
         if not body_items:
-            return None
+            return {}
 
         # 多个 body 参数：必须嵌入
         if has_multiple:
             return {item.alias: item.dumped for item in body_items}
 
         # 单个 body 参数：根据 Body(embed=...) 或是否为标量类型决定是否嵌入
-        model_field = dependant.body_params[0]
+        model_field = dependant.pure_body_params[0]
         param_info = model_field.param_info
         is_explicit_body = isinstance(param_info, Body)
         explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
@@ -276,7 +362,7 @@ class Client:
         path: str,
         params: dict[str, Any],
         headers: dict[str, str],
-        data: dict[str, Any] | None,
+        body: RequestBody,
     ) -> APIResponse:
         """用 self._context 发送 HTTP 请求。
 
@@ -284,23 +370,29 @@ class Client:
         Playwright 自动处理：
         - base_url 拼接（在 context 创建时设置）
         - query string 拼接（通过 params 参数）
-        - body 序列化为 JSON 并设置 Content-Type: application/json（通过 data=dict）
+        - 请求体编码（JSON 用 data，urlencoded 用 form，multipart 用 multipart）
 
         :param method: HTTP 方法（支持 GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS/TRACE 等）。
         :param path: 相对路径。
         :param params: 查询参数 dict。
         :param headers: 请求头 dict。
-        :param data: body dict（Playwright 自动序列化为 JSON）。
+        :param body: 序列化后的请求体。
         :return: Playwright APIResponse 对象。
         :raise HTTPError: 网络层失败时抛出，消息包含 method/path 便于排错。
         """
+        payload: dict[str, Any] = {"data": body.json_body if body.json_body else None}
+        if body.kind is RequestBodyKind.MULTIPART:
+            payload = {"multipart": body.form_data}
+        elif body.kind is RequestBodyKind.URLENCODED:
+            payload = {"form": body.form_data}
+
         try:
             return self._context.fetch(
                 path,
                 method=method,
                 params=params if params else None,
                 headers=headers if headers else None,
-                data=data,
+                **payload,
             )
         except Exception as e:
             msg = f"HTTP 请求失败 ({method} {path}): {e}"

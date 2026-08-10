@@ -53,9 +53,9 @@ def collect_params(endpoint: APIRoute[Any]) -> dict[str, dict[str, Any] | Any]:
     header_params = {field.alias: getattr(endpoint, field.name) for field in dependant.header_params}
 
     body_data = None
-    if dependant.body_params:
+    if dependant.pure_body_params:
         # 通常只有一个 body，取最后一个
-        body_data = getattr(endpoint, dependant.body_params[-1].name)
+        body_data = getattr(endpoint, dependant.pure_body_params[-1].name)
 
     return {
         "query": query_params,
@@ -102,8 +102,8 @@ def test_auto_recognize_body_params() -> None:
     dependant = CreateUser._get_dependant()
 
     # 验证自动识别结果：BaseModel 子类应该在 body_params 中
-    assert len(dependant.body_params) == 1
-    assert dependant.body_params[0].name == "user_data"
+    assert len(dependant.pure_body_params) == 1
+    assert dependant.pure_body_params[0].name == "user_data"
     assert len(dependant.query_params) == 1
     assert dependant.query_params[0].name == "token"
 
@@ -223,8 +223,8 @@ def test_complex_mixed_params() -> None:
     assert dependant.query_params[0].name == "published"
     assert len(dependant.header_params) == 1
     assert dependant.header_params[0].name == "token"
-    assert len(dependant.body_params) == 1
-    assert dependant.body_params[0].name == "data"
+    assert len(dependant.pure_body_params) == 1
+    assert dependant.pure_body_params[0].name == "data"
 
     # 验证参数收集
     user_data = UserCreateRequest(name="Bob", email="bob@example.com")
@@ -322,8 +322,8 @@ def test_basemodel_subclass_recognition() -> None:
     dependant = PostData._get_dependant()
 
     # BaseModel 子类应该被识别为请求体
-    assert len(dependant.body_params) == 2
-    body_names = [f.name for f in dependant.body_params]
+    assert len(dependant.pure_body_params) == 2
+    body_names = [f.name for f in dependant.pure_body_params]
     assert "request1" in body_names
     assert "request2" in body_names
     assert len(dependant.query_params) == 1
@@ -353,8 +353,8 @@ def test_sequence_types_recognition() -> None:
     dependant = PostItems._get_dependant()
 
     # 序列类型应该在 body_params 中
-    assert len(dependant.body_params) == 3
-    body_names = [f.name for f in dependant.body_params]
+    assert len(dependant.pure_body_params) == 3
+    body_names = [f.name for f in dependant.pure_body_params]
     assert "items" in body_names
     assert "metadata" in body_names
     assert "tags" in body_names
@@ -380,8 +380,8 @@ def test_dataclass_recognition() -> None:
     dependant = PostDataclass._get_dependant()
 
     # dataclass 应该在 body_params 中
-    assert len(dependant.body_params) == 1
-    assert dependant.body_params[0].name == "item"
+    assert len(dependant.pure_body_params) == 1
+    assert dependant.pure_body_params[0].name == "item"
     # 标量类型应该在 query_params 中
     assert len(dependant.query_params) == 1
     assert dependant.query_params[0].name == "active"
@@ -407,8 +407,8 @@ def test_union_type_recognition() -> None:
     dependant = PostUnion._get_dependant()
 
     # BaseModel | None 应该在 body_params 中
-    assert len(dependant.body_params) == 1
-    assert dependant.body_params[0].name == "optional_data"
+    assert len(dependant.pure_body_params) == 1
+    assert dependant.pure_body_params[0].name == "optional_data"
     # int | str 和 str 应该在 query_params 中
     assert len(dependant.query_params) == 2
     query_names = [f.name for f in dependant.query_params]
