@@ -703,12 +703,13 @@ class TestFormBody:
 
         assert body.kind is RequestBodyKind.URLENCODED
         assert body.form_data is not None
+        assert isinstance(body.form_data, FormData)
         # str 走 json.dumps → 加引号
-        assert body.form_data["username"] == '"alice"'
+        assert body.form_data._fields[0] == ("username", '"alice"')
         # list[str] 走 json.dumps → JSON 字符串（带空格）
-        assert body.form_data["tags"] == '["vip", "beta"]'
+        assert body.form_data._fields[1] == ("tags", '["vip", "beta"]')
         # dict 走 json.dumps → JSON 字符串
-        assert body.form_data["prefs"] == '{"theme": "dark", "lang": "en"}'
+        assert body.form_data._fields[2] == ("prefs", '{"theme": "dark", "lang": "en"}')
 
     def test_form_basemodel_embed_false(self, client: Client) -> None:
         """BaseModel + Form()（embed=False 默认）→ 子字段以原值平展在 form_data 顶层。
@@ -727,11 +728,14 @@ class TestFormBody:
 
         assert body.kind is RequestBodyKind.URLENCODED
         assert body.form_data is not None
-        # embed=False 平展：BaseModel 子字段在 form_data 顶层
-        # 注意：平展字段名是 BaseModel 的 field_name，不是 alias
-        assert body.form_data["username"] == "bob"
-        assert body.form_data["tags"] == ["admin"]
-        assert body.form_data["prefs"] == {"theme": "light"}
+        assert isinstance(body.form_data, FormData)
+        # embed=False 平展：BaseModel 子字段在 form_data 顶层。
+        # 平展字段名是 BaseModel 的 field_name，不是 alias。
+        assert body.form_data._fields == [
+            ("username", "bob"),
+            ("tags", ["admin"]),
+            ("prefs", {"theme": "light"}),
+        ]
 
 
 class TestUploadFileBody:

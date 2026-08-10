@@ -246,7 +246,8 @@ class Client:
         - 存在文件字段（``file_body_params``）：multipart/form-data，
           使用 Playwright 的 ``FormData`` 同时容纳 Form 字段和文件（原始值，不 JSON 编码）。
         - 仅有表单字段（``form_body_params``）：application/x-www-form-urlencoded，
-          使用 ``dict[str, str | float | bool]``（与 Playwright ``form=`` 兼容）。
+          使用 Playwright 的 ``FormData``（与 Playwright ``form=`` 兼容）；标量/列表/字典值仍走
+          ``json.dumps``，服务端 ``Form()`` 收到后由用户自行 ``json.loads`` 还原。
         - 其余情况：application/json，沿用 FastAPI Body Multiple Parameters 规则。
 
         :param api_route: APIRoute 实例。
@@ -255,7 +256,7 @@ class Client:
         :raise ValueError: 当 urlencoded Form 字段的值无法 JSON 序列化。
         """
         has_files = bool(dependant.file_body_params)
-        urlencoded_form: dict[str, Any] = {}
+        urlencoded_form = FormData()
         multipart_form = FormData() if has_files else None
 
         for model_field in dependant.form_body_params:
@@ -284,7 +285,8 @@ class Client:
 
         if has_files:
             return RequestBody(kind=RequestBodyKind.MULTIPART, form_data=multipart_form)
-        if urlencoded_form:
+        # FormData 没有 ``__bool__`` / ``__len__``，空实例仍为真，必须用 ``_fields`` 判断非空。
+        if urlencoded_form._fields:
             return RequestBody(kind=RequestBodyKind.URLENCODED, form_data=urlencoded_form)
         return RequestBody(kind=RequestBodyKind.JSON, json_body=self._build_json_body(api_route, dependant))
 
@@ -320,11 +322,11 @@ class Client:
 
     @staticmethod
     def _fill_urlencoded_form_field(
-        form_data: dict[str, Any],
+        form_data: FormData,
         model_field: ModelField,
         value: Any,
     ) -> None:
-        """把单个 Form 字段填入 urlencoded ``dict``，标量/列表/字典走 ``json.dumps``。
+        """把单个 Form 字段填入 urlencoded ``FormData``，标量/列表/字典走 ``json.dumps``。
 
         application/x-www-form-urlencoded 只能传字符串；为了与服务端 ``Form()`` 解析兼容，
         标量、列表、字典统一 JSON 编码（FastAPI ``Form()`` 收到后由用户在服务端 ``json.loads``）。
@@ -332,29 +334,29 @@ class Client:
         Pydantic 模型在 ``embed=False`` 时按字段平展，``embed=True`` 时整体 JSON 序列化；
         嵌套 BaseModel 子字段 JSON 序列化。
 
-        :param form_data: 待填充的 urlencoded 表单。
+        :param form_data: 待填充的 urlencoded 表单（Playwright ``FormData``）。
         :param model_field: Form 字段定义。
         :param value: 字段值。
         :raise ValueError: 当字段值无法 JSON 序列化。
         """
         if not isinstance(value, BaseModel):
             try:
-                form_data[model_field.alias] = json.dumps(value)
+                form_data.set(model_field.alias, json.dumps(value))
             except (TypeError, ValueError) as e:
                 msg = f"Form 字段 {model_field.alias!r} 值 {type(value).__name__} 不能 JSON 序列化"
                 raise ValueError(msg) from e
             return
 
         if getattr(model_field.param_info, "embed", False):
-            form_data[model_field.alias] = json.dumps(value.model_dump(by_alias=True, exclude_none=True))
+            form_data.set(model_field.alias, json.dumps(value.model_dump(by_alias=True, exclude_none=True)))
             return
 
         for field_name in type(value).model_fields:
             sub_value = getattr(value, field_name)
             if isinstance(sub_value, BaseModel):
-                form_data[field_name] = json.dumps(sub_value.model_dump(by_alias=True, exclude_none=True))
+                form_data.set(field_name, json.dumps(sub_value.model_dump(by_alias=True, exclude_none=True)))
             else:
-                form_data[field_name] = sub_value
+                form_data.set(field_name, sub_value)
 
     def _build_json_body(
         self,

@@ -356,7 +356,8 @@ def test_form_scalar_passes_value() -> None:
     endpoint = LoginForm(username="alice")
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED
-    assert body.form_data == {"username": '"alice"'}
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [("username", '"alice"')]
 
 
 def test_form_int() -> None:
@@ -369,7 +370,8 @@ def test_form_int() -> None:
     endpoint = AgeForm(age=42)
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED
-    assert body.form_data == {"age": "42"}
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [("age", "42")]
 
 
 def test_form_list() -> None:
@@ -382,7 +384,8 @@ def test_form_list() -> None:
     endpoint = TagsForm(tags=[1, 2, 3])
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED
-    assert body.form_data == {"tags": "[1, 2, 3]"}
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [("tags", "[1, 2, 3]")]
 
 
 def test_form_dict() -> None:
@@ -395,7 +398,8 @@ def test_form_dict() -> None:
     endpoint = PrefsForm(prefs={"a": 1})
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED
-    assert body.form_data == {"prefs": '{"a": 1}'}
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [("prefs", '{"a": 1}')]
 
 
 def test_form_basemodel_embed_false() -> None:
@@ -408,7 +412,8 @@ def test_form_basemodel_embed_false() -> None:
     endpoint = CreateUserForm(user=_FormFlatModel(name="Alice", age=30))
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED
-    assert body.form_data == {"name": "Alice", "age": 30}
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [("name", "Alice"), ("age", 30)]
 
 
 def test_form_basemodel_embed_true() -> None:
@@ -421,7 +426,8 @@ def test_form_basemodel_embed_true() -> None:
     endpoint = CreateUserFormEmbed(data=_FormFlatModel(name="Alice", age=30))
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED
-    assert body.form_data == {"data": '{"name": "Alice", "age": 30}'}
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [("data", '{"name": "Alice", "age": 30}')]
 
 
 def test_form_basemodel_nested_embed_false() -> None:
@@ -436,11 +442,12 @@ def test_form_basemodel_nested_embed_false() -> None:
     )
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED
-    assert body.form_data == {
-        "name": "Alice",
-        "age": 30,
-        "profile": '{"bio": "Software engineer"}',
-    }
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [
+        ("name", "Alice"),
+        ("age", 30),
+        ("profile", '{"bio": "Software engineer"}'),
+    ]
 
 
 def test_form_unserializable_raises() -> None:
