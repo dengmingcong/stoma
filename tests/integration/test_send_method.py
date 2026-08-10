@@ -689,7 +689,7 @@ class TestFormBody:
     """
 
     def test_form_urlencoded_login(self, client: Client) -> None:
-        """单字段 Form() → URLENCODED，标量走 ``json.dumps``、列表/字典走 ``json.dumps``。
+        """单字段 Form() → URLENCODED，标量原值、列表/字典走 ``json.dumps``。
 
         :param client: 共享的 Client 实例。
         """
@@ -704,15 +704,17 @@ class TestFormBody:
         assert body.kind is RequestBodyKind.URLENCODED
         assert body.form_data is not None
         assert isinstance(body.form_data, FormData)
-        # str 走 json.dumps → 加引号
-        assert body.form_data._fields[0] == ("username", '"alice"')
+        # str 标量原值存储，与 FastAPI Form() 直接接收字符串一致
+        assert body.form_data._fields[0] == ("username", "alice")
         # list[str] 走 json.dumps → JSON 字符串（带空格）
         assert body.form_data._fields[1] == ("tags", '["vip", "beta"]')
         # dict 走 json.dumps → JSON 字符串
         assert body.form_data._fields[2] == ("prefs", '{"theme": "dark", "lang": "en"}')
 
     def test_form_basemodel_embed_false(self, client: Client) -> None:
-        """BaseModel + Form()（embed=False 默认）→ 子字段以原值平展在 form_data 顶层。
+        """BaseModel + Form()（embed=False 默认）→ 子字段平展在 form_data 顶层。
+
+        标量子字段原值，集合子字段（list/dict）走 ``json.dumps``。
 
         :param client: 共享的 Client 实例。
         """
@@ -731,10 +733,11 @@ class TestFormBody:
         assert isinstance(body.form_data, FormData)
         # embed=False 平展：BaseModel 子字段在 form_data 顶层。
         # 平展字段名是 BaseModel 的 field_name，不是 alias。
+        # 标量子字段原值，集合子字段走 json.dumps。
         assert body.form_data._fields == [
             ("username", "bob"),
-            ("tags", ["admin"]),
-            ("prefs", {"theme": "light"}),
+            ("tags", '["admin"]'),
+            ("prefs", '{"theme": "light"}'),
         ]
 
 
@@ -793,12 +796,14 @@ class TestUploadFileBody:
 class TestMixedFormAndFile:
     """Form + UploadFile 混合字段 wire-level 测试。
 
-    当存在文件字段时，整体走 multipart：Form 字段以原值（非 JSON 编码）写入 FormData。
-    mock_app 暂未提供 Form + File 混合端点，因此保持 wire-level 验证。
+    当存在文件字段时，整体走 multipart：Form 标量字段原值、集合字段 ``json.dumps``
+    后写入 FormData。mock_app 暂未提供 Form + File 混合端点，因此保持 wire-level 验证。
     """
 
     def test_form_and_uploadfile_mix(self, client: Client, tmp_path: pathlib.Path) -> None:
-        """Form + UploadFile 共存 → MULTIPART，``FormData`` 同时包含表单字段（原始值）和文件路径。
+        """Form + UploadFile 共存 → MULTIPART，``FormData`` 同时包含表单字段和文件路径。
+
+        标量子字段原值，集合子字段（list/dict）走 ``json.dumps``。
 
         :param client: 共享的 Client 实例。
         :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
@@ -819,11 +824,11 @@ class TestMixedFormAndFile:
 
         assert body.kind is RequestBodyKind.MULTIPART
         assert isinstance(body.form_data, FormData)
-        # multipart 不做 json.dumps：Form BaseModel embed=False 平展的子字段为原值
+        # BaseModel embed=False 平展：标量子字段原值，集合子字段走 json.dumps。
         assert body.form_data._fields == [
             ("username", "charlie"),
-            ("tags", ["mix"]),
-            ("prefs", {"role": "user"}),
+            ("tags", '["mix"]'),
+            ("prefs", '{"role": "user"}'),
             ("avatar", file_path),
         ]
 

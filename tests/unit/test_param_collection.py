@@ -347,7 +347,7 @@ class _FormNestedUser(BaseModel):
 
 
 def test_form_scalar_passes_value() -> None:
-    """测试 Form 标量字段值走 ``json.dumps``，结果带引号 JSON 字符串。"""
+    """测试 Form 标量字段值原值存储（不 ``json.dumps``），与 FastAPI ``Form()`` 直传字符串一致。"""
 
     @router.post("/form-scalar")
     class LoginForm(APIRoute[dict[str, Any]]):
@@ -357,11 +357,11 @@ def test_form_scalar_passes_value() -> None:
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED
     assert isinstance(body.form_data, FormData)
-    assert body.form_data._fields == [("username", '"alice"')]
+    assert body.form_data._fields == [("username", "alice")]
 
 
 def test_form_int() -> None:
-    """测试 Form 整数字段值走 ``json.dumps``，int 不带引号。"""
+    """测试 Form 整数字段值原值存储（不 ``json.dumps``）。"""
 
     @router.post("/form-int")
     class AgeForm(APIRoute[dict[str, Any]]):
@@ -371,7 +371,7 @@ def test_form_int() -> None:
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED
     assert isinstance(body.form_data, FormData)
-    assert body.form_data._fields == [("age", "42")]
+    assert body.form_data._fields == [("age", 42)]
 
 
 def test_form_list() -> None:
@@ -451,14 +451,17 @@ def test_form_basemodel_nested_embed_false() -> None:
 
 
 def test_form_unserializable_raises() -> None:
-    """测试 Form 字段值无法 JSON 序列化时抛出清晰错误。"""
+    """测试 Form 字段值为集合且无法 JSON 序列化时抛出清晰错误。"""
 
-    @router.post("/form-bytes")
-    class UploadBinary(APIRoute[dict[str, Any]]):
-        blob: Annotated[bytes, Form()]
+    class _NonSerializable:
+        """测试用不可 JSON 序列化的值（标量检测 False，集合分支报 ``json.dumps`` 错误）。"""
 
-    endpoint = UploadBinary(blob=b"hello")
-    with pytest.raises(ValueError, match="Form 字段 'blob' 值 bytes 不能 JSON 序列化"):
+    @router.post("/form-bad")
+    class BadForm(APIRoute[dict[str, Any]]):
+        bad: Annotated[Any, Form()]
+
+    endpoint = BadForm(bad=_NonSerializable())
+    with pytest.raises(ValueError, match="Form 字段 'bad' 值 _NonSerializable 不能 JSON 序列化"):
         Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
 
 

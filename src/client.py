@@ -86,6 +86,11 @@ class RequestParams(NamedTuple):
     body: RequestBody
 
 
+def _is_scalar_type(value: Any) -> bool:
+    """判断 ``value`` 是否为 Form 标量（``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``）。"""
+    return isinstance(value, (str, int, float, bool, bytes))
+
+
 class Client:
     """API Client，统一管理 Playwright context。
 
@@ -244,16 +249,21 @@ class Client:
         分派规则：
 
         - 存在文件字段（``file_body_params``）：multipart/form-data，
-          使用单一 ``FormData`` 同时容纳 Form 字段和文件（Form 字段原值，不 JSON 编码）。
+          使用单一 ``FormData`` 同时容纳 Form 字段和文件。
         - 仅有表单字段（``form_body_params``）：application/x-www-form-urlencoded，
-          使用同一 ``FormData``（与 Playwright ``form=`` 兼容）；标量/列表/字典值仍走
-          ``json.dumps``，服务端 ``Form()`` 收到后由用户自行 ``json.loads`` 还原。
+          使用同一 ``FormData``（与 Playwright ``form=`` 兼容）。
         - 其余情况：application/json，沿用 FastAPI Body Multiple Parameters 规则。
+
+        Form 字段统一序列化规则（与请求体类型无关）：
+
+        - 标量（``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``）：原值存储。
+        - 集合（``list`` / ``dict`` / ``tuple`` / ``set``）：``json.dumps`` 编码。
+        - ``BaseModel``：``embed=True`` 整体 dump，``embed=False`` 按子字段平展。
 
         :param api_route: APIRoute 实例。
         :param dependant: 参数依赖定义。
         :return: 序列化后的请求体。
-        :raise ValueError: 当 urlencoded Form 字段的值无法 JSON 序列化。
+        :raise ValueError: 当 Form 字段的集合值无法 JSON 序列化。
         """
         has_files = bool(dependant.file_body_params)
         form_data: FormData = FormData()
@@ -292,56 +302,65 @@ class Client:
         value: Any,
         json_encode: bool = False,
     ) -> None:
-        """把单个 Form 字段填入 ``FormData``，是否对值做 JSON 编码由 ``json_encode`` 控制。
+        """把单个 Form 字段填入 ``FormData``。
 
-        - ``json_encode=False``（multipart 语义）：标量/列表/字典原值存储，
-          服务端按 part 各自解析；BaseModel ``embed=True`` 整体 ``model_dump``，
-          ``embed=False`` 按子字段平展（嵌套 BaseModel 子字段原值存储）。
-        - ``json_encode=True``（urlencoded 语义）：标量/列表/字典走 ``json.dumps``
-          以适配 Playwright ``form=``；BaseModel ``embed=True`` 先 ``model_dump``
-          再 ``json.dumps``，``embed=False`` 平展子字段中嵌套 BaseModel 也
-          ``json.dumps``。
+        序列化语义：
 
-        Pydantic 模型在 ``embed=False`` 时按子字段平展，遍历 ``model_fields``
-        而非 ``model_dump()``，避免别名和缺省值带来的偏差。
+        - 标量（``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``）：原值存储，
+          不走 ``json.dumps``，与 FastAPI ``Form()`` 直接接收原始字符串/数字一致。
+        - 集合（``list`` / ``dict`` / ``tuple`` / ``set``）：走 ``json.dumps``
+          编码为字符串，服务端 ``Form()`` 字段定义为 ``list`` / ``dict`` 时按需
+          ``json.loads`` 还原。
+        - ``BaseModel``：``embed=True`` 时整体 ``model_dump``，``embed=False`` 时
+          按 ``model_fields`` 子字段平展。``json_encode=True`` 对 dump 结果再
+          ``json.dumps``（用于 urlencoded 场景），``json_encode=False`` 直接存原值
+          （用于 multipart 场景）。平展后子字段中的标量/集合遵循上述统一规则。
+
+        Pydantic 模型在 ``embed=False`` 时遍历 ``model_fields`` 而非 ``model_dump()``，
+        避免别名和缺省值带来的偏差。
 
         :param form_data: 待填充的表单。
         :param model_field: Form 字段定义。
         :param value: 字段值。
-        :param json_encode: 是否对标量/列表/字典（含 BaseModel dump 字典）走 ``json.dumps``。
-        :raise ValueError: 当 ``json_encode=True`` 且值无法 JSON 序列化。
+        :param json_encode: 是否对 ``BaseModel`` ``model_dump`` 结果走 ``json.dumps``，
+            仅影响 BaseModel 分支；非 BaseModel 标量/集合已按类型固定处理。
+        :raise ValueError: 当集合值无法 JSON 序列化。
         """
 
-        def encode(v: Any) -> Any:
-            """按 ``json_encode`` 标志对值做 JSON 编码或原样返回。"""
-            if not json_encode:
-                return v
+        def encode_collection(v: Any, alias: str) -> str:
+            """把集合值 ``json.dumps``，失败时抛出带字段名的清晰错误。"""
             try:
                 return json.dumps(v)
             except (TypeError, ValueError) as e:
-                msg = f"Form 字段 {model_field.alias!r} 值 {type(v).__name__} 不能 JSON 序列化"
+                msg = f"Form 字段 {alias!r} 值 {type(v).__name__} 不能 JSON 序列化"
                 raise ValueError(msg) from e
 
         if not isinstance(value, BaseModel):
-            form_data.set(model_field.alias, encode(value))
+            if _is_scalar_type(value):
+                form_data.set(model_field.alias, value)
+            else:
+                form_data.set(model_field.alias, encode_collection(value, model_field.alias))
             return
 
         if getattr(model_field.param_info, "embed", False):
-            form_data.set(
-                model_field.alias,
-                encode(value.model_dump(by_alias=True, exclude_none=True)),
-            )
+            dumped = value.model_dump(by_alias=True, exclude_none=True)
+            if json_encode:
+                dumped = json.dumps(dumped)
+            form_data.set(model_field.alias, dumped)
             return
 
         for field_name in type(value).model_fields:
             sub_value = getattr(value, field_name)
             if isinstance(sub_value, BaseModel):
-                form_data.set(
-                    field_name,
-                    encode(sub_value.model_dump(by_alias=True, exclude_none=True)),
-                )
-            else:
+                dumped = sub_value.model_dump(by_alias=True, exclude_none=True)
+                if json_encode:
+                    form_data.set(field_name, json.dumps(dumped))
+                else:
+                    form_data.set(field_name, dumped)
+            elif _is_scalar_type(sub_value):
                 form_data.set(field_name, sub_value)
+            else:
+                form_data.set(field_name, encode_collection(sub_value, field_name))
 
     def _build_json_body(
         self,
