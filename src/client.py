@@ -19,7 +19,8 @@ URL/Query 处理说明：
 - 路径只需相对路径（如 /users/123），Playwright 自动拼接 base_url
 """
 
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
+from enum import Enum
 from typing import Any, NamedTuple
 
 from playwright.sync_api import APIRequestContext, APIResponse
@@ -32,12 +33,40 @@ from src.params import Body
 from src.response import Response
 from src.routing import APIRoute
 
+# FormData 类型别名，对应 Playwright fetch 的 form 参数类型
+# form: Optional[Dict[str, Union[str, float, bool]]]
+FormData = dict[str, str | float | bool]
+
 
 class BodyItem(NamedTuple):
     """body 项。"""
 
     alias: str
     dumped: dict[str, Any] | Any
+
+
+class RequestBodyKind(Enum):
+    """请求体类型枚举。"""
+
+    JSON: str = "application/json"
+    URLENCODED: str = "application/x-www-form-urlencoded"
+    MULTIPART: str = "multipart/form-data"
+
+
+@dataclass
+class RequestBody:
+    """请求体数据结构。
+
+    用于在序列化过程中携带不同类型请求体的元信息。
+
+    :var kind: 请求体类型。
+    :var json_body: JSON 请求体数据（当 kind 为 JSON 时）。
+    :var form_data: 表单请求体数据（当 kind 为 URLENCODED 或 MULTIPART 时）。
+    """
+
+    kind: RequestBodyKind
+    json_body: dict | None = None
+    form_data: FormData | None = None
 
 
 class Client:

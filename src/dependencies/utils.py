@@ -7,6 +7,8 @@ from typing import Annotated, Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
+from src.params import UploadFile
+
 
 def _lenient_issubclass(cls: Any, class_or_tuple: type | tuple[type, ...]) -> bool:
     """宽松的 issubclass 检查，避免对泛型类型报错。"""
@@ -57,3 +59,18 @@ def field_annotation_is_complex(annotation: Any) -> bool:
         or hasattr(origin, "__pydantic_core_schema__")
         or hasattr(origin, "__get_pydantic_core_schema__")
     )
+
+
+def _is_uploadfile_or_list_annotation(annotation: Any) -> bool:
+    """检查注解是否为 UploadFile 或 list[UploadFile]。
+
+    不处理 Optional/Union 包装，仅对单一 UploadFile 或 list[UploadFile] 返回 True。
+
+    :param annotation: 待检查的类型注解。
+    :return: 如果是 UploadFile 或 list[UploadFile] 则返回 True。
+    """
+    if annotation is UploadFile:
+        return True
+    if get_origin(annotation) is list and get_args(annotation)[0] is UploadFile:
+        return True
+    return False
