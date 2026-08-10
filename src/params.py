@@ -124,7 +124,6 @@ class Body(Param):
     """
 
     in_ = ParamTypes.body
-    media_type: str = "application/json"
 
     def __init__(self, embed: bool = False) -> None:
         """初始化 Body 标记。
@@ -137,13 +136,12 @@ class Body(Param):
 class Form(Body):
     """表单参数标记。
 
-    用于标记接口类中的表单字段。表单数据会被编码为 ``application/x-www-form-urlencoded`` 发送到服务器。
+    用于标记接口类中的表单字段。表单数据会被编码后发送到服务器。
 
     继承自 ``Body.__init__(embed)``，因此支持 ``embed`` 参数。
     """
 
     in_ = ParamTypes.body
-    media_type: str = "application/x-www-form-urlencoded"
 
 
 @dataclass
