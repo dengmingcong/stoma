@@ -60,7 +60,7 @@ class APIRoute[T](BaseModel):
         首次调用时分析字段参数依赖并缓存在类级别 _dependant，
         后续调用直接返回缓存结果。
 
-        分类逻辑（按优先级순차匹配）：
+        分类逻辑（按优先级顺序匹配）：
 
         1. **Param 标记分发**（``Annotated[Type, Path() / Query() / Header() /
            Body() / Form()]``）：按 ``param_info.in_`` 属性归类到对应列表。
