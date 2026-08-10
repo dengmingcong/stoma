@@ -17,8 +17,8 @@ from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from src.dependencies import Dependant, ModelField
-from src.dependencies.utils import field_annotation_is_complex
-from src.params import Param, ParamTypes
+from src.dependencies.utils import _is_uploadfile_or_list_annotation, field_annotation_is_complex
+from src.params import Form, Param, ParamTypes
 
 
 class APIRoute[T](BaseModel):
@@ -81,7 +81,9 @@ class APIRoute[T](BaseModel):
             path_params: list[ModelField] = []
             query_params: list[ModelField] = []
             header_params: list[ModelField] = []
-            body_params: list[ModelField] = []
+            pure_body_params: list[ModelField] = []
+            form_body_params: list[ModelField] = []
+            file_body_params: list[ModelField] = []
 
             # 使用正则表达式提取路径参数名（参考 FastAPI loose regex，支持 kebab-case 等）
             path_param_names = set(re.findall(r"\{(.*?)\}", path))
@@ -102,7 +104,10 @@ class APIRoute[T](BaseModel):
                     elif param_info.in_ == ParamTypes.header:
                         header_params.append(model_field)
                     elif param_info.in_ == ParamTypes.body:
-                        body_params.append(model_field)
+                        if isinstance(param_info, Form):
+                            form_body_params.append(model_field)
+                        else:
+                            pure_body_params.append(model_field)
                     continue
 
                 # 2. 检查是否是路径参数（alias 出现在路径占位符中）
@@ -113,8 +118,10 @@ class APIRoute[T](BaseModel):
                 # 3. 检查是否是复杂类型（BaseModel、Mapping、序列、dataclass）→ 请求体
                 #    标量类型（int、str、bool、float 等）→ 查询参数
                 field_type = field_info.annotation
-                if field_annotation_is_complex(field_type):
-                    body_params.append(model_field)
+                if _is_uploadfile_or_list_annotation(field_type):
+                    file_body_params.append(model_field)
+                elif field_annotation_is_complex(field_type):
+                    pure_body_params.append(model_field)
                 else:
                     query_params.append(model_field)
 
@@ -142,10 +149,17 @@ class APIRoute[T](BaseModel):
                 path_params=path_params,
                 query_params=query_params,
                 header_params=header_params,
-                body_params=body_params,
+                pure_body_params=pure_body_params,
+                form_body_params=form_body_params,
+                file_body_params=file_body_params,
                 json_response_schema=json_response_schema,
                 json_response_schema_adapter=json_response_schema_adapter,
             )
+
+            if cls._dependant.pure_body_params and (
+                cls._dependant.form_body_params or cls._dependant.file_body_params
+            ):
+                raise ValueError("Body 与 Form/UploadFile 字段不能在同一 APIRoute 混用")
 
         return cls._dependant
 
