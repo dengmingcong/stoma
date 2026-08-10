@@ -66,6 +66,26 @@ class RequestBody:
     form_data: FormData | None = None
 
 
+class RequestParams(NamedTuple):
+    """请求参数元组。
+
+    从 ``_extract_request_params`` 返回，替代原有的 tuple[str, str, dict[str, Any], dict[str, str], RequestBody]，
+    提供命名字段以提升可读性。
+
+    :var method: HTTP 方法。
+    :var path: 相对路径。
+    :var params: 查询参数字典。
+    :var headers: 请求头字典。
+    :var body: 请求体数据结构。
+    """
+
+    method: str
+    path: str
+    params: dict[str, Any]
+    headers: dict[str, str]
+    body: RequestBody
+
+
 class Client:
     """API Client，统一管理 Playwright context。
 
@@ -112,8 +132,10 @@ class Client:
         :raise ValidationError: 当 JSON 解析成功但不符合 T。
         """
         try:
-            method, path, params, headers, body = self._extract_request_params(api_route)
-            api_response = self._execute_request(method, path, params, headers, body)
+            result = self._extract_request_params(api_route)
+            api_response = self._execute_request(
+                result.method, result.path, result.params, result.headers, result.body
+            )
             return self._build_response(api_route, api_response)
         except (HTTPError, ParseError, ValidationError):
             raise
@@ -130,19 +152,26 @@ class Client:
     def _extract_request_params(
         self,
         api_route: APIRoute,
-    ) -> tuple[str, str, dict[str, Any], dict[str, str], RequestBody]:
-        """从 api_route 提取（method, path, params, headers, body）。
+    ) -> RequestParams:
+        """从 api_route 提取请求参数。
 
-        path 是相对路径，Playwright 会自动拼接 base_url。
-        params 是 dict，Playwright 自动拼接为 query string。
-        body 是 RequestBody，携带请求体类型和数据。
+        返回 ``RequestParams`` 命名元组，包含 method、path、params、headers、body。
+
+        :return: 命名元组，包含提取后的请求参数。
+        :rtype: RequestParams
         """
         dependant = api_route._get_dependant()
         path = self._interpolate_path_params(api_route, dependant)
         params = self._collect_query_params(api_route, dependant)
         headers = self._serialize_header_params(api_route, dependant)
         body = self._serialize_body_params(api_route, dependant)
-        return dependant.method, path, params, headers, body
+        return RequestParams(
+            method=dependant.method,
+            path=path,
+            params=params,
+            headers=headers,
+            body=body,
+        )
 
     def _interpolate_path_params(
         self,
