@@ -58,8 +58,12 @@ class Dependant:
     :vartype query_params: list[ModelField]
     :var header_params: 请求头参数字段列表。
     :vartype header_params: list[ModelField]
-    :var body_params: 请求体参数字段列表。
-    :vartype body_params: list[ModelField]
+    :var pure_body_params: JSON 请求体参数字段列表（application/json）。
+    :vartype pure_body_params: list[ModelField]
+    :var form_body_params: Form 请求体参数字段列表（application/x-www-form-urlencoded 或 multipart/form-data）。
+    :vartype form_body_params: list[ModelField]
+    :var file_body_params: 上传文件请求体参数字段列表（UploadFile 或 list[UploadFile]）。
+    :vartype file_body_params: list[ModelField]
     :var json_response_schema: JSON 响应校验类型，为 None 时表示不校验响应。
     :vartype json_response_schema: type | None
     :var json_response_schema_adapter: JSON 响应校验器缓存。
@@ -71,6 +75,8 @@ class Dependant:
     path_params: list[ModelField] = field(default_factory=list)
     query_params: list[ModelField] = field(default_factory=list)
     header_params: list[ModelField] = field(default_factory=list)
-    body_params: list[ModelField] = field(default_factory=list)
+    pure_body_params: list[ModelField] = field(default_factory=list)
+    form_body_params: list[ModelField] = field(default_factory=list)
+    file_body_params: list[ModelField] = field(default_factory=list)
     json_response_schema: type | None = None
     json_response_schema_adapter: TypeAdapter[Any] | None = None
