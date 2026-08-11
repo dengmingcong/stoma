@@ -417,7 +417,7 @@ def test_form_basemodel_raises_in_routing() -> None:
 
         data: Annotated[UserCreateRequest, Form()]
 
-    with pytest.raises(ValueError, match="Form 不支持 BaseModel 子字段"):
+    with pytest.raises(ValueError, match="Form 不支持的字段类型"):
         SubmitFormEndpoint._get_dependant(method="POST", path="/submit")
 
 
