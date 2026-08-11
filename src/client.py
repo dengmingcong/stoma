@@ -20,17 +20,19 @@ URL/Query 处理说明：
 """
 
 import json
+import pathlib
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
-from typing import Any, NamedTuple
+from types import UnionType
+from typing import Annotated, Any, Literal, NamedTuple, Optional, Union, get_args, get_origin
 
 from playwright.sync_api import APIRequestContext, APIResponse, FormData
 from pydantic import BaseModel
 
 from src.dependencies import Dependant, ModelField
-from src.dependencies.utils import field_annotation_is_complex
+from src.dependencies.utils import field_annotation_is_complex, _lenient_issubclass as lenient_issubclass
 from src.exceptions import HTTPError, ParseError, ValidationError
-from src.params import Body, UploadFile
+from src.params import Body, Form, UploadFile
 from src.response import Response
 from src.routing import APIRoute
 
@@ -89,6 +91,138 @@ class RequestParams(NamedTuple):
 def _is_scalar_type(value: Any) -> bool:
     """判断 ``value`` 是否为 Form 标量（``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``）。"""
     return isinstance(value, (str, int, float, bool, bytes))
+
+
+def _classify_field_kind(annotation: Any) -> tuple[Literal["scalar", "list"], Any]:
+    """解包类型注解，判断是 list 字段还是标量字段。
+
+    支持 ``Optional`` / ``Annotated`` / ``Union[None, ...]`` 包装。
+
+    :param annotation: 类型注解。
+    :return: ``("list", 内层元素类型)`` 或 ``("scalar", 原始注解)``。
+    :raise ValueError: 当注解形式为 ``list`` / ``Annotated[list, ...]``（缺少 list 元素类型）。
+    """
+    origin = get_origin(annotation)
+
+    # 解包 Annotated
+    if origin is Annotated:
+        inner = get_args(annotation)[0]
+        return _classify_field_kind(inner)
+
+    # 解包 Union / Optional（Union[None, X] 或 Optional[X]）
+    if origin is Union or origin is UnionType:
+        args = get_args(annotation)
+        non_none = [a for a in args if a is not type(None)]
+        # 单一非 None 类型
+        if len(non_none) == 1:
+            return _classify_field_kind(non_none[0])
+        # 其余情况（多类型 Union 或全 None）→ 视为标量
+        return ("scalar", annotation)
+
+    # list 类型（包括 bare list → get_origin 为 None 但类型本身是 list）
+    if origin is list or annotation is list:
+        args = get_args(annotation)
+        # 前置 guard：避免 bare list / Annotated[list, Form()] 触发 IndexError
+        if not args:
+            msg = f"Form 字段注解 {annotation!r} 无法解析，请使用 list[X] 或具体类型"
+            raise ValueError(msg)
+        return ("list", args[0])
+
+    return ("scalar", annotation)
+
+
+def _is_basemodel_form_field(model_field: ModelField) -> bool:
+    """判断 ModelField 是否为 BaseModel + Form 组合。
+
+    :param model_field: 模型字段。
+    :return: 如果是 BaseModel 子类注解且 param_info 为 Form 则返回 True。
+    """
+    return lenient_issubclass(model_field.field_info.annotation, BaseModel) and isinstance(
+        model_field.param_info, Form
+    )
+
+
+def _is_pathlib_path_annotation(annotation: Any) -> bool:
+    """判断注解是否为 ``pathlib.Path`` 或 ``list[pathlib.Path]``（解包 Optional/Annotated）。
+
+    :param annotation: 类型注解。
+    :return: 如果是 Path 相关注解则返回 True。
+    """
+    origin = get_origin(annotation)
+
+    # 解包 Annotated
+    if origin is Annotated:
+        inner = get_args(annotation)[0]
+        return _is_pathlib_path_annotation(inner)
+
+    # 解包 Union / Optional
+    if origin is Union or origin is UnionType:
+        args = get_args(annotation)
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1:
+            return _is_pathlib_path_annotation(non_none[0])
+        return False
+
+    # 直接 pathlib.Path
+    if annotation is pathlib.Path:
+        return True
+
+    # list[pathlib.Path]
+    if origin is list:
+        args = get_args(annotation)
+        return len(args) == 1 and args[0] is pathlib.Path
+
+    return False
+
+
+def _endpoint_form_mutex_violation(dependant: Dependant) -> str | None:
+    """检测端点 Form 参数互斥冲突。
+
+    当 ``form_body_params`` 中存在 BaseModel + Form 字段，且同端点仍有其他
+    ``form_body_params`` 项（非 BaseModel Form）、``file_body_params`` 或
+    ``pure_body_params`` 时返回冲突描述，否则返回 None。
+
+    :param dependant: 端点依赖定义。
+    :return: 冲突信息字符串，或 None（无冲突）。
+    """
+    # 查找 BaseModel + Form 字段
+    has_basemodel_form = any(_is_basemodel_form_field(f) for f in dependant.form_body_params)
+
+    if not has_basemodel_form:
+        return None
+
+    # 检测混合冲突
+    violations: list[str] = []
+
+    # form_body_params 中存在非 BaseModel Form 字段
+    non_basemodel_form = [
+        f.name for f in dependant.form_body_params if not _is_basemodel_form_field(f)
+    ]
+    if non_basemodel_form:
+        violations.append(f"form_body_params 中非 BaseModel Form 字段: {non_basemodel_form}")
+
+    if dependant.file_body_params:
+        violations.append(f"file_body_params 字段: {[f.name for f in dependant.file_body_params]}")
+
+    if dependant.pure_body_params:
+        violations.append(f"pure_body_params 字段: {[f.name for f in dependant.pure_body_params]}")
+
+    if violations:
+        return "; ".join(violations)
+    return None
+
+
+def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
+    """占位实现：填充标量 Form 字段到 FormData。
+
+    完整 dispatch 逻辑由 T6 实现。
+
+    :param form_data: 待填充的表单。
+    :param model_field: Form 字段定义。
+    :param value: 字段值。
+    :raise NotImplementedError: 始终抛出（占位留给 T6）。
+    """
+    raise NotImplementedError("_fill_scalar_form_field 由 T6 实现完整 dispatch 逻辑")
 
 
 class Client:
