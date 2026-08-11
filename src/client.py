@@ -45,9 +45,9 @@ class BodyItem(NamedTuple):
 class RequestBodyKind(Enum):
     """请求体类型枚举。"""
 
-    JSON: str = "application/json"
-    URLENCODED: str = "application/x-www-form-urlencoded"
-    MULTIPART: str = "multipart/form-data"
+    JSON = "application/json"
+    URLENCODED = "application/x-www-form-urlencoded"
+    MULTIPART = "multipart/form-data"
 
 
 @dataclass
