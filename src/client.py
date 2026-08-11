@@ -225,6 +225,26 @@ def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value:
     raise NotImplementedError("_fill_scalar_form_field 由 T6 实现完整 dispatch 逻辑")
 
 
+def _fill_basemodel_form_field(
+    form_data: FormData,
+    api_route: APIRoute,
+    model_field: ModelField,
+) -> bool:
+    """占位实现：填充 BaseModel Form 字段到 FormData。
+
+    T5 实现完整 dispatch（按 ``model_fields`` 平展子字段、``pathlib.Path``
+    子字段直传 Path 对象生成 multipart part、list 子字段通过
+    ``form_data.append`` 派发同名多 part）。
+
+    :param form_data: 待填充的表单。
+    :param api_route: APIRoute 实例。
+    :param model_field: BaseModel Form 字段定义。
+    :return: 是否包含文件子字段（含 ``pathlib.Path`` / ``list[pathlib.Path]``）。
+    :raise NotImplementedError: 始终抛出（占位留给 T5）。
+    """
+    raise NotImplementedError("_fill_basemodel_form_field 由 T5 实现完整 dispatch 逻辑")
+
+
 class Client:
     """API Client，统一管理 Playwright context。
 
@@ -378,36 +398,56 @@ class Client:
         api_route: APIRoute,
         dependant: Dependant,
     ) -> RequestBody:
-        """按三个请求体字段列表分派，序列化为 RequestBody。
+        """按请求体字段列表分派，序列化为 RequestBody。
+
+        两类 Form 用法（互斥）：
+
+        - **BaseModel Form**（``form_body_params`` 中存在 ``BaseModel`` 子类 +
+          ``Form()`` 字段）：视为独立请求体类型，由 ``_fill_basemodel_form_field``
+          填充子字段。``pathlib.Path`` 子字段触发 multipart，纯文本子字段走
+          urlencoded。BaseModel Form 必须独占 endpoint，不允许与标量 Form、
+          UploadFile 或 Body 共存，否则抛 ``ValueError``。
+        - **多标量 Form**（``form_body_params`` 中均为非 BaseModel 字段）：
+          由 ``_fill_scalar_form_field`` 填充，list 值通过 ``form_data.append``
+          派发同名多 part。
+
+        函数级 ``UploadFile``（含 ``Annotated[UploadFile, Form()]`` /
+        ``Annotated[list[UploadFile], Form()]`` / ``Annotated[pathlib.Path, Form()]``
+        / ``Annotated[list[pathlib.Path], Form()]``）由 routing 路由到
+        ``file_body_params``，与 multipart 容器共用 ``FormData``。
 
         分派规则：
 
-        - 存在文件字段（``file_body_params``）：multipart/form-data，
-          使用单一 ``FormData`` 同时容纳 Form 字段和文件。
-        - 仅有表单字段（``form_body_params``）：application/x-www-form-urlencoded，
-          使用同一 ``FormData``（与 Playwright ``form=`` 兼容）。
+        - 存在文件字段（``file_body_params``）：multipart/form-data。
+        - 仅有表单字段（``form_body_params``）：application/x-www-form-urlencoded。
         - 其余情况：application/json，沿用 FastAPI Body Multiple Parameters 规则。
-
-        Form 字段统一序列化规则（与请求体类型无关）：
-
-        - 标量（``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``）：原值存储。
-        - 集合（``list`` / ``dict`` / ``tuple`` / ``set``）：``json.dumps`` 编码。
-        - ``BaseModel``：``embed=True`` 整体 dump 后 ``json.dumps`` 编码，
-          ``embed=False`` 按子字段平展（嵌套 BaseModel 子字段同样 ``json.dumps`` 包装）。
 
         :param api_route: APIRoute 实例。
         :param dependant: 参数依赖定义。
         :return: 序列化后的请求体。
-        :raise ValueError: 当 Form 字段的集合值无法 JSON 序列化。
+        :raise ValueError: 当 BaseModel Form 与其他 Form / UploadFile / Body 并存时。
         """
+        has_basemodel = any(_is_basemodel_form_field(f) for f in dependant.form_body_params)
+
+        if has_basemodel:
+            err = _endpoint_form_mutex_violation(dependant)
+            if err:
+                msg = f"BaseModel Form 与其他参数互斥冲突: {err}"
+                raise ValueError(msg)
+            form_data = FormData()
+            basemodel_field = next(f for f in dependant.form_body_params if _is_basemodel_form_field(f))
+            has_files = _fill_basemodel_form_field(form_data, api_route, basemodel_field)
+            kind = RequestBodyKind.MULTIPART if has_files else RequestBodyKind.URLENCODED
+            return RequestBody(kind=kind, form_data=form_data)
+
         has_files = bool(dependant.file_body_params)
-        form_data: FormData = FormData()
+        form_data = FormData()
 
         for model_field in dependant.form_body_params:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
-            self._fill_form_field(form_data, model_field, value)
+            self._fill_scalar_form_field(form_data, model_field, value)
 
         for model_field in dependant.file_body_params:
             value = getattr(api_route, model_field.name)
@@ -429,69 +469,6 @@ class Client:
         if form_data._fields:
             return RequestBody(kind=RequestBodyKind.URLENCODED, form_data=form_data)
         return RequestBody(kind=RequestBodyKind.JSON, json_body=self._build_json_body(api_route, dependant))
-
-    @staticmethod
-    def _fill_form_field(
-        form_data: FormData,
-        model_field: ModelField,
-        value: Any,
-    ) -> None:
-        """把单个 Form 字段填入 ``FormData``。
-
-        序列化语义（与请求体类型 multipart / urlencoded 无关，统一按值类型处理）：
-
-        - 标量（``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``）：原值存储，
-          不走 ``json.dumps``，与 FastAPI ``Form()`` 直接接收原始字符串/数字一致。
-        - 集合（``list`` / ``dict`` / ``tuple`` / ``set``）：走 ``json.dumps``
-          编码为字符串，服务端 ``Form()`` 字段定义为 ``list`` / ``dict`` 时按需
-          ``json.loads`` 还原。
-        - ``BaseModel``：``embed=True`` 时整体 ``model_dump`` 后 ``json.dumps``
-          编码；``embed=False`` 时按 ``model_fields`` 子字段平展，标量子字段原值、
-          集合子字段 ``json.dumps``、嵌套 BaseModel 子字段的 dump 同样 ``json.dumps``
-          包装。
-
-        Pydantic 模型在 ``embed=False`` 时遍历 ``model_fields`` 而非 ``model_dump()``，
-        避免别名和缺省值带来的偏差。
-
-        :param form_data: 待填充的表单。
-        :param model_field: Form 字段定义。
-        :param value: 字段值。
-        :raise ValueError: 当集合值无法 JSON 序列化。
-        """
-
-        def encode_collection(v: Any, alias: str) -> str:
-            """把集合值 ``json.dumps``，失败时抛出带字段名的清晰错误。"""
-            try:
-                return json.dumps(v)
-            except (TypeError, ValueError) as e:
-                msg = f"Form 字段 {alias!r} 值 {type(v).__name__} 不能 JSON 序列化"
-                raise ValueError(msg) from e
-
-        if not isinstance(value, BaseModel):
-            if _is_scalar_type(value):
-                form_data.set(model_field.alias, value)
-            else:
-                form_data.set(model_field.alias, encode_collection(value, model_field.alias))
-            return
-
-        if getattr(model_field.param_info, "embed", False):
-            form_data.set(
-                model_field.alias,
-                json.dumps(value.model_dump(by_alias=True, exclude_none=True)),
-            )
-            return
-
-        for field_name in type(value).model_fields:
-            sub_value = getattr(value, field_name)
-            if isinstance(sub_value, BaseModel):
-                form_data.set(
-                    field_name,
-                    json.dumps(sub_value.model_dump(by_alias=True, exclude_none=True)),
-                )
-            elif _is_scalar_type(sub_value):
-                form_data.set(field_name, sub_value)
-            else:
-                form_data.set(field_name, encode_collection(sub_value, field_name))
 
     def _build_json_body(
         self,
