@@ -19,7 +19,7 @@ from typing import Annotated, Any, ClassVar, Literal, Union, get_args, get_origi
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from src.dependencies import Dependant, ModelField
-from src.dependencies.utils import _is_uploadfile_or_list_annotation, field_annotation_is_complex
+from src.dependencies.utils import _is_uploadfile_or_list_annotation, field_annotation_is_complex, _lenient_issubclass as lenient_issubclass
 from src.params import Form, Param, ParamTypes
 
 
@@ -158,6 +158,8 @@ class APIRoute[T](BaseModel):
                         if isinstance(param_info, Form):
                             # Form-marked 文件类型（UploadFile / pathlib.Path）应路由到 file_body_params
                             field_type = field_info.annotation
+                            if lenient_issubclass(field_type, BaseModel):
+                                raise ValueError(f"Form 不支持 BaseModel 子字段：字段 {model_field.name!r} 注解为 {field_type.__name__}。请平铺为多个 Form() 字段，或改用 Body() 走 JSON body。")
                             if _is_path_or_list_annotation(field_type) or _is_uploadfile_or_list_annotation(field_type):
                                 file_body_params.append(model_field)
                             else:

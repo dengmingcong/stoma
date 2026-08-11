@@ -185,3 +185,14 @@ def test_mixed_form_marked_params() -> None:
     categories = get_param_categories(MixedEndpoint)
     assert categories["file_body_params"] == ["file", "path"]
     assert categories["form_body_params"] == ["name"]
+
+
+def test_form_basemodel_raises_in_routing() -> None:
+    """Annotated[BaseModel, Form()] → ValueError（Form 不支持 BaseModel 子字段）。"""
+
+    @router.post("/submit")
+    class SubmitFormEndpoint(APIRoute[UserData]):
+        data: Annotated[UserCreateRequest, Form()]
+
+    with pytest.raises(ValueError, match="Form 不支持 BaseModel 子字段"):
+        SubmitFormEndpoint._get_dependant(method="POST", path="/submit")
