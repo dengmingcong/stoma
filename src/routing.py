@@ -10,7 +10,6 @@ APIRoute 本身不持有 Playwright context，也不直接发送请求。
 发送请求由 ``Client``（src/client.py）负责。
 """
 
-import pathlib
 import re
 from collections.abc import Callable
 from types import UnionType  # Python 3.10+
@@ -19,43 +18,8 @@ from typing import Annotated, Any, ClassVar, Literal, Union, get_args, get_origi
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from src.dependencies import Dependant, ModelField
-from src.dependencies.utils import _is_uploadfile_or_list_annotation, field_annotation_is_complex, _lenient_issubclass as lenient_issubclass
+from src.dependencies.utils import _is_uploadfile_or_list_annotation, _is_scalar_or_scalar_list_annotation, field_annotation_is_complex
 from src.params import Form, Param, ParamTypes
-
-
-def _is_path_or_list_annotation(annotation: Any) -> bool:
-    """判断注解是否可识别为 pathlib.Path 类型的字段。
-
-    支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法）：
-
-    - ``pathlib.Path``
-    - ``list[pathlib.Path]``
-    - ``pathlib.Path | None`` / ``Optional[pathlib.Path]``
-    - ``list[pathlib.Path] | None`` / ``Optional[list[pathlib.Path]]``
-    - 任意层 ``Union[pathlib.Path | None, list[pathlib.Path] | None]``（只要全部成员都是 Path 类型，则返回 True）
-
-    实现要点：递归解包 ``Union`` / ``Optional``，跳过 ``None`` 成员，
-    要求每个非 ``None`` 成员都是 ``pathlib.Path`` 或 ``list[pathlib.Path]``。
-
-    :param annotation: 待检查的类型注解。
-    :return: 如果是合法的 pathlib.Path 字段类型则返回 True。
-    """
-    origin = get_origin(annotation)
-    if origin is Union or origin is UnionType:
-        # ``Optional`` 上下文：跳过 ``None`` 成员后，剩余成员全部必须是 Path 类型。
-        return all(
-            arg is type(None) or _is_path_or_list_annotation(arg)
-            for arg in get_args(annotation)
-        )
-
-    if annotation is pathlib.Path:
-        return True
-
-    if origin is list:
-        args = get_args(annotation)
-        return len(args) == 1 and args[0] is pathlib.Path
-
-    return False
 
 
 class APIRoute[T](BaseModel):
@@ -156,14 +120,18 @@ class APIRoute[T](BaseModel):
                         header_params.append(model_field)
                     elif param_info.in_ == ParamTypes.body:
                         if isinstance(param_info, Form):
-                            # Form-marked 文件类型（UploadFile / pathlib.Path）应路由到 file_body_params
                             field_type = field_info.annotation
-                            if lenient_issubclass(field_type, BaseModel):
-                                raise ValueError(f"Form 不支持 BaseModel 子字段：字段 {model_field.name!r} 注解为 {field_type.__name__}。请平铺为多个 Form() 字段，或改用 Body() 走 JSON body。")
-                            if _is_path_or_list_annotation(field_type) or _is_uploadfile_or_list_annotation(field_type):
-                                file_body_params.append(model_field)
-                            else:
+                            if _is_scalar_or_scalar_list_annotation(field_type):
                                 form_body_params.append(model_field)
+                            else:
+                                msg = (
+                                    f"Form 不支持的字段类型：字段 {model_field.name!r} 注解为 {field_type!r}。"
+                                    "Form 仅接受标量类型（str、int、float、bool、bytes）或其列表形式（list[str] 等），"
+                                    "以及上述类型的可选形式（str | None、Optional[list[str]] 等）。"
+                                    "如需上传文件，请直接使用 UploadFile / list[UploadFile]，不要加 Form() 标记。"
+                                    "不支持 pathlib.Path 或 BaseModel 子类作为 Form 字段。"
+                                )
+                                raise ValueError(msg)
                         else:
                             pure_body_params.append(model_field)
                     continue
