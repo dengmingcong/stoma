@@ -22,8 +22,7 @@ URL/Query 处理说明：
 import json
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
-from types import UnionType
-from typing import Any, NamedTuple, Union, get_args, get_origin
+from typing import Any, NamedTuple
 
 from playwright.sync_api import APIRequestContext, APIResponse, FormData
 from pydantic import BaseModel
@@ -90,10 +89,9 @@ class RequestParams(NamedTuple):
 def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
     """填充函数级 Form 字段到 FormData。
 
-    根据 ``model_field.field_info.annotation``（Pydantic 已解开 ``Annotated``）
-    派发：
+    根据 ``value`` 类型派发（Pydantic 已保证类型一致性）：
 
-    - ``list[标量]``（含 Optional 包装）：逐个元素 ``form_data.append(alias, elem)``，
+    - ``list``：逐个元素 ``form_data.append(alias, elem)``，
       同名多 part。
     - 其他标量：``form_data.set(alias, value)``，原值传递，不做 JSON 序列化。
 
@@ -107,22 +105,12 @@ def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value:
     """
     if value is None:
         return
-
-    annotation = model_field.field_info.annotation
-    # 解开 ``Optional[list[...]]`` / ``list[...] | None`` → ``list[...]``
-    origin = get_origin(annotation)
-    if origin is Union or origin is UnionType:
-        non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
-        if len(non_none) == 1:
-            annotation = non_none[0]
-
-    if get_origin(annotation) is list:
+    if isinstance(value, list):
         for element in value:
             if element is None:
                 continue
             form_data.append(model_field.alias, element)
         return
-
     form_data.set(model_field.alias, value)
 
 
