@@ -137,6 +137,10 @@ class Form(Body):
     """表单参数标记。
 
     用于标记接口类中的表单字段。表单数据会被编码后发送到服务器。
+
+    .. versionchanged:: 1.0.0
+        ``Form`` 不再支持 ``embed`` 关键字参数，调用 ``Form(embed=...)`` 会
+        抛 ``TypeError``。``BaseModel`` 子字段始终平展，不存在 embed 语义。
     """
 
     in_ = ParamTypes.body

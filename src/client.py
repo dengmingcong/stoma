@@ -577,8 +577,9 @@ class Client:
           urlencoded。BaseModel Form 必须独占 endpoint，不允许与标量 Form、
           UploadFile 或 Body 共存，否则抛 ``ValueError``。
         - **多标量 Form**（``form_body_params`` 中均为非 BaseModel 字段）：
-          由 ``_fill_scalar_form_field`` 填充，list 值通过 ``form_data.append``
-          派发同名多 part。
+          由 ``_fill_scalar_form_field`` 填充。list 值通过 ``form_data.append``
+          派发同名多 part（多次上传同一字段）。``pathlib.Path`` 值直接传递
+          给 FormData，不调用 ``str(Path)``，确保以文件 part 而非文本 part 发送。
 
         函数级 ``UploadFile``（含 ``Annotated[UploadFile, Form()]`` /
         ``Annotated[list[UploadFile], Form()]`` / ``Annotated[pathlib.Path, Form()]``
@@ -691,6 +692,7 @@ class Client:
         model_field = dependant.pure_body_params[0]
         param_info = model_field.param_info
         is_explicit_body = isinstance(param_info, Body)
+        # 仅 Body 类有效；Form 已移除 embed（T1 变更）。
         explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
         field_type = model_field.field_info.annotation
 
