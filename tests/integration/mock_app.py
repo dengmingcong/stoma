@@ -314,52 +314,6 @@ async def login_list(tags: Annotated[list[str], Form()]) -> dict[str, Any]:
     return {"tags": tags}
 
 
-@app.post("/upload-with-path")
-async def upload_with_path(
-    name: Annotated[str, Form()],
-    avatar: Annotated[UploadFile | None, File()] = None,
-) -> dict[str, Any]:
-    """POST /upload-with-path：BaseModel Form 含单个 ``pathlib.Path`` 子字段。
-
-    stoma 把 BaseModel 的 ``pathlib.Path`` 子字段直接交给 Playwright，Playwright
-    据此生成文件 part，因此服务端用 ``UploadFile`` 接收；文本子字段仍是普通 form 字段。
-    ``avatar`` 声明为可选，以覆盖 ``pathlib.Path | None`` 为 ``None`` 的形态
-    （此时 stoma 仍按注解走 multipart，但不写入 avatar part）。
-
-    :param name: BaseModel 中的文本子字段。
-    :param avatar: BaseModel 中 ``pathlib.Path`` 子字段生成的文件 part；缺省为 ``None``。
-    :return: 文本字段值与文件元信息（无文件时文件字段为 ``None`` / 0）。
-    """
-    if avatar is None:
-        return {"name": name, "filename": None, "size": 0, "content_type": None}
-    content = await avatar.read()
-    return {
-        "name": name,
-        "filename": avatar.filename,
-        "size": len(content),
-        "content_type": avatar.content_type,
-    }
-
-
-@app.post("/upload-with-paths-list")
-async def upload_with_paths_list(files: Annotated[list[UploadFile], File()]) -> dict[str, Any]:
-    """POST /upload-with-paths-list：BaseModel Form 含 ``list[pathlib.Path]`` 子字段。
-
-    stoma 对 list 中每个 ``pathlib.Path`` 元素调用 ``append``，wire 上是多个同名文件
-    part，FastAPI 的 ``list[UploadFile]`` 会把它们收敛为列表。
-
-    :param files: 同名多 part 解析出的文件列表。
-    :return: 文件名列表和总大小。
-    """
-    filenames = []
-    total_size = 0
-    for f in files:
-        content = await f.read()
-        total_size += len(content)
-        filenames.append(f.filename)
-    return {"filenames": filenames, "total_size": total_size}
-
-
 @app.post("/upload-mix")
 async def upload_mix(request: Request) -> dict[str, Any]:
     """POST /upload-mix：多个标量 Form 字段 + UploadFile 共存。
