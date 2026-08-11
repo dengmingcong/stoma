@@ -211,7 +211,7 @@ def test_param_alias() -> None:
     class GetUsers(APIRoute[list[UserData]]):
         # 使用别名
         page_size: Annotated[int, Query()] = Field(serialization_alias="pageSize", default=20)
-        page_num: Annotated[int, Query()] = Field(serialization_alias="pageNum", default=1)
+        page_num: Annotated[int, Query(), Field(serialization_alias="pageNum", default=1)]
 
     endpoint = GetUsers(page_size=50, page_num=2)
     params = collect_params(endpoint)
