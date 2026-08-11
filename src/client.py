@@ -282,7 +282,6 @@ class Client:
         :param api_route: APIRoute 实例。
         :param dependant: 参数依赖定义。
         :return: 序列化后的请求体。
-        :raise ValueError: 当遇到 Form 不支持的字段类型时（如 ``bytes``）。
         """
         has_files = bool(dependant.file_body_params)
         form_data = FormData()
