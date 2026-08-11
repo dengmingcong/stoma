@@ -10,7 +10,7 @@ from playwright.sync_api import FormData
 
 from src.client import (
     _classify_field_kind,
-    _endpoint_form_mutex_violation,
+    _describe_endpoint_form_mutex_violation,
     _fill_scalar_form_field,
     _is_basemodel_form_field,
     _is_pathlib_path_annotation,
@@ -183,7 +183,7 @@ class TestIsPathlibPathAnnotation:
 
 
 # ============================================================
-# _endpoint_form_mutex_violation
+# _describe_endpoint_form_mutex_violation
 # ============================================================
 
 
@@ -210,7 +210,7 @@ def _make_dependant(
 
 
 class TestEndpointFormMutexViolation:
-    """测试 _endpoint_form_mutex_violation。"""
+    """测试 _describe_endpoint_form_mutex_violation。"""
 
     def _make_field(self, name: str, annotation: type, param_info: Form | Body) -> ModelField:
         from pydantic.fields import FieldInfo
@@ -223,7 +223,7 @@ class TestEndpointFormMutexViolation:
         d = _make_dependant(
             form_body_params=[self._make_field("data", UserCreateRequest, Form())],
         )
-        assert _endpoint_form_mutex_violation(d) is None
+        assert _describe_endpoint_form_mutex_violation(d) is None
 
     def test_violation_basemodel_form_mixed_with_non_basemodel_form(self) -> None:
         """BaseModel Form + 非 BaseModel Form 字段 → 冲突。"""
@@ -233,7 +233,7 @@ class TestEndpointFormMutexViolation:
                 self._make_field("name", str, Form()),
             ],
         )
-        result = _endpoint_form_mutex_violation(d)
+        result = _describe_endpoint_form_mutex_violation(d)
         assert result is not None
         assert "form_body_params 中非 BaseModel Form 字段" in result
 
@@ -243,7 +243,7 @@ class TestEndpointFormMutexViolation:
             form_body_params=[self._make_field("data", UserCreateRequest, Form())],
             file_body_params=[self._make_field("file", pathlib.Path, Form())],
         )
-        result = _endpoint_form_mutex_violation(d)
+        result = _describe_endpoint_form_mutex_violation(d)
         assert result is not None
         assert "file_body_params 字段" in result
 
@@ -253,7 +253,7 @@ class TestEndpointFormMutexViolation:
             form_body_params=[self._make_field("data", UserCreateRequest, Form())],
             pure_body_params=[self._make_field("json", dict, Body())],
         )
-        result = _endpoint_form_mutex_violation(d)
+        result = _describe_endpoint_form_mutex_violation(d)
         assert result is not None
         assert "pure_body_params 字段" in result
 
@@ -265,12 +265,12 @@ class TestEndpointFormMutexViolation:
                 self._make_field("age", int, Form()),
             ],
         )
-        assert _endpoint_form_mutex_violation(d) is None
+        assert _describe_endpoint_form_mutex_violation(d) is None
 
     def test_no_violation_empty_dependant(self) -> None:
         """空 Dependant → 无冲突。"""
         d = _make_dependant()
-        assert _endpoint_form_mutex_violation(d) is None
+        assert _describe_endpoint_form_mutex_violation(d) is None
 
 
 # ============================================================

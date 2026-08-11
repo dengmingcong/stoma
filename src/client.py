@@ -28,6 +28,7 @@ from typing import Annotated, Any, Literal, NamedTuple, Optional, Union, get_arg
 
 from playwright.sync_api import APIRequestContext, APIResponse, FormData
 from pydantic import BaseModel
+from pydantic.fields import FieldInfo
 
 from src.dependencies import Dependant, ModelField
 from src.dependencies.utils import field_annotation_is_complex, _lenient_issubclass as lenient_issubclass
@@ -175,8 +176,8 @@ def _is_pathlib_path_annotation(annotation: Any) -> bool:
     return False
 
 
-def _endpoint_form_mutex_violation(dependant: Dependant) -> str | None:
-    """检测端点 Form 参数互斥冲突。
+def _describe_endpoint_form_mutex_violation(dependant: Dependant) -> str | None:
+    """描述端点 Form 参数互斥冲突。
 
     当 ``form_body_params`` 中存在 BaseModel + Form 字段，且同端点仍有其他
     ``form_body_params`` 项（非 BaseModel Form）、``file_body_params`` 或
@@ -339,7 +340,17 @@ def _fill_basemodel_form_field(
     api_route: APIRoute,
     model_field: ModelField,
 ) -> bool:
-    """遍历 BaseModel 字段，按标量/列表与文本/文件类型派发到表单。
+    """遍历 BaseModel 子字段，混合派发到表单。
+
+    - scalar text / list text：复用 ``_fill_scalar_form_field`` 派发，4 象限错误消息统一。
+    - scalar file (``pathlib.Path``) / list file (``list[pathlib.Path]``)：inline 派发，
+      ``Path`` 对象直传 ``FormData``，不走 ``_fill_scalar_form_field``（后者 ``is_file``
+      分支会抛"不应进入标量派发"）。
+    - 嵌套 ``BaseModel`` / ``bytes`` / 非标量复合类型：被 ``_fill_scalar_form_field`` /
+      inline 拦截并抛 ``ValueError``。
+
+    ``has_files`` 按注解独立判断（与子字段值是否存在无关），用于决定 multipart vs
+    urlencoded。
 
     :param form_data: 待填充的表单。
     :param api_route: APIRoute 实例。
@@ -353,63 +364,46 @@ def _fill_basemodel_form_field(
 
     has_files = False
     for field_name, field_info in type(value).model_fields.items():
+        annotation = field_info.annotation
+        is_file = _is_pathlib_path_annotation(annotation)
+        # 按注解决定 multipart 标记；与子字段值是否存在无关。
+        if is_file:
+            has_files = True
+
         sub_value = getattr(value, field_name)
         if sub_value is None:
-            # None 值跳过，但仍按注解决定是否使用 multipart。
-            if _is_pathlib_path_annotation(field_info.annotation):
-                has_files = True
             continue
 
-        kind, inner_type = _classify_field_kind(field_info.annotation)
-        is_file = _is_pathlib_path_annotation(field_info.annotation)
-
-        if kind == "scalar":
-            if is_file:
-                if not isinstance(sub_value, pathlib.Path):
-                    raise ValueError(
-                        f"Form 字段 {field_name!r} 期望 pathlib.Path，收到 {type(sub_value).__name__}"
-                    )
-                form_data.set(field_name, sub_value)
-                has_files = True
-            else:
-                if lenient_issubclass(type(sub_value), BaseModel) or lenient_issubclass(
-                    inner_type, BaseModel
-                ):
-                    raise ValueError(
-                        f"Form BaseModel 字段 {field_name!r} 为嵌套 BaseModel，不支持。"
-                        f"请把所有 form 字段平铺到同一个 BaseModel 内，或自行 json.dumps 为 str"
-                    )
-                if not _is_scalar_type(sub_value) or isinstance(sub_value, bytes):
-                    raise ValueError(
-                        f"Form 字段 {field_name!r} 收到 {type(sub_value).__name__}，"
-                        f"stoma 不再自动 JSON 序列化 form 字段；"
-                        f"若要传递 list/dict 等复合类型，请自行 json.dumps 为 str 后传入"
-                    )
-                form_data.set(field_name, sub_value)
-        else:
-            if not isinstance(sub_value, list):
-                raise ValueError(
-                    f"Form 字段 {field_name!r} 注解为 list，但收到 {type(sub_value).__name__}"
-                )
-            for elem in sub_value:
-                if elem is None:
-                    continue
-                if is_file:
+        if is_file:
+            # file 派发：Path 对象直传，避开 _fill_scalar_form_field 的 is_file 拦截。
+            if isinstance(sub_value, list):
+                for elem in sub_value:
+                    if elem is None:
+                        continue
                     if not isinstance(elem, pathlib.Path):
-                        raise ValueError(
-                            f"Form 字段 {field_name!r} 元素期望 pathlib.Path，收到 {type(elem).__name__}"
+                        msg = (
+                            f"Form 字段 {field_name!r} 元素期望 pathlib.Path，"
+                            f"收到 {type(elem).__name__}"
                         )
+                        raise ValueError(msg)
                     form_data.append(field_name, elem)
-                else:
-                    if not _is_scalar_type(elem) or isinstance(elem, bytes):
-                        raise ValueError(
-                            f"Form 字段 {field_name!r} 元素收到 {type(elem).__name__}，"
-                            f"stoma 不再自动 JSON 序列化 form 字段"
-                        )
-                    form_data.append(field_name, elem)
-            # 空列表也按注解标记文件类型，以便选择 multipart。
-            if is_file:
-                has_files = True
+            elif isinstance(sub_value, pathlib.Path):
+                form_data.set(field_name, sub_value)
+            else:
+                msg = (
+                    f"Form 字段 {field_name!r} 期望 pathlib.Path 或 list[pathlib.Path]，"
+                    f"收到 {type(sub_value).__name__}"
+                )
+                raise ValueError(msg)
+            continue
+
+        # text 派发：构造临时 ModelField 复用 _fill_scalar_form_field 的 4 象限派发。
+        template = ModelField(
+            name=field_name,
+            field_info=FieldInfo(annotation=annotation),
+            param_info=model_field.param_info,
+        )
+        _fill_scalar_form_field(form_data, template, sub_value)
 
     return has_files
 
@@ -600,7 +594,7 @@ class Client:
         has_basemodel = any(_is_basemodel_form_field(f) for f in dependant.form_body_params)
 
         if has_basemodel:
-            err = _endpoint_form_mutex_violation(dependant)
+            err = _describe_endpoint_form_mutex_violation(dependant)
             if err:
                 msg = f"BaseModel Form 与其他参数互斥冲突: {err}"
                 raise ValueError(msg)
