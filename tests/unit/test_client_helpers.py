@@ -5,6 +5,7 @@ from typing import Annotated, Optional
 
 import pytest
 from pydantic import BaseModel
+from pydantic.fields import FieldInfo
 from playwright.sync_api import FormData
 
 from src.client import (
@@ -278,17 +279,83 @@ class TestEndpointFormMutexViolation:
 
 
 class TestFillScalarFormField:
-    """测试 _fill_scalar_form_field 抛出 NotImplementedError。"""
+    """测试 _fill_scalar_form_field 的四象限派发。"""
 
-    def test_raises_not_implemented_error(self) -> None:
-        """调用 _fill_scalar_form_field 始终抛出 NotImplementedError。"""
-        from pydantic.fields import FieldInfo
-
-        from src.client import _fill_scalar_form_field
-
-        field_info = FieldInfo(annotation=str)
-        model_field = ModelField(name="test", field_info=field_info, param_info=Form())
+    @staticmethod
+    def _fill(annotation: object, value: object) -> FormData:
+        field_info = FieldInfo(annotation=annotation)
+        model_field = ModelField(name="field", field_info=field_info, param_info=Form())
         form_data = FormData()
+        _fill_scalar_form_field(form_data, model_field, value)
+        return form_data
 
-        with pytest.raises(NotImplementedError, match="T6"):
-            _fill_scalar_form_field(form_data, model_field, "value")
+    def test_scalar_str_set(self) -> None:
+        """str 标量 → form_data.set 原值。"""
+        assert self._fill(str, "alice")._fields == [("field", "alice")]
+
+    def test_scalar_int_set(self) -> None:
+        """int 标量原值传递，不转 str。"""
+        assert self._fill(int, 42)._fields == [("field", 42)]
+
+    def test_scalar_bool_set(self) -> None:
+        """bool 标量原值传递。"""
+        assert self._fill(bool, True)._fields == [("field", True)]
+
+    def test_none_skipped(self) -> None:
+        """None 值跳过，不产生任何 part。"""
+        assert self._fill(Optional[str], None)._fields == []
+
+    def test_scalar_bytes_raises(self) -> None:
+        """bytes 不在 Playwright FormDataValue，抛 ValueError。"""
+        with pytest.raises(ValueError, match="收到 bytes 类型"):
+            self._fill(bytes, b"\x00")
+
+    def test_scalar_dict_raises(self) -> None:
+        """dict 不再自动 JSON 序列化，抛 ValueError。"""
+        with pytest.raises(ValueError, match="不再自动 JSON 序列化"):
+            self._fill(dict, {})
+
+    def test_scalar_basemodel_raises(self) -> None:
+        """BaseModel 实例抛 ValueError（form_body_params 已过滤，此处兜底）。"""
+        with pytest.raises(ValueError, match="嵌套 BaseModel Form"):
+            self._fill(UserData, UserData(id=1, name="alice"))
+
+    def test_list_text_appends_each(self) -> None:
+        """list[str] 每个元素 append 一次同名 part。"""
+        assert self._fill(list[str], ["a", "b"])._fields == [("field", "a"), ("field", "b")]
+
+    def test_list_text_skips_none_element(self) -> None:
+        """list 中的 None 元素跳过，其余照常 append。"""
+        assert self._fill(list[str], ["a", None, "b"])._fields == [("field", "a"), ("field", "b")]
+
+    def test_empty_list_skipped(self) -> None:
+        """空 list 不产生任何 part。"""
+        assert self._fill(list[str], [])._fields == []
+
+    def test_list_non_scalar_element_raises(self) -> None:
+        """list 元素为 dict → ValueError。"""
+        with pytest.raises(ValueError, match="元素收到 dict"):
+            self._fill(list[str], [{"k": "v"}])
+
+    def test_list_annotation_with_non_list_value_raises(self) -> None:
+        """注解为 list 但值不是 list → ValueError。"""
+        with pytest.raises(ValueError, match="注解为 list，但收到 str"):
+            self._fill(list[str], "a")
+
+    def test_list_path_appends_path_objects(self) -> None:
+        """list[pathlib.Path] append 的是 Path 对象本身，不是 str。"""
+        paths = [pathlib.Path("/tmp/a.txt"), pathlib.Path("/tmp/b.txt")]
+        assert self._fill(list[pathlib.Path], paths)._fields == [
+            ("field", paths[0]),
+            ("field", paths[1]),
+        ]
+
+    def test_list_path_non_path_element_raises(self) -> None:
+        """list[pathlib.Path] 元素不是 Path → ValueError。"""
+        with pytest.raises(ValueError, match="元素期望 pathlib.Path，收到 str"):
+            self._fill(list[pathlib.Path], ["/tmp/a.txt"])
+
+    def test_scalar_path_annotation_raises(self) -> None:
+        """标量 pathlib.Path 应由 routing 落到 file_body_params，进入本函数即报错。"""
+        with pytest.raises(ValueError, match="不应进入标量派发"):
+            self._fill(pathlib.Path, pathlib.Path("/tmp/a.txt"))

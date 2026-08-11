@@ -430,7 +430,11 @@ def test_form_basemodel_embed_true() -> None:
 
 
 def test_form_basemodel_nested_embed_false() -> None:
-    """测试 Form BaseModel ``embed=False`` 时嵌套子字段走 ``json.dumps``。"""
+    """测试 Form BaseModel ``embed=False`` 时嵌套 BaseModel 子字段抛 ``ValueError``。
+
+    T5 设计：BaseModel Form 不再递归处理嵌套 ``BaseModel`` 子字段，
+    错误消息含「嵌套 BaseModel」字样。
+    """
 
     @router.post("/form-model-nested")
     class CreateUserFormNested(APIRoute[dict[str, Any]]):
@@ -439,14 +443,8 @@ def test_form_basemodel_nested_embed_false() -> None:
     endpoint = CreateUserFormNested(
         user=_FormNestedUser(name="Alice", age=30, profile=_FormNestedProfile(bio="Software engineer")),
     )
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.URLENCODED
-    assert isinstance(body.form_data, FormData)
-    assert body.form_data._fields == [
-        ("name", "Alice"),
-        ("age", 30),
-        ("profile", '{"bio": "Software engineer"}'),
-    ]
+    with pytest.raises(ValueError, match="嵌套 BaseModel"):
+        Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
 
 
 def test_form_basemodel_embed_true_with_file_multipart() -> None:

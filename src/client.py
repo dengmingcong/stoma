@@ -213,16 +213,125 @@ def _endpoint_form_mutex_violation(dependant: Dependant) -> str | None:
 
 
 def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
-    """占位实现：填充标量 Form 字段到 FormData。
+    """填充函数级非 BaseModel 的 Form 字段到 FormData。
 
-    完整 dispatch 逻辑由 T6 实现。
+    按 ``(注解类别, 元素类别)`` 四象限派发：
+
+    - ``(scalar, text)``：``form_data.set(alias, value)``，原值传递，不做 JSON 序列化。
+    - ``(scalar, file)``：不应出现——``Form`` 标记的文件类型由 routing 路由到
+      ``file_body_params``；若仍进入本函数说明分类有误，抛 ``ValueError``。
+    - ``(list, text)``：逐个元素 ``form_data.append(alias, elem)``，同名多 part。
+    - ``(list, file)``：逐个元素校验为 ``pathlib.Path`` 后 ``form_data.append``，
+      直接传 Path 对象，由 Playwright 生成文件 part。
+
+    ``None`` 值（字段本身或 list 元素）一律跳过；空 list 相当于整个字段不出现。
 
     :param form_data: 待填充的表单。
     :param model_field: Form 字段定义。
     :param value: 字段值。
-    :raise NotImplementedError: 始终抛出（占位留给 T6）。
+    :raise ValueError: 当值类型与注解不匹配，或值为 ``bytes`` / ``BaseModel`` /
+        ``dict`` 等 stoma 不再自动序列化的类型。
     """
-    raise NotImplementedError("_fill_scalar_form_field 由 T6 实现完整 dispatch 逻辑")
+    if value is None:
+        return
+
+    annotation = model_field.field_info.annotation
+    kind, _ = _classify_field_kind(annotation)
+    is_file = _is_pathlib_path_annotation(annotation)
+
+    if kind == "scalar":
+        _set_scalar_form_value(form_data, model_field.alias, value, is_file=is_file)
+        return
+
+    if not isinstance(value, list):
+        msg = f"Form 字段 {model_field.alias!r} 注解为 list，但收到 {type(value).__name__}"
+        raise ValueError(msg)
+
+    for element in value:
+        if element is None:
+            continue
+        _append_list_form_element(form_data, model_field.alias, element, is_file=is_file)
+
+
+def _set_scalar_form_value(form_data: FormData, alias: str, value: Any, *, is_file: bool) -> None:
+    """将单个标量值写入 FormData。
+
+    :param form_data: 待填充的表单。
+    :param alias: 表单字段名。
+    :param value: 字段值（非 None）。
+    :param is_file: 注解是否为 ``pathlib.Path``。
+    :raise ValueError: 当值不是 Playwright 支持的标量类型。
+    """
+    if is_file:
+        msg = (
+            f"Form 字段 {alias!r} 注解为文件类型，不应进入标量派发。"
+            f"Form-marked 文件字段应由 routing 路由到 file_body_params。"
+        )
+        raise ValueError(msg)
+
+    # bytes 也满足 ``_is_scalar_type``，必须先于标量分支拦截。
+    if isinstance(value, bytes):
+        msg = (
+            f"Form 字段 {alias!r} 收到 bytes 类型。"
+            f"stoma 不支持直接序列化 bytes（Playwright FormDataValue 不含 bytes）；"
+            f"请自行 json.dumps 为 str 后传入。"
+        )
+        raise ValueError(msg)
+
+    if _is_scalar_type(value):
+        form_data.set(alias, value)
+        return
+
+    if isinstance(value, BaseModel):
+        msg = (
+            f"Form 字段 {alias!r} 收到 BaseModel 实例。"
+            f"stoma 不支持嵌套 BaseModel Form；"
+            f"请使用单独的 Form 字段，或将 BaseModel 内容平铺。"
+        )
+        raise ValueError(msg)
+
+    msg = (
+        f"Form 字段 {alias!r} 收到 {type(value).__name__}。"
+        f"stoma 不再自动 JSON 序列化 form 字段；"
+        f"若要传递 list/dict 等复合类型，请自行 json.dumps 为 str 后传入。"
+    )
+    raise ValueError(msg)
+
+
+def _append_list_form_element(form_data: FormData, alias: str, element: Any, *, is_file: bool) -> None:
+    """将 list 字段的单个元素追加到 FormData。
+
+    :param form_data: 待填充的表单。
+    :param alias: 表单字段名。
+    :param element: list 元素（非 None）。
+    :param is_file: 注解是否为 ``list[pathlib.Path]``。
+    :raise ValueError: 当元素类型与注解不匹配。
+    """
+    if is_file:
+        if not isinstance(element, pathlib.Path):
+            msg = f"Form 字段 {alias!r} 元素期望 pathlib.Path，收到 {type(element).__name__}"
+            raise ValueError(msg)
+        form_data.append(alias, element)
+        return
+
+    # bytes 也满足 ``_is_scalar_type``，必须先于标量分支拦截。
+    if isinstance(element, bytes):
+        msg = (
+            f"Form 字段 {alias!r} 元素收到 bytes 类型。"
+            f"stoma 不支持直接序列化 bytes（Playwright FormDataValue 不含 bytes）；"
+            f"请自行 json.dumps 为 str 后传入。"
+        )
+        raise ValueError(msg)
+
+    if not _is_scalar_type(element):
+        msg = (
+            f"Form 字段 {alias!r} 元素收到 {type(element).__name__}。"
+            f"stoma 不再自动 JSON 序列化 form 字段元素；"
+            f"请自行 json.dumps 为 str 后传入。"
+        )
+        raise ValueError(msg)
+
+    form_data.append(alias, element)
 
 
 def _fill_basemodel_form_field(
@@ -230,19 +339,79 @@ def _fill_basemodel_form_field(
     api_route: APIRoute,
     model_field: ModelField,
 ) -> bool:
-    """占位实现：填充 BaseModel Form 字段到 FormData。
-
-    T5 实现完整 dispatch（按 ``model_fields`` 平展子字段、``pathlib.Path``
-    子字段直传 Path 对象生成 multipart part、list 子字段通过
-    ``form_data.append`` 派发同名多 part）。
+    """遍历 BaseModel 字段，按标量/列表与文本/文件类型派发到表单。
 
     :param form_data: 待填充的表单。
     :param api_route: APIRoute 实例。
     :param model_field: BaseModel Form 字段定义。
     :return: 是否包含文件子字段（含 ``pathlib.Path`` / ``list[pathlib.Path]``）。
-    :raise NotImplementedError: 始终抛出（占位留给 T5）。
+    :raise ValueError: 当子字段类型或值不支持表单派发时。
     """
-    raise NotImplementedError("_fill_basemodel_form_field 由 T5 实现完整 dispatch 逻辑")
+    value = getattr(api_route, model_field.name)
+    if value is None:
+        return False
+
+    has_files = False
+    for field_name, field_info in type(value).model_fields.items():
+        sub_value = getattr(value, field_name)
+        if sub_value is None:
+            # None 值跳过，但仍按注解决定是否使用 multipart。
+            if _is_pathlib_path_annotation(field_info.annotation):
+                has_files = True
+            continue
+
+        kind, inner_type = _classify_field_kind(field_info.annotation)
+        is_file = _is_pathlib_path_annotation(field_info.annotation)
+
+        if kind == "scalar":
+            if is_file:
+                if not isinstance(sub_value, pathlib.Path):
+                    raise ValueError(
+                        f"Form 字段 {field_name!r} 期望 pathlib.Path，收到 {type(sub_value).__name__}"
+                    )
+                form_data.set(field_name, sub_value)
+                has_files = True
+            else:
+                if lenient_issubclass(type(sub_value), BaseModel) or lenient_issubclass(
+                    inner_type, BaseModel
+                ):
+                    raise ValueError(
+                        f"Form BaseModel 字段 {field_name!r} 为嵌套 BaseModel，不支持。"
+                        f"请把所有 form 字段平铺到同一个 BaseModel 内，或自行 json.dumps 为 str"
+                    )
+                if not _is_scalar_type(sub_value) or isinstance(sub_value, bytes):
+                    raise ValueError(
+                        f"Form 字段 {field_name!r} 收到 {type(sub_value).__name__}，"
+                        f"stoma 不再自动 JSON 序列化 form 字段；"
+                        f"若要传递 list/dict 等复合类型，请自行 json.dumps 为 str 后传入"
+                    )
+                form_data.set(field_name, sub_value)
+        else:
+            if not isinstance(sub_value, list):
+                raise ValueError(
+                    f"Form 字段 {field_name!r} 注解为 list，但收到 {type(sub_value).__name__}"
+                )
+            for elem in sub_value:
+                if elem is None:
+                    continue
+                if is_file:
+                    if not isinstance(elem, pathlib.Path):
+                        raise ValueError(
+                            f"Form 字段 {field_name!r} 元素期望 pathlib.Path，收到 {type(elem).__name__}"
+                        )
+                    form_data.append(field_name, elem)
+                else:
+                    if not _is_scalar_type(elem) or isinstance(elem, bytes):
+                        raise ValueError(
+                            f"Form 字段 {field_name!r} 元素收到 {type(elem).__name__}，"
+                            f"stoma 不再自动 JSON 序列化 form 字段"
+                        )
+                    form_data.append(field_name, elem)
+            # 空列表也按注解标记文件类型，以便选择 multipart。
+            if is_file:
+                has_files = True
+
+    return has_files
 
 
 class Client:
@@ -447,7 +616,7 @@ class Client:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
-            self._fill_scalar_form_field(form_data, model_field, value)
+            _fill_scalar_form_field(form_data, model_field, value)
 
         for model_field in dependant.file_body_params:
             value = getattr(api_route, model_field.name)
