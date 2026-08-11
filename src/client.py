@@ -22,6 +22,7 @@ URL/Query 处理说明：
 import json
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
+from types import UnionType
 from typing import Any, NamedTuple, Union, get_args, get_origin
 
 from playwright.sync_api import APIRequestContext, APIResponse, FormData
@@ -86,17 +87,6 @@ class RequestParams(NamedTuple):
     body: RequestBody
 
 
-def _is_form_list_annotation(annotation: Any) -> bool:
-    """判断注解是否为 ``list[...]``（含 ``Optional[list[...]]``）。"""
-    origin = get_origin(annotation)
-    if origin is list:
-        return True
-    if origin is Union:
-        non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
-        return len(non_none) == 1 and get_origin(non_none[0]) is list
-    return False
-
-
 def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
     """填充函数级 Form 字段到 FormData。
 
@@ -109,65 +99,31 @@ def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value:
 
     ``None`` 值（字段本身或 list 元素）一律跳过；空 list 相当于整个字段不出现。
     字段类型由 ``src.routing`` 阶段的 ``validate_form_field_annotation`` 校验，
-    本函数对运行时值仅做"是否匹配标量"的兜底检查。
+    本函数不再对运行时值做类型检查（信任 Pydantic）。
 
     :param form_data: 待填充的表单。
     :param model_field: Form 字段定义。
     :param value: 字段值。
-    :raise ValueError: 当值类型与注解不匹配，或值为 ``bytes`` / ``BaseModel``
-        等 stoma 不再自动序列化的类型。
     """
     if value is None:
         return
 
-    if _is_form_list_annotation(model_field.field_info.annotation):
-        if not isinstance(value, list):
-            msg = f"Form 字段 {model_field.alias!r} 注解为 list，但收到 {type(value).__name__}"
-            raise ValueError(msg)
+    annotation = model_field.field_info.annotation
+    # 解开 ``Optional[list[...]]`` / ``list[...] | None`` → ``list[...]``
+    origin = get_origin(annotation)
+    if origin is Union or origin is UnionType:
+        non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
+        if len(non_none) == 1:
+            annotation = non_none[0]
+
+    if get_origin(annotation) is list:
         for element in value:
             if element is None:
                 continue
-            if isinstance(element, bytes):
-                msg = (
-                    f"Form 字段 {model_field.alias!r} 元素收到 bytes 类型。"
-                    f"stoma 不支持直接序列化 bytes（Playwright FormDataValue 不含 bytes）；"
-                    f"请自行 json.dumps 为 str 后传入。"
-                )
-                raise ValueError(msg)
-            if not isinstance(element, (bool, str, int, float)):
-                msg = (
-                    f"Form 字段 {model_field.alias!r} 元素收到 {type(element).__name__}。"
-                    f"stoma 不再自动 JSON 序列化 form 字段元素；"
-                    f"请自行 json.dumps 为 str 后传入。"
-                )
-                raise ValueError(msg)
             form_data.append(model_field.alias, element)
         return
 
-    if isinstance(value, bytes):
-        msg = (
-            f"Form 字段 {model_field.alias!r} 收到 bytes 类型。"
-            f"stoma 不支持直接序列化 bytes（Playwright FormDataValue 不含 bytes）；"
-            f"请自行 json.dumps 为 str 后传入。"
-        )
-        raise ValueError(msg)
-    if isinstance(value, BaseModel):
-        msg = (
-            f"Form 字段 {model_field.alias!r} 收到 BaseModel 实例。"
-            f"stoma 不支持嵌套 BaseModel Form；"
-            f"请使用单独的 Form 字段，或将 BaseModel 内容平铺。"
-        )
-        raise ValueError(msg)
-    if isinstance(value, bool) or isinstance(value, (str, int, float)):
-        form_data.set(model_field.alias, value)
-        return
-
-    msg = (
-        f"Form 字段 {model_field.alias!r} 收到 {type(value).__name__}。"
-        f"stoma 不再自动 JSON 序列化 form 字段；"
-        f"若要传递 list/dict 等复合类型，请自行 json.dumps 为 str 后传入。"
-    )
-    raise ValueError(msg)
+    form_data.set(model_field.alias, value)
 
 
 class Client:

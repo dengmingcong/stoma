@@ -380,18 +380,6 @@ def test_form_scalar_list_field() -> None:
     assert body.form_data._fields == [("tags", "a"), ("tags", "b")]
 
 
-def test_form_scalar_list_field_non_scalar_elem_raises() -> None:
-    """测试函数级 Form 列表含 dict 元素时抛出 ValueError。"""
-
-    @router.post("/form-scalar-list-invalid")
-    class ScalarListForm(APIRoute[dict[str, Any]]):
-        tags: Annotated[list[str], Form()]
-
-    endpoint = ScalarListForm.model_construct(tags=[{"key": "value"}])
-    with pytest.raises(ValueError, match="元素收到 dict"):
-        Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-
-
 def test_form_bytes_annotation_raises_in_routing() -> None:
     """``Annotated[bytes, Form()]`` 在路由分类阶段抛 ``ValueError``。
 

@@ -4,23 +4,14 @@
 （由 Pydantic 解开 ``Annotated``），不再依赖 ``Form.kind`` 运行时缓存。
 """
 
-import pathlib
 from typing import Optional
 
-import pytest
-from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from playwright.sync_api import FormData
 
 from src.client import _fill_scalar_form_field
 from src.dependencies import ModelField
 from src import Form
-
-
-class UserData(BaseModel):
-    """用户数据模型。"""
-    id: int
-    name: str
 
 
 # ============================================================
@@ -55,21 +46,6 @@ class TestFillScalarFormField:
         """None 值跳过，不产生任何 part。"""
         assert self._fill(Optional[str], None)._fields == []
 
-    def test_scalar_bytes_raises(self) -> None:
-        """bytes 不在 Playwright FormDataValue，抛 ValueError。"""
-        with pytest.raises(ValueError, match="收到 bytes 类型"):
-            self._fill(bytes, b"\x00")
-
-    def test_scalar_dict_raises(self) -> None:
-        """dict 不再自动 JSON 序列化，抛 ValueError。"""
-        with pytest.raises(ValueError, match="不再自动 JSON 序列化"):
-            self._fill(dict, {})
-
-    def test_scalar_basemodel_raises(self) -> None:
-        """BaseModel 实例抛 ValueError（form_body_params 已过滤，此处兜底）。"""
-        with pytest.raises(ValueError, match="嵌套 BaseModel Form"):
-            self._fill(UserData, UserData(id=1, name="alice"))
-
     def test_list_text_appends_each(self) -> None:
         """list[str] 每个元素 append 一次同名 part。"""
         assert self._fill(list[str], ["a", "b"])._fields == [("field", "a"), ("field", "b")]
@@ -81,13 +57,3 @@ class TestFillScalarFormField:
     def test_empty_list_skipped(self) -> None:
         """空 list 不产生任何 part。"""
         assert self._fill(list[str], [])._fields == []
-
-    def test_list_non_scalar_element_raises(self) -> None:
-        """list 元素为 dict → ValueError。"""
-        with pytest.raises(ValueError, match="元素收到 dict"):
-            self._fill(list[str], [{"k": "v"}])
-
-    def test_list_annotation_with_non_list_value_raises(self) -> None:
-        """注解为 list 但值不是 list → ValueError。"""
-        with pytest.raises(ValueError, match="注解为 list，但收到 str"):
-            self._fill(list[str], "a")
