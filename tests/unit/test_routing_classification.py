@@ -3,9 +3,6 @@
 验证行为矩阵（route 到 file_body_params vs form_body_params）：
 - Annotated[UploadFile, Form()] → file_body_params（新行为，原本错误地落 form_body_params）
 - Annotated[list[UploadFile], Form()] → file_body_params
-- Annotated[pathlib.Path, Form()] → file_body_params
-- Annotated[list[pathlib.Path], Form()] → file_body_params
-- Annotated[Optional[pathlib.Path], Form()] → file_body_params
 - Annotated[BaseModel, Form()] → form_body_params（不变）
 - Annotated[str, Form()] → form_body_params（不变）
 - Annotated[list[str], Form()] → form_body_params（不变）
@@ -55,64 +52,34 @@ def get_param_categories(endpoint_cls: type[APIRoute[Any]]) -> dict[str, list[st
 # === Form-marked 文件类型 → file_body_params（新增行为） ===
 
 
-def test_form_marked_uploadfile_routes_to_file_body_params() -> None:
-    """Annotated[UploadFile, Form()] → file_body_params（新行为）。"""
+def test_form_marked_uploadfile_raises() -> None:
+    """Annotated[UploadFile, Form()] → ValueError。"""
 
-    @router.post("/upload")
     class UploadFileEndpoint(APIRoute[UserData]):
         file: Annotated[UploadFile, Form()]
 
-    categories = get_param_categories(UploadFileEndpoint)
-    assert "file" in categories["file_body_params"]
-    assert "file" not in categories["form_body_params"]
+    with pytest.raises(ValueError, match="Form 不支持的字段类型"):
+        UploadFileEndpoint._get_dependant(method="POST", path="/upload")
 
 
-def test_form_marked_list_uploadfile_routes_to_file_body_params() -> None:
-    """Annotated[list[UploadFile], Form()] → file_body_params。"""
+def test_form_marked_list_uploadfile_raises() -> None:
+    """Annotated[list[UploadFile], Form()] → ValueError。"""
 
-    @router.post("/upload")
     class UploadFilesEndpoint(APIRoute[UserData]):
         files: Annotated[list[UploadFile], Form()]
 
-    categories = get_param_categories(UploadFilesEndpoint)
-    assert "files" in categories["file_body_params"]
-    assert "files" not in categories["form_body_params"]
+    with pytest.raises(ValueError, match="Form 不支持的字段类型"):
+        UploadFilesEndpoint._get_dependant(method="POST", path="/upload")
 
 
-def test_form_marked_path_routes_to_file_body_params() -> None:
-    """Annotated[pathlib.Path, Form()] → file_body_params。"""
+def test_form_marked_path_raises() -> None:
+    """Annotated[pathlib.Path, Form()] → ValueError。"""
 
-    @router.post("/upload")
     class UploadPathEndpoint(APIRoute[UserData]):
         file_path: Annotated[pathlib.Path, Form()]
 
-    categories = get_param_categories(UploadPathEndpoint)
-    assert "file_path" in categories["file_body_params"]
-    assert "file_path" not in categories["form_body_params"]
-
-
-def test_form_marked_list_path_routes_to_file_body_params() -> None:
-    """Annotated[list[pathlib.Path], Form()] → file_body_params。"""
-
-    @router.post("/upload")
-    class UploadPathsEndpoint(APIRoute[UserData]):
-        file_paths: Annotated[list[pathlib.Path], Form()]
-
-    categories = get_param_categories(UploadPathsEndpoint)
-    assert "file_paths" in categories["file_body_params"]
-    assert "file_paths" not in categories["form_body_params"]
-
-
-def test_form_marked_optional_path_routes_to_file_body_params() -> None:
-    """Annotated[Optional[pathlib.Path], Form()] → file_body_params。"""
-
-    @router.post("/upload")
-    class UploadOptionalPathEndpoint(APIRoute[UserData]):
-        file_path: Annotated[Optional[pathlib.Path], Form()]
-
-    categories = get_param_categories(UploadOptionalPathEndpoint)
-    assert "file_path" in categories["file_body_params"]
-    assert "file_path" not in categories["form_body_params"]
+    with pytest.raises(ValueError, match="Form 不支持的字段类型"):
+        UploadPathEndpoint._get_dependant(method="POST", path="/upload")
 
 
 # === Form-marked 非文件类型 → form_body_params（不变） ===
@@ -142,6 +109,30 @@ def test_form_marked_list_str_routes_to_form_body_params() -> None:
     assert "tags" not in categories["file_body_params"]
 
 
+def test_form_scalar_optional() -> None:
+    """Annotated[Optional[str], Form()] → form_body_params。"""
+
+    @router.post("/submit")
+    class SubmitOptionalStrEndpoint(APIRoute[UserData]):
+        name: Annotated[Optional[str], Form()]
+
+    categories = get_param_categories(SubmitOptionalStrEndpoint)
+    assert "name" in categories["form_body_params"]
+    assert "name" not in categories["file_body_params"]
+
+
+def test_form_scalar_list_optional() -> None:
+    """Annotated[Optional[list[str]], Form()] → form_body_params。"""
+
+    @router.post("/submit")
+    class SubmitOptionalStrListEndpoint(APIRoute[UserData]):
+        tags: Annotated[Optional[list[str]], Form()]
+
+    categories = get_param_categories(SubmitOptionalStrListEndpoint)
+    assert "tags" in categories["form_body_params"]
+    assert "tags" not in categories["file_body_params"]
+
+
 # === 无 Form 标记的 UploadFile → file_body_params（不变） ===
 
 
@@ -165,17 +156,16 @@ def test_mixed_form_marked_params() -> None:
 
     @router.post("/mixed")
     class MixedEndpoint(APIRoute[UserData]):
-        file: Annotated[UploadFile, Form()]
+        file: UploadFile
         name: Annotated[str, Form()]
-        path: Annotated[pathlib.Path, Form()]
 
     categories = get_param_categories(MixedEndpoint)
-    assert categories["file_body_params"] == ["file", "path"]
+    assert categories["file_body_params"] == ["file"]
     assert categories["form_body_params"] == ["name"]
 
 
 def test_form_basemodel_raises_in_routing() -> None:
-    """``Annotated[BaseModel, Form()]`` → ``ValueError``（Form 不支持 BaseModel 子字段）。
+    """``Annotated[BaseModel, Form()]`` → ``ValueError``（Form 不支持该字段类型）。
 
     不使用 ``@router.post`` 装饰器（其内部 ``update_api_route`` 会调用
     ``_get_dependant()``，导致 raise 在装饰期触发），
@@ -187,5 +177,5 @@ def test_form_basemodel_raises_in_routing() -> None:
 
         data: Annotated[UserCreateRequest, Form()]
 
-    with pytest.raises(ValueError, match="Form 不支持 BaseModel 子字段"):
+    with pytest.raises(ValueError, match="Form 不支持的字段类型"):
         SubmitFormEndpoint._get_dependant(method="POST", path="/submit")

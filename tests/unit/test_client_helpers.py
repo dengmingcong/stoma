@@ -1,7 +1,8 @@
 """T3: client.py 5 个 form 派发辅助函数的单元测试。"""
 
 import pathlib
-from typing import Annotated, Optional
+from dataclasses import dataclass
+from typing import Annotated, Optional, Union
 
 import pytest
 from pydantic import BaseModel
@@ -11,10 +12,10 @@ from playwright.sync_api import FormData
 from src.client import (
     _classify_field_kind,
     _fill_scalar_form_field,
-    _is_pathlib_path_annotation,
 )
 from src.dependencies import ModelField
-from src.params import Form, Query
+from src.dependencies.utils import _is_scalar_or_scalar_list_annotation
+from src.params import Form, Query, UploadFile
 from src.routing import APIRouter
 
 
@@ -77,53 +78,62 @@ class TestClassifyFieldKind:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class DataClassValue:
+    """用于验证 dataclass 不属于标量 Form 类型。"""
+
+    value: str
+
+
 # ============================================================
-# _is_pathlib_path_annotation
+# _is_scalar_or_scalar_list_annotation
 # ============================================================
 
 
-class TestIsPathlibPathAnnotation:
-    """测试 _is_pathlib_path_annotation。"""
+class TestIsScalarOrScalarListAnnotation:
+    """测试标量或标量列表注解识别。"""
 
-    def test_path_direct_true(self) -> None:
-        """pathlib.Path → True。"""
-        assert _is_pathlib_path_annotation(pathlib.Path) is True
+    @pytest.mark.parametrize(
+        "annotation",
+        [
+            str,
+            int,
+            float,
+            bool,
+            bytes,
+            list[str],
+            list[int],
+            Optional[str],
+            str | None,
+            Optional[list[str]],
+            list[str] | None,
+            Annotated[str, Form()],
+            Annotated[list[str], Form()],
+            Union[str | None, list[str] | None],
+        ],
+    )
+    def test_scalar_annotations_true(self, annotation: type) -> None:
+        """标量及其允许的包装形式 → True。"""
+        assert _is_scalar_or_scalar_list_annotation(annotation) is True
 
-    def test_optional_path_true(self) -> None:
-        """Optional[pathlib.Path] → True。"""
-        assert _is_pathlib_path_annotation(Optional[pathlib.Path]) is True
-
-    def test_list_path_true(self) -> None:
-        """list[pathlib.Path] → True。"""
-        assert _is_pathlib_path_annotation(list[pathlib.Path]) is True
-
-    def test_optional_list_path_true(self) -> None:
-        """Optional[list[pathlib.Path]] → True。"""
-        assert _is_pathlib_path_annotation(Optional[list[pathlib.Path]]) is True
-
-    def test_annotated_path_true(self) -> None:
-        """Annotated[pathlib.Path, "foo"] → True。"""
-        assert _is_pathlib_path_annotation(Annotated[pathlib.Path, "foo"]) is True
-
-    def test_str_false(self) -> None:
-        """str → False。"""
-        assert _is_pathlib_path_annotation(str) is False
-
-    def test_int_false(self) -> None:
-        """int → False。"""
-        assert _is_pathlib_path_annotation(int) is False
-
-    def test_purepath_false(self) -> None:
-        """pathlib.PurePath（父类）→ False。"""
-        assert _is_pathlib_path_annotation(pathlib.PurePath) is False
-
-    def test_list_str_false(self) -> None:
-        """list[str] → False。"""
-        assert _is_pathlib_path_annotation(list[str]) is False
-
-    def test_union_none_int_false(self) -> None:
-        """int | None → False。"""
-        assert _is_pathlib_path_annotation(int | None) is False
+    @pytest.mark.parametrize(
+        "annotation",
+        [
+            UploadFile,
+            list[UploadFile],
+            Optional[UploadFile],
+            pathlib.Path,
+            list[pathlib.Path],
+            Optional[pathlib.Path],
+            BaseModel,
+            dict,
+            DataClassValue,
+            Union[str, pathlib.Path],
+        ],
+    )
+    def test_non_scalar_annotations_false(self, annotation: type) -> None:
+        """文件、路径、复杂类型及混合并集 → False。"""
+        assert _is_scalar_or_scalar_list_annotation(annotation) is False
 
 
 # ============================================================
@@ -194,21 +204,3 @@ class TestFillScalarFormField:
         """注解为 list 但值不是 list → ValueError。"""
         with pytest.raises(ValueError, match="注解为 list，但收到 str"):
             self._fill(list[str], "a")
-
-    def test_list_path_appends_path_objects(self) -> None:
-        """list[pathlib.Path] append 的是 Path 对象本身，不是 str。"""
-        paths = [pathlib.Path("/tmp/a.txt"), pathlib.Path("/tmp/b.txt")]
-        assert self._fill(list[pathlib.Path], paths)._fields == [
-            ("field", paths[0]),
-            ("field", paths[1]),
-        ]
-
-    def test_list_path_non_path_element_raises(self) -> None:
-        """list[pathlib.Path] 元素不是 Path → ValueError。"""
-        with pytest.raises(ValueError, match="元素期望 pathlib.Path，收到 str"):
-            self._fill(list[pathlib.Path], ["/tmp/a.txt"])
-
-    def test_scalar_path_annotation_raises(self) -> None:
-        """标量 pathlib.Path 应由 routing 落到 file_body_params，进入本函数即报错。"""
-        with pytest.raises(ValueError, match="不应进入标量派发"):
-            self._fill(pathlib.Path, pathlib.Path("/tmp/a.txt"))
