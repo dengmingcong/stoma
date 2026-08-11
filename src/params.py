@@ -140,7 +140,8 @@ class Form(Body):
 
     .. versionchanged:: 1.0.0
         ``Form`` 不再支持 ``embed`` 关键字参数，调用 ``Form(embed=...)`` 会
-        抛 ``TypeError``。``BaseModel`` 子字段始终平展，不存在 embed 语义。
+        抛 ``TypeError``。``Annotated[BaseModel, Form()]`` 抛 ``ValueError``，
+        请平铺为多个 ``Form()`` 字段，或改用 ``Body()`` 走 JSON body。
     """
 
     in_ = ParamTypes.body
