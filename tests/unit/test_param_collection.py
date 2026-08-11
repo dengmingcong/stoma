@@ -19,7 +19,7 @@ from playwright.sync_api import FormData
 from pydantic import BaseModel, Field
 
 from src.client import Client, RequestBodyKind
-from src.params import Body, Form, Header, Path, Query, UploadFile
+from src import Body, Form, Header, Path, Query, UploadFile
 from src.routing import APIRoute, APIRouter
 
 # 创建测试用的路由器

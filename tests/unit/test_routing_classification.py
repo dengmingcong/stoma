@@ -15,7 +15,7 @@ from typing import Annotated, Any, Optional
 import pytest
 from pydantic import BaseModel
 
-from src.params import Body, Form, Query, UploadFile
+from src import Body, Form, Query, UploadFile
 from src.routing import APIRoute, APIRouter
 
 

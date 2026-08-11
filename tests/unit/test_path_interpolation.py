@@ -9,7 +9,7 @@ from typing import Annotated
 from pydantic import BaseModel
 
 from src.client import Client
-from src.params import Path
+from src import Path
 from src.routing import APIRoute, APIRouter
 
 # 创建测试用的路由器

@@ -14,7 +14,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, Field
 
 from src.dependencies.utils import field_annotation_is_complex
-from src.params import Header
+from src import Header
 from src.routing import APIRoute, APIRouter
 
 # 创建测试用的路由器

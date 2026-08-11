@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from src.client import Client
 from src.exceptions import HTTPError
-from src.params import Body, Form, Path, Query, UploadFile
+from src import Body, Form, Path, Query, UploadFile
 from src.routing import APIRoute, APIRouter
 
 

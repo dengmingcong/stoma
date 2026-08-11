@@ -22,7 +22,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from src.params import Body, Header, Path, Query
+from src import Body, Header, Path, Query
 from src.routing import APIRoute, APIRouter
 
 

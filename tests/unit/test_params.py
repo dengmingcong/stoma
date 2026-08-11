@@ -4,7 +4,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.params import Body, Header, ParamTypes, Path, Query
+from src import Body, Header, Path, Query
+from src.params import ParamTypes
 
 
 class TestParamTypes:
