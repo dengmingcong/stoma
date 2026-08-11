@@ -4,10 +4,9 @@
 通过 Pydantic 模型与 stoma 测试共享类型，复用 stoma 的 Pydantic 生态。
 """
 
-import json
 from typing import Annotated, Any
 
-from fastapi import FastAPI, File, Query, Request, Response, UploadFile
+from fastapi import FastAPI, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.datastructures import UploadFile as StarletteUploadFile
@@ -284,50 +283,95 @@ async def upload_files_optional(files: list[UploadFile] | None = File(None)) -> 
 async def login(request: Request) -> dict[str, Any]:
     """POST /login：接收 form data。
 
-    stoma 序列化约定：标量原值、集合字段（``list`` / ``dict``）走 ``json.dumps``。
-    FastAPI 的 ``Form()`` 字段不能自动 JSON-decode 集合值（会返回 422），
-    因此用 ``Request`` 直接读 form，对单值字段尝试 ``json.loads``，
-    解析结果为 ``list`` / ``dict`` 时还原，否则保持字符串原值。
-    重复字段（同名多次出现）直接保留为 ``list[str]``。
+    stoma 序列化约定：标量字段原值写入，list 字段逐元素 ``append`` 成同名多 part。
+    FastAPI 的 ``Form()`` 字段无法同时兼容单值与多值，因此用 ``Request`` 直接读 form：
+    单值字段取原值，重复字段（同名多次出现）保留为 ``list[str]``。
 
-    同时覆盖 ``LoginRoute``（单字段 ``Form()``）和 ``LoginFlatRoute``（BaseModel + Form，
-    embed=False 默认会平展子字段）—— 两者 wire 格式相同。
+    同时覆盖 ``LoginRoute``（多个标量 ``Form()``）和 ``LoginFlatRoute``（BaseModel + Form，
+    子字段平展）—— 两者 wire 格式相同。
 
     :param request: FastAPI Request 对象。
-    :return: 解析后的表单数据，集合字段已还原为 ``list`` / ``dict``。
+    :return: 解析后的表单数据，重复 key 合并为 ``list``。
     """
     form = await request.form()
     result: dict[str, Any] = {}
     for key in form:
         values = form.getlist(key)
-        if len(values) == 1:
-            v = values[0]
-            try:
-                parsed = json.loads(v)
-                if isinstance(parsed, (list, dict)):
-                    result[key] = parsed
-                    continue
-            except (json.JSONDecodeError, TypeError):
-                pass
-            result[key] = v
-        else:
-            result[key] = values
+        result[key] = values[0] if len(values) == 1 else values
     return result
+
+
+@app.post("/login-list")
+async def login_list(tags: Annotated[list[str], Form()]) -> dict[str, Any]:
+    """POST /login-list：接收标量列表 Form 字段。
+
+    stoma 对 ``Annotated[list[str], Form()]`` 逐元素 ``append``，wire 上是重复 key 的
+    urlencoded body。FastAPI 的 ``list[str] = Form()`` 直接把重复 key 收敛为 list。
+
+    :param tags: 重复 key 解析出的字符串列表。
+    :return: 原样回显 tags 列表。
+    """
+    return {"tags": tags}
+
+
+@app.post("/upload-with-path")
+async def upload_with_path(
+    name: Annotated[str, Form()],
+    avatar: Annotated[UploadFile | None, File()] = None,
+) -> dict[str, Any]:
+    """POST /upload-with-path：BaseModel Form 含单个 ``pathlib.Path`` 子字段。
+
+    stoma 把 BaseModel 的 ``pathlib.Path`` 子字段直接交给 Playwright，Playwright
+    据此生成文件 part，因此服务端用 ``UploadFile`` 接收；文本子字段仍是普通 form 字段。
+    ``avatar`` 声明为可选，以覆盖 ``pathlib.Path | None`` 为 ``None`` 的形态
+    （此时 stoma 仍按注解走 multipart，但不写入 avatar part）。
+
+    :param name: BaseModel 中的文本子字段。
+    :param avatar: BaseModel 中 ``pathlib.Path`` 子字段生成的文件 part；缺省为 ``None``。
+    :return: 文本字段值与文件元信息（无文件时文件字段为 ``None`` / 0）。
+    """
+    if avatar is None:
+        return {"name": name, "filename": None, "size": 0, "content_type": None}
+    content = await avatar.read()
+    return {
+        "name": name,
+        "filename": avatar.filename,
+        "size": len(content),
+        "content_type": avatar.content_type,
+    }
+
+
+@app.post("/upload-with-paths-list")
+async def upload_with_paths_list(files: Annotated[list[UploadFile], File()]) -> dict[str, Any]:
+    """POST /upload-with-paths-list：BaseModel Form 含 ``list[pathlib.Path]`` 子字段。
+
+    stoma 对 list 中每个 ``pathlib.Path`` 元素调用 ``append``，wire 上是多个同名文件
+    part，FastAPI 的 ``list[UploadFile]`` 会把它们收敛为列表。
+
+    :param files: 同名多 part 解析出的文件列表。
+    :return: 文件名列表和总大小。
+    """
+    filenames = []
+    total_size = 0
+    for f in files:
+        content = await f.read()
+        total_size += len(content)
+        filenames.append(f.filename)
+    return {"filenames": filenames, "total_size": total_size}
 
 
 @app.post("/upload-mix")
 async def upload_mix(request: Request) -> dict[str, Any]:
-    """POST /upload-mix：Form 平展字段 + UploadFile 共存。
+    """POST /upload-mix：多个标量 Form 字段 + UploadFile 共存。
 
-    stoma 发送 multipart/form-data：平展的 form 字段（标量原值、集合 ``json.dumps``）
-    加单文件 ``avatar``。FastAPI 的 ``Form()`` + ``File()`` 组合与 stoma 平展格式
-    不兼容（``Form()`` 不能 JSON-decode 集合值），因此用 ``Request`` 手动 parse。
+    stoma 发送 multipart/form-data：标量 form 字段原值写入、list 字段逐元素 ``append``，
+    再加单文件 ``avatar``。用 ``Request`` 手动 parse 以同时兼容单值与重复 key。
     文件字段通过 ``isinstance(value, StarletteUploadFile)`` 识别
     （注意：``fastapi.UploadFile`` 与 ``starlette.datastructures.UploadFile``
     是不同类，form 解析器产出 Starlette 版）。
 
     :param request: FastAPI Request 对象。
-    :return: 平展字段值（集合字段已还原为 ``list`` / ``dict``）+ 文件元信息。
+    :return: 表单字段值（重复 key 合并为 ``list``）+ 文件元信息。
     """
     form = await request.form()
     fields: dict[str, Any] = {}
@@ -340,13 +384,9 @@ async def upload_mix(request: Request) -> dict[str, Any]:
                 "size": len(content),
                 "content_type": value.content_type,
             }
+        elif key in fields:
+            existing = fields[key]
+            fields[key] = [*existing, value] if isinstance(existing, list) else [existing, value]
         else:
-            try:
-                parsed = json.loads(value)
-                if isinstance(parsed, (list, dict)):
-                    fields[key] = parsed
-                    continue
-            except (json.JSONDecodeError, TypeError):
-                pass
             fields[key] = value
     return {**fields, **file_meta}
