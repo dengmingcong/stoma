@@ -179,3 +179,31 @@ def test_form_basemodel_raises_in_routing() -> None:
 
     with pytest.raises(ValueError, match="Form 不支持的字段类型"):
         SubmitFormEndpoint._get_dependant(method="POST", path="/submit")
+
+
+def test_form_bytes_annotation_raises_in_routing() -> None:
+    """``Annotated[bytes, Form()]`` 在路由分类阶段抛 ``ValueError``。
+
+    Playwright ``FormDataValue`` 不含 ``bytes``，错误消息提示用户
+    ``json.dumps`` 为 ``str`` 后传入或改用 ``UploadFile``。
+    """
+
+    class BytesFormEndpoint(APIRoute[UserData]):
+        """含 bytes Form 字段的路由类。"""
+
+        payload: Annotated[bytes, Form()]
+
+    with pytest.raises(ValueError, match=r"Form 不支持的字段类型.*json\.dumps"):
+        BytesFormEndpoint._get_dependant(method="POST", path="/form-bytes")
+
+
+def test_form_list_bytes_annotation_raises_in_routing() -> None:
+    """``Annotated[list[bytes], Form()]`` 在路由分类阶段抛 ``ValueError``。"""
+
+    class BytesListFormEndpoint(APIRoute[UserData]):
+        """含 list[bytes] Form 字段的路由类。"""
+
+        payloads: Annotated[list[bytes], Form()]
+
+    with pytest.raises(ValueError, match=r"Form 不支持的字段类型.*json\.dumps"):
+        BytesListFormEndpoint._get_dependant(method="POST", path="/form-bytes-list")

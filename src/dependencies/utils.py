@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from dataclasses import is_dataclass
 from types import UnionType  # Python 3.10+
-from typing import Annotated, Any, Literal, Union, get_args, get_origin
+from typing import Annotated, Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -101,70 +101,121 @@ def _is_uploadfile_or_list_annotation(annotation: Any) -> bool:
     return False
 
 
-# 标量类型集合（不可迭代的原子类型）
-_SCALAR_TYPES: tuple[type, ...] = (str, int, float, bool, bytes)
+# Playwright ``FormDataValue`` 支持的标量类型集合。
+# bytes 不在其中（见 ``src.client._fill_scalar_form_field`` 的运行时检查），
+# 因此 Form 不再接受 ``bytes`` / ``list[bytes]`` 字段。
+_PLAYWRIGHT_FORM_SCALAR_TYPES: tuple[type, ...] = (str, int, float, bool)
 
 
-def _classify_form_field_kind(annotation: Any) -> Literal["scalar", "list"] | None:
-    """判断 Form 字段注解的语义类别，返回 ``"scalar"`` / ``"list"`` / ``None``。
+def validate_form_field_annotation(annotation: Any) -> None:
+    """校验 Form 字段注解是否合法，非法时抛 ``ValueError``。
 
-    本函数返回 kind 字符串，供 ``src.routing`` 在分类阶段写入 ``Form.kind`` 属性。
+    本函数在 ``src.routing`` 分类阶段被调用一次（每个 Form 字段一次），
+    校验通过后无需保留任何运行时状态 —— ``src.client`` 直接基于
+    ``field_info.annotation`` 自行判断 dispatch 路径，不再依赖 ``Form.kind`` 缓存。
+
+    Pydantic 行为实测：在 ``APIRoute._get_dependant`` 中通过
+    ``field_info.annotation`` 获取的注解是 Pydantic 处理后的实际类型，
+    不再包含 ``Annotated`` 包装（即 ``Annotated[str, Form()]`` 的
+    ``field_info.annotation`` 等于 ``str``）。因此本函数不再递归解 ``Annotated``，
+    只需处理 ``Union`` / ``Optional`` / ``list`` 三种剩余包装。
 
     支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法）：
 
-    - 标量类型：``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``
-    - 标量列表：``list[str]`` / ``list[int]`` / ``list[float]`` / ``list[bool]`` / ``list[bytes]``
+    - 标量类型：``str`` / ``int`` / ``float`` / ``bool``
+    - 标量列表：``list[str]`` / ``list[int]`` / ``list[float]`` / ``list[bool]``
     - 可选标量：``str | None`` / ``Optional[str]``
     - 可选标量列表：``list[str] | None`` / ``Optional[list[str]]``
-    - 带 ``Annotated`` 包装：``Annotated[str, ...]`` / ``Annotated[list[str], ...]``
     - 任意层 ``Union[X | None, ...]``（所有非 None 成员都必须是标量或 list[标量]）
 
-    明确返回 ``None`` 的形式（语义不属于 Form 标量，留给 routing 抛 ValueError）：
+    明确抛错的形式（语义不属于 Form 标量）：
 
-    - 文件类型：``UploadFile`` / ``list[UploadFile]``
+    - ``bytes`` / ``list[bytes]``：Playwright ``FormDataValue`` 不含 ``bytes``，
+      如需发送二进制请自行 ``json.dumps`` 为 ``str`` 后传入。
+    - 文件类型：``UploadFile`` / ``list[UploadFile]``（应直接使用，不加 ``Form()`` 标记）
     - 路径类型：``pathlib.Path`` / ``list[pathlib.Path]``
     - 复杂类型：``BaseModel`` / ``dict`` / ``dataclass``
     - 多类型并集：``Union[str, int]``（两个及以上非 None 标量类型混合）
     - 非标量列表：``list[BaseModel]`` / ``list[dict]``
-    - bare ``list`` / ``Annotated[list, ...]``（缺少 list 元素类型，无法推断 scalar/list）
+    - bare ``list``（缺少 list 元素类型，无法推断 scalar/list）
 
-    实现要点：递归解包 ``Union`` / ``Optional`` / ``Annotated``，跳过 ``None`` 成员，
-    对单一非 None 标量返回 ``"scalar"``，对单一非 None ``list[标量]`` 返回 ``"list"``。
+    实现要点：递归解包 ``Union`` / ``Optional``，跳过 ``None`` 成员，
+    对单一非 None 标量 / ``list[标量]`` 静默通过，对其他形式抛 ``ValueError``。
 
-    :param annotation: 待检查的类型注解。
-    :return: ``"scalar"`` / ``"list"`` / ``None``。
+    :param annotation: 待校验的字段注解（已由 Pydantic 解开 ``Annotated``）。
+    :raise ValueError: 当字段注解不是 Form 合法标量或 list[标量] 形式。
     """
     origin = get_origin(annotation)
 
-    # 递归处理 Annotated 包装
-    if origin is Annotated:
-        return _classify_form_field_kind(get_args(annotation)[0])
-
-    # 递归处理 Union / Optional 包装
     if origin is Union or origin is UnionType:
         args = get_args(annotation)
         non_none_args = [arg for arg in args if arg is not type(None)]
         if not non_none_args:
-            # 全是 None 的 Union（如 Union[None, None]）不符合要求
-            return None
-        # 单一非 None 类型 → 递归推断 kind；多种类型并集 → 语义不清，返回 None
+            msg = (
+                "Form 不支持的字段类型：注解为 Union 但所有成员都是 None。"
+                "Form 仅接受标量类型（str、int、float、bool）或其列表形式（list[str] 等），"
+                "以及上述类型的可选形式（str | None、Optional[list[str]] 等）。"
+                "如需上传文件，请直接使用 UploadFile / list[UploadFile]，不要加 Form() 标记。"
+                "不支持 pathlib.Path 或 BaseModel 子类作为 Form 字段。"
+            )
+            raise ValueError(msg)
         if len(non_none_args) == 1:
-            return _classify_form_field_kind(non_none_args[0])
-        return None
+            validate_form_field_annotation(non_none_args[0])
+            return
+        msg = (
+            f"Form 不支持的字段类型：注解为 {annotation!r}，包含多个非 None 标量类型并集。"
+            "Form 仅接受单一标量类型（str、int、float、bool）或其列表形式（list[str] 等），"
+            "以及上述类型的可选形式（str | None、Optional[list[str]] 等）。"
+            "如需上传文件，请直接使用 UploadFile / list[UploadFile]，不要加 Form() 标记。"
+            "不支持 pathlib.Path 或 BaseModel 子类作为 Form 字段。"
+        )
+        raise ValueError(msg)
 
-    # list 类型：要求元素类型必须是标量
     if origin is list:
         args = get_args(annotation)
-        if len(args) == 1 and args[0] in _SCALAR_TYPES:
-            return "list"
-        return None
+        if len(args) == 1 and args[0] in _PLAYWRIGHT_FORM_SCALAR_TYPES:
+            return
+        if len(args) == 1 and args[0] is bytes:
+            msg = (
+                f"Form 不支持的字段类型：注解为 {annotation!r}（list[bytes]）。"
+                "Playwright FormDataValue 不含 bytes 类型；"
+                "如需发送二进制数据，请自行 json.dumps 为 str 后传入（list[str]），"
+                "或改用 UploadFile / list[UploadFile]（不要加 Form() 标记）。"
+            )
+            raise ValueError(msg)
+        msg = (
+            f"Form 不支持的字段类型：注解为 {annotation!r}，list 元素必须是 str / int / float / bool。"
+            "Form 仅接受标量列表（list[str]、list[int] 等），"
+            "以及上述形式的可选写法（list[str] | None、Optional[list[int]] 等）。"
+            "如需上传文件，请直接使用 UploadFile / list[UploadFile]，不要加 Form() 标记。"
+            "不支持 pathlib.Path 或 BaseModel 子类作为 Form 字段。"
+        )
+        raise ValueError(msg)
 
-    # bare ``list`` 没有元素类型，无法推断 → 返回 None
     if annotation is list:
-        return None
+        msg = (
+            f"Form 不支持的字段类型：注解为 {annotation!r}（bare list 缺少元素类型）。"
+            "Form 需要明确的 list[标量] 形式，如 list[str]、list[int] 等。"
+        )
+        raise ValueError(msg)
 
-    # 直接标量类型
-    if annotation in _SCALAR_TYPES:
-        return "scalar"
+    if annotation is bytes:
+        msg = (
+            f"Form 不支持的字段类型：注解为 {annotation!r}（bytes）。"
+            "Playwright FormDataValue 不含 bytes 类型；"
+            "如需发送二进制数据，请自行 json.dumps 为 str 后传入（str 字段），"
+            "或改用 UploadFile（不要加 Form() 标记）。"
+        )
+        raise ValueError(msg)
 
-    return None
+    if annotation in _PLAYWRIGHT_FORM_SCALAR_TYPES:
+        return
+
+    msg = (
+        f"Form 不支持的字段类型：注解为 {annotation!r}。"
+        "Form 仅接受标量类型（str、int、float、bool）或其列表形式（list[str] 等），"
+        "以及上述类型的可选形式（str | None、Optional[list[str]] 等）。"
+        "如需上传文件，请直接使用 UploadFile / list[UploadFile]，不要加 Form() 标记。"
+        "不支持 pathlib.Path 或 BaseModel 子类作为 Form 字段。"
+    )
+    raise ValueError(msg)

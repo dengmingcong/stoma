@@ -14,7 +14,6 @@
 import pathlib
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal
 
 
 class ParamTypes(Enum):
@@ -139,9 +138,9 @@ class Form(Body):
 
     用于标记接口类中的表单字段。表单数据会被编码后发送到服务器。
 
-    :var kind: 表单字段的语义类别。``"scalar"`` 表示单值字段（如 ``str`` /
-        ``int``），``"list"`` 表示列表字段（如 ``list[str]``）。``src.routing`` 在分类阶段
-        根据字段注解改写该属性；``src.client`` 据此决定 dispatch 路径。
+    ``Form`` 不携带任何运行时状态（无 ``kind`` 缓存）：字段语义类别（scalar / list）
+    在 ``src.routing`` 分类阶段由 ``validate_form_field_annotation`` 校验，
+    ``src.client`` 直接基于 ``field_info.annotation`` 自行判断 dispatch 路径。
 
     .. versionchanged:: 1.0.0
         ``Form`` 不再支持 ``embed`` 关键字参数，调用 ``Form(embed=...)`` 会
@@ -152,8 +151,8 @@ class Form(Body):
     in_ = ParamTypes.body
 
     def __init__(self) -> None:
-        """初始化 Form 标记。"""
-        self.kind: Literal["scalar", "list"] = "scalar"
+        """初始化 Form 标记，无运行时状态。"""
+        pass
 
 
 @dataclass

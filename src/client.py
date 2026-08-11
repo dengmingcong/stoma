@@ -22,7 +22,7 @@ URL/Query 处理说明：
 import json
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Union, get_args, get_origin
 
 from playwright.sync_api import APIRequestContext, APIResponse, FormData
 from pydantic import BaseModel
@@ -86,106 +86,88 @@ class RequestParams(NamedTuple):
     body: RequestBody
 
 
-def _is_scalar_type(value: Any) -> bool:
-    """判断 ``value`` 是否为 Form 标量（``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``）。"""
-    return isinstance(value, (str, int, float, bool, bytes))
+def _is_form_list_annotation(annotation: Any) -> bool:
+    """判断注解是否为 ``list[...]``（含 ``Optional[list[...]]``）。"""
+    origin = get_origin(annotation)
+    if origin is list:
+        return True
+    if origin is Union:
+        non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
+        return len(non_none) == 1 and get_origin(non_none[0]) is list
+    return False
 
 
 def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
     """填充函数级 Form 字段到 FormData。
 
-    按 ``model_field.param_info.kind`` 派发（由 ``src.routing`` 在分类阶段写入）：
+    根据 ``model_field.field_info.annotation``（Pydantic 已解开 ``Annotated``）
+    派发：
 
-    - ``"scalar"``：``form_data.set(alias, value)``，原值传递，不做 JSON 序列化。
-    - ``"list"``：逐个元素 ``form_data.append(alias, elem)``，同名多 part。
+    - ``list[标量]``（含 Optional 包装）：逐个元素 ``form_data.append(alias, elem)``，
+      同名多 part。
+    - 其他标量：``form_data.set(alias, value)``，原值传递，不做 JSON 序列化。
 
     ``None`` 值（字段本身或 list 元素）一律跳过；空 list 相当于整个字段不出现。
+    字段类型由 ``src.routing`` 阶段的 ``validate_form_field_annotation`` 校验，
+    本函数对运行时值仅做"是否匹配标量"的兜底检查。
 
     :param form_data: 待填充的表单。
     :param model_field: Form 字段定义。
     :param value: 字段值。
-    :raise ValueError: 当值类型与注解不匹配，或值为 ``bytes`` / ``dict``
+    :raise ValueError: 当值类型与注解不匹配，或值为 ``bytes`` / ``BaseModel``
         等 stoma 不再自动序列化的类型。
     """
     if value is None:
         return
 
-    if model_field.param_info.kind == "list":  # type: ignore[union-attr]
+    if _is_form_list_annotation(model_field.field_info.annotation):
         if not isinstance(value, list):
             msg = f"Form 字段 {model_field.alias!r} 注解为 list，但收到 {type(value).__name__}"
             raise ValueError(msg)
         for element in value:
             if element is None:
                 continue
-            _append_list_form_element(form_data, model_field.alias, element)
+            if isinstance(element, bytes):
+                msg = (
+                    f"Form 字段 {model_field.alias!r} 元素收到 bytes 类型。"
+                    f"stoma 不支持直接序列化 bytes（Playwright FormDataValue 不含 bytes）；"
+                    f"请自行 json.dumps 为 str 后传入。"
+                )
+                raise ValueError(msg)
+            if not isinstance(element, (bool, str, int, float)):
+                msg = (
+                    f"Form 字段 {model_field.alias!r} 元素收到 {type(element).__name__}。"
+                    f"stoma 不再自动 JSON 序列化 form 字段元素；"
+                    f"请自行 json.dumps 为 str 后传入。"
+                )
+                raise ValueError(msg)
+            form_data.append(model_field.alias, element)
         return
 
-    _set_scalar_form_value(form_data, model_field.alias, value)
-
-
-def _set_scalar_form_value(form_data: FormData, alias: str, value: Any) -> None:
-    """将单个标量值写入 FormData。
-
-    :param form_data: 待填充的表单。
-    :param alias: 表单字段名。
-    :param value: 字段值（非 None）。
-    :raise ValueError: 当值不是 Playwright 支持的标量类型。
-    """
-    # bytes 也满足 ``_is_scalar_type``，必须先于标量分支拦截。
     if isinstance(value, bytes):
         msg = (
-            f"Form 字段 {alias!r} 收到 bytes 类型。"
+            f"Form 字段 {model_field.alias!r} 收到 bytes 类型。"
             f"stoma 不支持直接序列化 bytes（Playwright FormDataValue 不含 bytes）；"
             f"请自行 json.dumps 为 str 后传入。"
         )
         raise ValueError(msg)
-
-    if _is_scalar_type(value):
-        form_data.set(alias, value)
-        return
-
     if isinstance(value, BaseModel):
         msg = (
-            f"Form 字段 {alias!r} 收到 BaseModel 实例。"
+            f"Form 字段 {model_field.alias!r} 收到 BaseModel 实例。"
             f"stoma 不支持嵌套 BaseModel Form；"
             f"请使用单独的 Form 字段，或将 BaseModel 内容平铺。"
         )
         raise ValueError(msg)
+    if isinstance(value, bool) or isinstance(value, (str, int, float)):
+        form_data.set(model_field.alias, value)
+        return
 
     msg = (
-        f"Form 字段 {alias!r} 收到 {type(value).__name__}。"
+        f"Form 字段 {model_field.alias!r} 收到 {type(value).__name__}。"
         f"stoma 不再自动 JSON 序列化 form 字段；"
         f"若要传递 list/dict 等复合类型，请自行 json.dumps 为 str 后传入。"
     )
     raise ValueError(msg)
-
-
-def _append_list_form_element(form_data: FormData, alias: str, element: Any) -> None:
-    """将 list 字段的单个元素追加到 FormData。
-
-    :param form_data: 待填充的表单。
-    :param alias: 表单字段名。
-    :param element: list 元素（非 None）。
-    :raise ValueError: 当元素类型与注解不匹配。
-    """
-    # bytes 也满足 ``_is_scalar_type``，必须先于标量分支拦截。
-    if isinstance(element, bytes):
-        msg = (
-            f"Form 字段 {alias!r} 元素收到 bytes 类型。"
-            f"stoma 不支持直接序列化 bytes（Playwright FormDataValue 不含 bytes）；"
-            f"请自行 json.dumps 为 str 后传入。"
-        )
-        raise ValueError(msg)
-
-    if not _is_scalar_type(element):
-        msg = (
-            f"Form 字段 {alias!r} 元素收到 {type(element).__name__}。"
-            f"stoma 不再自动 JSON 序列化 form 字段元素；"
-            f"请自行 json.dumps 为 str 后传入。"
-        )
-        raise ValueError(msg)
-
-    form_data.append(alias, element)
 
 
 class Client:

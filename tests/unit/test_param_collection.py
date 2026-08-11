@@ -392,16 +392,20 @@ def test_form_scalar_list_field_non_scalar_elem_raises() -> None:
         Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
 
 
-def test_form_scalar_field_bytes_raises() -> None:
-    """测试函数级 Form bytes 字段不支持直接序列化。"""
+def test_form_bytes_annotation_raises_in_routing() -> None:
+    """``Annotated[bytes, Form()]`` 在路由分类阶段抛 ``ValueError``。
 
-    @router.post("/form-scalar-bytes")
-    class BytesForm(APIRoute[dict[str, Any]]):
+    Playwright ``FormDataValue`` 不含 ``bytes``，因此 Form 在 ``src.routing`` 分类阶段
+    直接拒绝该注解，错误消息提示用户 ``json.dumps`` 为 ``str`` 后传入或改用 ``UploadFile``。
+    """
+
+    class BytesFormEndpoint(APIRoute[dict[str, Any]]):
+        """含 bytes Form 字段的路由类。"""
+
         payload: Annotated[bytes, Form()]
 
-    endpoint = BytesForm(payload=b"payload")
-    with pytest.raises(ValueError, match="收到 bytes 类型"):
-        Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    with pytest.raises(ValueError, match=r"Form 不支持的字段类型.*json\.dumps"):
+        BytesFormEndpoint._get_dependant(method="POST", path="/form-bytes")
 
 
 def test_form_basemodel_raises_in_routing() -> None:

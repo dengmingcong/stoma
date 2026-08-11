@@ -1,24 +1,20 @@
-"""T3: client.py 5 个 form 派发辅助函数的单元测试。"""
+"""T3: client.py form 派发逻辑的单元测试。
+
+``_fill_scalar_form_field`` 现在直接从 ``model_field.field_info.annotation`` 读取类型
+（由 Pydantic 解开 ``Annotated``），不再依赖 ``Form.kind`` 运行时缓存。
+"""
 
 import pathlib
-from dataclasses import dataclass
-from typing import Annotated, Optional, Union
+from typing import Optional
 
 import pytest
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from playwright.sync_api import FormData
 
-from src.client import (
-    _fill_scalar_form_field,
-)
+from src.client import _fill_scalar_form_field
 from src.dependencies import ModelField
-from src.dependencies.utils import _classify_form_field_kind
-from src import Form, Query, UploadFile
-from src.routing import APIRouter
-
-
-router = APIRouter()
+from src import Form
 
 
 class UserData(BaseModel):
@@ -27,31 +23,18 @@ class UserData(BaseModel):
     name: str
 
 
-@dataclass(frozen=True, slots=True)
-class DataClassValue:
-    """用于验证 dataclass 不属于标量 Form 类型。"""
-
-    value: str
-
-
 # ============================================================
 # _fill_scalar_form_field
 # ============================================================
 
 
 class TestFillScalarFormField:
-    """测试 _fill_scalar_form_field 的四象限派发。"""
+    """测试 ``_fill_scalar_form_field`` 基于 ``field_info.annotation`` 的派发。"""
 
     @staticmethod
     def _fill(annotation: object, value: object) -> FormData:
-        # 与 ``src.routing`` 分类阶段一致：用 ``_classify_form_field_kind`` 推断 kind 后写入 Form 实例。
-        # 测试直接调 ``_fill_scalar_form_field``，跳过 routing，因此需要在这里手动设置。
-        form = Form()
-        kind = _classify_form_field_kind(annotation)
-        if kind is not None:
-            form.kind = kind
         field_info = FieldInfo(annotation=annotation)
-        model_field = ModelField(name="field", field_info=field_info, param_info=form)
+        model_field = ModelField(name="field", field_info=field_info, param_info=Form())
         form_data = FormData()
         _fill_scalar_form_field(form_data, model_field, value)
         return form_data
