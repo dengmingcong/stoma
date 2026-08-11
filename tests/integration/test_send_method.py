@@ -882,6 +882,18 @@ class TestOptionalUploadFile:
         }
 
 
+def test_form_marked_uploadfile_raises() -> None:
+    """``Annotated[UploadFile, Form()]`` 在路由分类阶段抛 ``ValueError``。"""
+
+    class UploadFileFormEndpoint(APIRoute[dict[str, Any]]):
+        """含 UploadFile Form 字段的路由类。"""
+
+        file: Annotated[UploadFile, Form()]
+
+    with pytest.raises(ValueError, match="Form 不支持的字段类型"):
+        UploadFileFormEndpoint._get_dependant(method="POST", path="/upload")
+
+
 def test_form_basemodel_raises_in_routing() -> None:
     """``Annotated[BaseModel, Form()]`` 在路由分类阶段抛 ``ValueError``。
 
@@ -897,7 +909,7 @@ def test_form_basemodel_raises_in_routing() -> None:
 
         data: Annotated[CreateUserRequest, Form()]
 
-    with pytest.raises(ValueError, match="Form 不支持 BaseModel 子字段"):
+    with pytest.raises(ValueError, match="Form 不支持的字段类型"):
         SubmitFormEndpoint._get_dependant(method="POST", path="/submit")
 
 
