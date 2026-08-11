@@ -3,11 +3,11 @@
 from collections.abc import Mapping
 from dataclasses import is_dataclass
 from types import UnionType  # Python 3.10+
-from typing import Annotated, Any, Union, get_args, get_origin
+from typing import Annotated, Any, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
-from src.params import UploadFile
+from src import UploadFile
 
 
 def _lenient_issubclass(cls: Any, class_or_tuple: type | tuple[type, ...]) -> bool:
@@ -158,3 +158,69 @@ def _is_scalar_or_scalar_list_annotation(annotation: Any) -> bool:
             return True
 
     return False
+
+
+def _classify_form_field_kind(annotation: Any) -> Literal["scalar", "list"] | None:
+    """判断 Form 字段注解的语义类别，返回 ``"scalar"`` / ``"list"`` / ``None``。
+
+    与 ``_is_scalar_or_scalar_list_annotation`` 不同：后者只返回 ``bool``，
+    本函数返回 kind 字符串，供 ``src.routing`` 在分类阶段写入 ``Form.kind`` 属性。
+
+    支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法）：
+
+    - 标量类型：``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``
+    - 标量列表：``list[str]`` / ``list[int]`` / ``list[float]`` / ``list[bool]`` / ``list[bytes]``
+    - 可选标量：``str | None`` / ``Optional[str]``
+    - 可选标量列表：``list[str] | None`` / ``Optional[list[str]]``
+    - 带 ``Annotated`` 包装：``Annotated[str, ...]`` / ``Annotated[list[str], ...]``
+    - 任意层 ``Union[X | None, ...]``（所有非 None 成员都必须是标量或 list[标量]）
+
+    明确返回 ``None`` 的形式（语义不属于 Form 标量，留给 routing 抛 ValueError）：
+
+    - 文件类型：``UploadFile`` / ``list[UploadFile]``
+    - 路径类型：``pathlib.Path`` / ``list[pathlib.Path]``
+    - 复杂类型：``BaseModel`` / ``dict`` / ``dataclass``
+    - 多类型并集：``Union[str, int]``（两个及以上非 None 标量类型混合）
+    - 非标量列表：``list[BaseModel]`` / ``list[dict]``
+    - bare ``list`` / ``Annotated[list, ...]``（缺少 list 元素类型，无法推断 scalar/list）
+
+    实现要点：递归解包 ``Union`` / ``Optional`` / ``Annotated``，跳过 ``None`` 成员，
+    对单一非 None 标量返回 ``"scalar"``，对单一非 None ``list[标量]`` 返回 ``"list"``。
+
+    :param annotation: 待检查的类型注解。
+    :return: ``"scalar"`` / ``"list"`` / ``None``。
+    """
+    origin = get_origin(annotation)
+
+    # 递归处理 Annotated 包装
+    if origin is Annotated:
+        return _classify_form_field_kind(get_args(annotation)[0])
+
+    # 递归处理 Union / Optional 包装
+    if origin is Union or origin is UnionType:
+        args = get_args(annotation)
+        non_none_args = [arg for arg in args if arg is not type(None)]
+        if not non_none_args:
+            # 全是 None 的 Union（如 Union[None, None]）不符合要求
+            return None
+        # 单一非 None 类型 → 递归推断 kind；多种类型并集 → 语义不清，返回 None
+        if len(non_none_args) == 1:
+            return _classify_form_field_kind(non_none_args[0])
+        return None
+
+    # list 类型：要求元素类型必须是标量
+    if origin is list:
+        args = get_args(annotation)
+        if len(args) == 1 and args[0] in _SCALAR_TYPES:
+            return "list"
+        return None
+
+    # bare ``list`` 没有元素类型，无法推断 → 返回 None
+    if annotation is list:
+        return None
+
+    # 直接标量类型
+    if annotation in _SCALAR_TYPES:
+        return "scalar"
+
+    return None

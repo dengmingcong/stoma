@@ -10,12 +10,11 @@ from pydantic.fields import FieldInfo
 from playwright.sync_api import FormData
 
 from src.client import (
-    _classify_field_kind,
     _fill_scalar_form_field,
 )
 from src.dependencies import ModelField
-from src.dependencies.utils import _is_scalar_or_scalar_list_annotation
-from src.params import Form, Query, UploadFile
+from src.dependencies.utils import _classify_form_field_kind, _is_scalar_or_scalar_list_annotation
+from src import Form, Query, UploadFile
 from src.routing import APIRouter
 
 
@@ -26,56 +25,6 @@ class UserData(BaseModel):
     """用户数据模型。"""
     id: int
     name: str
-
-
-# ============================================================
-# _classify_field_kind
-# ============================================================
-
-
-class TestClassifyFieldKind:
-    """测试 _classify_field_kind。"""
-
-    def test_scalar_str(self) -> None:
-        """标量类型 → ("scalar", annotation)。"""
-        assert _classify_field_kind(str) == ("scalar", str)
-
-    def test_scalar_int(self) -> None:
-        """int → ("scalar", int)。"""
-        assert _classify_field_kind(int) == ("scalar", int)
-
-    def test_list_str(self) -> None:
-        """list[str] → ("list", str)。"""
-        assert _classify_field_kind(list[str]) == ("list", str)
-
-    def test_optional_list_str(self) -> None:
-        """Optional[list[str]] → ("list", str)。"""
-        assert _classify_field_kind(Optional[list[str]]) == ("list", str)
-
-    def test_annotated_list_str(self) -> None:
-        """Annotated[list[str], Form()] → ("list", str)。"""
-        assert _classify_field_kind(Annotated[list[str], Form()]) == ("list", str)
-
-    def test_annotated_optional_list_str(self) -> None:
-        """Annotated[Optional[list[str]], Form()] → ("list", str)。"""
-        assert _classify_field_kind(Annotated[Optional[list[str]], Form()]) == ("list", str)
-
-    def test_annotated_list_without_type_arg_raises(self) -> None:
-        """Annotated[list, Form()] → ValueError（不是 IndexError）。"""
-        with pytest.raises(ValueError, match="无法解析"):
-            _classify_field_kind(Annotated[list, Form()])
-
-    def test_union_none_str(self) -> None:
-        """str | None → ("scalar", str | None)（视为标量）。"""
-        result = _classify_field_kind(str | None)
-        assert result[0] == "scalar"
-
-    def test_annotated_annotated(self) -> None:
-        """嵌套 Annotated → 递归解包。"""
-        assert _classify_field_kind(Annotated[Annotated[str, Form()], Query()]) == (
-            "scalar",
-            str,
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,8 +95,14 @@ class TestFillScalarFormField:
 
     @staticmethod
     def _fill(annotation: object, value: object) -> FormData:
+        # 与 ``src.routing`` 分类阶段一致：用 ``_classify_form_field_kind`` 推断 kind 后写入 Form 实例。
+        # 测试直接调 ``_fill_scalar_form_field``，跳过 routing，因此需要在这里手动设置。
+        form = Form()
+        kind = _classify_form_field_kind(annotation)
+        if kind is not None:
+            form.kind = kind
         field_info = FieldInfo(annotation=annotation)
-        model_field = ModelField(name="field", field_info=field_info, param_info=Form())
+        model_field = ModelField(name="field", field_info=field_info, param_info=form)
         form_data = FormData()
         _fill_scalar_form_field(form_data, model_field, value)
         return form_data

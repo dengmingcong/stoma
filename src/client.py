@@ -22,17 +22,15 @@ URL/Query 处理说明：
 import json
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
-from types import UnionType
-from typing import Annotated, Any, Literal, NamedTuple, Optional, Union, get_args, get_origin
+from typing import Any, NamedTuple
 
 from playwright.sync_api import APIRequestContext, APIResponse, FormData
 from pydantic import BaseModel
-from pydantic.fields import FieldInfo
 
 from src.dependencies import Dependant, ModelField
 from src.dependencies.utils import field_annotation_is_complex
 from src.exceptions import HTTPError, ParseError, ValidationError
-from src.params import Body, Form, UploadFile
+from src.params import Body, UploadFile
 from src.response import Response
 from src.routing import APIRoute
 
@@ -93,51 +91,13 @@ def _is_scalar_type(value: Any) -> bool:
     return isinstance(value, (str, int, float, bool, bytes))
 
 
-def _classify_field_kind(annotation: Any) -> tuple[Literal["scalar", "list"], Any]:
-    """解包类型注解，判断是 list 字段还是标量字段。
-
-    支持 ``Optional`` / ``Annotated`` / ``Union[None, ...]`` 包装。
-
-    :param annotation: 类型注解。
-    :return: ``("list", 内层元素类型)`` 或 ``("scalar", 原始注解)``。
-    :raise ValueError: 当注解形式为 ``list`` / ``Annotated[list, ...]``（缺少 list 元素类型）。
-    """
-    origin = get_origin(annotation)
-
-    # 解包 Annotated
-    if origin is Annotated:
-        inner = get_args(annotation)[0]
-        return _classify_field_kind(inner)
-
-    # 解包 Union / Optional（Union[None, X] 或 Optional[X]）
-    if origin is Union or origin is UnionType:
-        args = get_args(annotation)
-        non_none = [a for a in args if a is not type(None)]
-        # 单一非 None 类型
-        if len(non_none) == 1:
-            return _classify_field_kind(non_none[0])
-        # 其余情况（多类型 Union 或全 None）→ 视为标量
-        return ("scalar", annotation)
-
-    # list 类型（包括 bare list → get_origin 为 None 但类型本身是 list）
-    if origin is list or annotation is list:
-        args = get_args(annotation)
-        # 前置 guard：避免 bare list / Annotated[list, Form()] 触发 IndexError
-        if not args:
-            msg = f"Form 字段注解 {annotation!r} 无法解析，请使用 list[X] 或具体类型"
-            raise ValueError(msg)
-        return ("list", args[0])
-
-    return ("scalar", annotation)
-
-
 def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
     """填充函数级 Form 字段到 FormData。
 
-    按注解类别派发：
+    按 ``model_field.param_info.kind`` 派发（由 ``src.routing`` 在分类阶段写入）：
 
-    - ``scalar``：``form_data.set(alias, value)``，原值传递，不做 JSON 序列化。
-    - ``list``：逐个元素 ``form_data.append(alias, elem)``，同名多 part。
+    - ``"scalar"``：``form_data.set(alias, value)``，原值传递，不做 JSON 序列化。
+    - ``"list"``：逐个元素 ``form_data.append(alias, elem)``，同名多 part。
 
     ``None`` 值（字段本身或 list 元素）一律跳过；空 list 相当于整个字段不出现。
 
@@ -150,21 +110,17 @@ def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value:
     if value is None:
         return
 
-    annotation = model_field.field_info.annotation
-    kind, _ = _classify_field_kind(annotation)
-
-    if kind == "scalar":
-        _set_scalar_form_value(form_data, model_field.alias, value)
+    if model_field.param_info.kind == "list":  # type: ignore[union-attr]
+        if not isinstance(value, list):
+            msg = f"Form 字段 {model_field.alias!r} 注解为 list，但收到 {type(value).__name__}"
+            raise ValueError(msg)
+        for element in value:
+            if element is None:
+                continue
+            _append_list_form_element(form_data, model_field.alias, element)
         return
 
-    if not isinstance(value, list):
-        msg = f"Form 字段 {model_field.alias!r} 注解为 list，但收到 {type(value).__name__}"
-        raise ValueError(msg)
-
-    for element in value:
-        if element is None:
-            continue
-        _append_list_form_element(form_data, model_field.alias, element)
+    _set_scalar_form_value(form_data, model_field.alias, value)
 
 
 def _set_scalar_form_value(form_data: FormData, alias: str, value: Any) -> None:

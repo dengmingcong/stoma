@@ -18,7 +18,7 @@ from typing import Annotated, Any, ClassVar, Literal, Union, get_args, get_origi
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from src.dependencies import Dependant, ModelField
-from src.dependencies.utils import _is_uploadfile_or_list_annotation, _is_scalar_or_scalar_list_annotation, field_annotation_is_complex
+from src.dependencies.utils import _classify_form_field_kind, _is_uploadfile_or_list_annotation, field_annotation_is_complex
 from src.params import Form, Param, ParamTypes
 
 
@@ -121,9 +121,8 @@ class APIRoute[T](BaseModel):
                     elif param_info.in_ == ParamTypes.body:
                         if isinstance(param_info, Form):
                             field_type = field_info.annotation
-                            if _is_scalar_or_scalar_list_annotation(field_type):
-                                form_body_params.append(model_field)
-                            else:
+                            kind = _classify_form_field_kind(field_type)
+                            if kind is None:
                                 msg = (
                                     f"Form 不支持的字段类型：字段 {model_field.name!r} 注解为 {field_type!r}。"
                                     "Form 仅接受标量类型（str、int、float、bool、bytes）或其列表形式（list[str] 等），"
@@ -132,6 +131,10 @@ class APIRoute[T](BaseModel):
                                     "不支持 pathlib.Path 或 BaseModel 子类作为 Form 字段。"
                                 )
                                 raise ValueError(msg)
+                            # 在分类到 form_body_params 之前写入 kind，
+                            # 使下游（client 等）读取时已经设置好。
+                            param_info.kind = kind
+                            form_body_params.append(model_field)
                         else:
                             pure_body_params.append(model_field)
                     continue
