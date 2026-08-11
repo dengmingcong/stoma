@@ -133,9 +133,7 @@ class TestExpandParameterRefs:
             "schema": {"type": "integer"},
         }
         assert "$ref" not in expanded_param
-        assert result["paths"]["/items"]["get"]["requestBody"] == {
-            "$ref": "#/components/schemas/ItemBody"
-        }
+        assert result["paths"]["/items"]["get"]["requestBody"] == {"$ref": "#/components/schemas/ItemBody"}
         assert result["paths"]["/items"]["get"]["responses"] == {
             "200": {"$ref": "#/components/responses/ItemList"},
             "404": {"$ref": "#/components/responses/NotFound"},
@@ -145,13 +143,7 @@ class TestExpandParameterRefs:
     def test_expand_parameter_refs_resolves_parameter_chain(self) -> None:
         """``parameters[*].$ref`` 指向 ``#/components/parameters/X`` 时被展开。"""
         spec: dict[str, Any] = {
-            "paths": {
-                "/items": {
-                    "get": {
-                        "parameters": [{"$ref": "#/components/parameters/PageParam"}]
-                    }
-                }
-            },
+            "paths": {"/items": {"get": {"parameters": [{"$ref": "#/components/parameters/PageParam"}]}}},
             "components": {
                 "parameters": {
                     "PageParam": {
@@ -174,13 +166,7 @@ class TestExpandParameterRefs:
         from src.openapi.parser import OpenAPISchemaError
 
         spec: dict[str, Any] = {
-            "paths": {
-                "/x": {
-                    "get": {
-                        "parameters": [{"$ref": "#/components/parameters/X"}]
-                    }
-                }
-            },
+            "paths": {"/x": {"get": {"parameters": [{"$ref": "#/components/parameters/X"}]}}},
             "components": {
                 "parameters": {
                     "X": {
@@ -192,9 +178,7 @@ class TestExpandParameterRefs:
             },
         }
 
-        with pytest.raises(
-            OpenAPISchemaError, match=r"Failed to resolve parameter \$ref"
-        ):
+        with pytest.raises(OpenAPISchemaError, match=r"Failed to resolve parameter \$ref"):
             _expand_parameter_refs(spec)
 
     def test_expand_parameter_refs_resolves_path_item_level_ref(self) -> None:

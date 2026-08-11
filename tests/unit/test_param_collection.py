@@ -15,9 +15,8 @@ import pathlib
 from typing import Annotated, Any
 
 import pytest
-from pydantic import BaseModel, Field
-
 from playwright.sync_api import FormData
+from pydantic import BaseModel, Field
 
 from src.client import Client, RequestBodyKind
 from src.params import Body, Form, Header, Path, Query, UploadFile
@@ -606,6 +605,7 @@ def test_uploadfile_list_optional_empty() -> None:
 def test_pure_form_mutual_exclusion_raise() -> None:
     """测试 ``Body()`` 与 ``Form()`` 不能在同一 APIRoute 混用。"""
     with pytest.raises(ValueError, match="Body 与 Form/UploadFile 字段不能在同一 APIRoute 混用"):
+
         @router.post("/mixed")
         class MixedRoute(APIRoute[dict[str, Any]]):
             body: Annotated[dict[str, int], Body()]
