@@ -20,7 +20,6 @@ URL/Query 处理说明：
 """
 
 import json
-import pathlib
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 from types import UnionType
@@ -132,50 +131,13 @@ def _classify_field_kind(annotation: Any) -> tuple[Literal["scalar", "list"], An
     return ("scalar", annotation)
 
 
-def _is_pathlib_path_annotation(annotation: Any) -> bool:
-    """判断注解是否为 ``pathlib.Path`` 或 ``list[pathlib.Path]``（解包 Optional/Annotated）。
-
-    :param annotation: 类型注解。
-    :return: 如果是 Path 相关注解则返回 True。
-    """
-    origin = get_origin(annotation)
-
-    # 解包 Annotated
-    if origin is Annotated:
-        inner = get_args(annotation)[0]
-        return _is_pathlib_path_annotation(inner)
-
-    # 解包 Union / Optional
-    if origin is Union or origin is UnionType:
-        args = get_args(annotation)
-        non_none = [a for a in args if a is not type(None)]
-        if len(non_none) == 1:
-            return _is_pathlib_path_annotation(non_none[0])
-        return False
-
-    # 直接 pathlib.Path
-    if annotation is pathlib.Path:
-        return True
-
-    # list[pathlib.Path]
-    if origin is list:
-        args = get_args(annotation)
-        return len(args) == 1 and args[0] is pathlib.Path
-
-    return False
-
-
 def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
     """填充函数级 Form 字段到 FormData。
 
-    按 ``(注解类别, 元素类别)`` 四象限派发：
+    按注解类别派发：
 
-    - ``(scalar, text)``：``form_data.set(alias, value)``，原值传递，不做 JSON 序列化。
-    - ``(scalar, file)``：不应出现——``Form`` 标记的文件类型由 routing 路由到
-      ``file_body_params``；若仍进入本函数说明分类有误，抛 ``ValueError``。
-    - ``(list, text)``：逐个元素 ``form_data.append(alias, elem)``，同名多 part。
-    - ``(list, file)``：逐个元素校验为 ``pathlib.Path`` 后 ``form_data.append``，
-      直接传 Path 对象，由 Playwright 生成文件 part。
+    - ``scalar``：``form_data.set(alias, value)``，原值传递，不做 JSON 序列化。
+    - ``list``：逐个元素 ``form_data.append(alias, elem)``，同名多 part。
 
     ``None`` 值（字段本身或 list 元素）一律跳过；空 list 相当于整个字段不出现。
 
@@ -190,10 +152,9 @@ def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value:
 
     annotation = model_field.field_info.annotation
     kind, _ = _classify_field_kind(annotation)
-    is_file = _is_pathlib_path_annotation(annotation)
 
     if kind == "scalar":
-        _set_scalar_form_value(form_data, model_field.alias, value, is_file=is_file)
+        _set_scalar_form_value(form_data, model_field.alias, value)
         return
 
     if not isinstance(value, list):
@@ -203,25 +164,17 @@ def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value:
     for element in value:
         if element is None:
             continue
-        _append_list_form_element(form_data, model_field.alias, element, is_file=is_file)
+        _append_list_form_element(form_data, model_field.alias, element)
 
 
-def _set_scalar_form_value(form_data: FormData, alias: str, value: Any, *, is_file: bool) -> None:
+def _set_scalar_form_value(form_data: FormData, alias: str, value: Any) -> None:
     """将单个标量值写入 FormData。
 
     :param form_data: 待填充的表单。
     :param alias: 表单字段名。
     :param value: 字段值（非 None）。
-    :param is_file: 注解是否为 ``pathlib.Path``。
     :raise ValueError: 当值不是 Playwright 支持的标量类型。
     """
-    if is_file:
-        msg = (
-            f"Form 字段 {alias!r} 注解为文件类型，不应进入标量派发。"
-            f"Form-marked 文件字段应由 routing 路由到 file_body_params。"
-        )
-        raise ValueError(msg)
-
     # bytes 也满足 ``_is_scalar_type``，必须先于标量分支拦截。
     if isinstance(value, bytes):
         msg = (
@@ -251,22 +204,14 @@ def _set_scalar_form_value(form_data: FormData, alias: str, value: Any, *, is_fi
     raise ValueError(msg)
 
 
-def _append_list_form_element(form_data: FormData, alias: str, element: Any, *, is_file: bool) -> None:
+def _append_list_form_element(form_data: FormData, alias: str, element: Any) -> None:
     """将 list 字段的单个元素追加到 FormData。
 
     :param form_data: 待填充的表单。
     :param alias: 表单字段名。
     :param element: list 元素（非 None）。
-    :param is_file: 注解是否为 ``list[pathlib.Path]``。
     :raise ValueError: 当元素类型与注解不匹配。
     """
-    if is_file:
-        if not isinstance(element, pathlib.Path):
-            msg = f"Form 字段 {alias!r} 元素期望 pathlib.Path，收到 {type(element).__name__}"
-            raise ValueError(msg)
-        form_data.append(alias, element)
-        return
-
     # bytes 也满足 ``_is_scalar_type``，必须先于标量分支拦截。
     if isinstance(element, bytes):
         msg = (
@@ -442,16 +387,11 @@ class Client:
     ) -> RequestBody:
         """按请求体字段列表分派，序列化为 RequestBody。
 
-        Form 仅接受标量注解：``Annotated[BaseModel, Form()]`` 在路由分类阶段即被
-        拒绝；标量 Form + 函数级 ``UploadFile`` / ``pathlib.Path`` / ``list`` 全部
-        支持。``form_body_params`` 字段由 ``_fill_scalar_form_field`` 填充：list
-        值通过 ``form_data.append`` 派发同名多 part（多次上传同一字段）；
-        ``pathlib.Path`` 值直接传递给 ``FormData``，不调用 ``str(Path)``，确保以
-        文件 part 而非文本 part 发送。
+        Form 仅接受标量或 ``list[标量]`` 注解（含 Optional 形式）。
+        ``form_body_params`` 字段由 ``_fill_scalar_form_field`` 填充：list 值通过
+        ``form_data.append`` 派发同名多 part。
 
-        函数级 ``UploadFile``（含 ``Annotated[UploadFile, Form()]`` /
-        ``Annotated[list[UploadFile], Form()]`` / ``Annotated[pathlib.Path, Form()]``
-        / ``Annotated[list[pathlib.Path], Form()]``）由 routing 路由到
+        函数级 ``UploadFile`` 或 ``list[UploadFile]`` 由 routing 路由到
         ``file_body_params``，与 multipart 容器共用 ``FormData``。
 
         分派规则：
@@ -463,7 +403,7 @@ class Client:
         :param api_route: APIRoute 实例。
         :param dependant: 参数依赖定义。
         :return: 序列化后的请求体。
-        :raise ValueError: 当标量 Form 值类型不匹配时（如 ``bytes``）。
+        :raise ValueError: 当遇到 Form 不支持的字段类型时（如 ``bytes``）。
         """
         has_files = bool(dependant.file_body_params)
         form_data = FormData()
