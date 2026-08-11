@@ -324,27 +324,6 @@ def test_api_route_without_generic() -> None:
     assert dependant.query_params[0].name == "status"
 
 
-class _FormFlatModel(BaseModel):
-    """Form 测试用基础模型。"""
-
-    name: str
-    age: int
-
-
-class _FormNestedProfile(BaseModel):
-    """Form 测试用嵌套 Profile 模型。"""
-
-    bio: str
-
-
-class _FormNestedUser(BaseModel):
-    """Form 测试用嵌套用户模型，含 BaseModel 子字段。"""
-
-    name: str
-    age: int
-    profile: _FormNestedProfile
-
-
 def test_form_scalar_passes_value() -> None:
     """测试 Form 标量字段值原值存储（不 ``json.dumps``），与 FastAPI ``Form()`` 直传字符串一致。"""
 
@@ -387,237 +366,6 @@ def test_form_scalar_list_append_multiple() -> None:
     assert body.form_data._fields == [("tags", "a"), ("tags", "b")]
 
 
-def test_form_basemodel_all_text_flat_subfields() -> None:
-    """测试 BaseModel 的非文件子字段全部平展写入 FormData。"""
-
-    @router.post("/form-model-flat")
-    class CreateUserForm(APIRoute[dict[str, Any]]):
-        user: Annotated[_FormFlatModel, Form()]
-
-    endpoint = CreateUserForm(user=_FormFlatModel(name="Alice", age=30))
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.URLENCODED
-    assert isinstance(body.form_data, FormData)
-    assert body.form_data._fields == [("name", "Alice"), ("age", 30)]
-
-
-def test_form_basemodel_with_pathlib_file_multipart(tmp_path: pathlib.Path) -> None:
-    """测试 BaseModel 的 pathlib.Path 子字段触发 multipart，并保留 Path 对象。"""
-
-    file_path = tmp_path / "avatar.txt"
-    file_path.write_text("avatar", encoding="utf-8")
-
-    class UploadPathModel(BaseModel):
-        """含文本和单个路径文件的 Form 模型。"""
-
-        name: str
-        avatar: pathlib.Path
-
-    @router.post("/form-model-path")
-    class UploadPathForm(APIRoute[dict[str, Any]]):
-        data: Annotated[UploadPathModel, Form()]
-
-    endpoint = UploadPathForm(data=UploadPathModel(name="Alice", avatar=file_path))
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.MULTIPART
-    assert isinstance(body.form_data, FormData)
-    assert body.form_data._fields == [("name", "Alice"), ("avatar", file_path)]
-    assert isinstance(body.form_data._fields[1][1], pathlib.Path)
-
-
-def test_form_basemodel_with_optional_pathlib_file(tmp_path: pathlib.Path) -> None:
-    """测试 Optional[pathlib.Path] 为 None 时跳过，存在路径时追加文件。"""
-
-    file_path = tmp_path / "optional-avatar.txt"
-    file_path.write_text("optional avatar", encoding="utf-8")
-
-    class OptionalPathModel(BaseModel):
-        """含可选路径文件的 Form 模型。"""
-
-        avatar: pathlib.Path | None = None
-
-    @router.post("/form-model-optional-path")
-    class OptionalPathForm(APIRoute[dict[str, Any]]):
-        data: Annotated[OptionalPathModel, Form()]
-
-    none_endpoint = OptionalPathForm(data=OptionalPathModel())
-    none_body = Client(context=None)._serialize_body_params(none_endpoint, none_endpoint._get_dependant())
-    assert none_body.kind is RequestBodyKind.MULTIPART
-    assert isinstance(none_body.form_data, FormData)
-    assert none_body.form_data._fields == []
-
-    path_endpoint = OptionalPathForm(data=OptionalPathModel(avatar=file_path))
-    path_body = Client(context=None)._serialize_body_params(path_endpoint, path_endpoint._get_dependant())
-    assert path_body.kind is RequestBodyKind.MULTIPART
-    assert isinstance(path_body.form_data, FormData)
-    assert path_body.form_data._fields == [("avatar", file_path)]
-    assert isinstance(path_body.form_data._fields[0][1], pathlib.Path)
-
-
-def test_form_basemodel_with_list_pathlib_file_multipart(tmp_path: pathlib.Path) -> None:
-    """测试 list[pathlib.Path] 子字段以同名 part 多次追加并触发 multipart。"""
-
-    file1 = tmp_path / "avatar-1.txt"
-    file2 = tmp_path / "avatar-2.txt"
-    file1.write_text("one", encoding="utf-8")
-    file2.write_text("two", encoding="utf-8")
-
-    class UploadPathsModel(BaseModel):
-        """含多个路径文件的 Form 模型。"""
-
-        avatars: list[pathlib.Path]
-
-    @router.post("/form-model-paths")
-    class UploadPathsForm(APIRoute[dict[str, Any]]):
-        data: Annotated[UploadPathsModel, Form()]
-
-    endpoint = UploadPathsForm(data=UploadPathsModel(avatars=[file1, file2]))
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.MULTIPART
-    assert isinstance(body.form_data, FormData)
-    assert body.form_data._fields == [("avatars", file1), ("avatars", file2)]
-    assert all(isinstance(item, pathlib.Path) for _, item in body.form_data._fields)
-
-
-def test_form_basemodel_with_list_text_subfield_append() -> None:
-    """测试 BaseModel 的 list[str] 子字段按元素追加同名字段。"""
-
-    class TagsModel(BaseModel):
-        """含文本列表的 Form 模型。"""
-
-        tags: list[str]
-
-    @router.post("/form-model-list-text")
-    class TagsForm(APIRoute[dict[str, Any]]):
-        data: Annotated[TagsModel, Form()]
-
-    endpoint = TagsForm(data=TagsModel(tags=["a", "b"]))
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.URLENCODED
-    assert isinstance(body.form_data, FormData)
-    assert body.form_data._fields == [("tags", "a"), ("tags", "b")]
-
-
-def test_form_basemodel_with_list_text_with_none_skips() -> None:
-    """测试 BaseModel 文本列表中的 None 元素被跳过。"""
-
-    class NullableTagsModel(BaseModel):
-        """含可空文本列表的 Form 模型。"""
-
-        tags: list[str | None]
-
-    @router.post("/form-model-list-text-none")
-    class NullableTagsForm(APIRoute[dict[str, Any]]):
-        data: Annotated[NullableTagsModel, Form()]
-
-    endpoint = NullableTagsForm(data=NullableTagsModel(tags=["a", None, "b"]))
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.URLENCODED
-    assert isinstance(body.form_data, FormData)
-    assert body.form_data._fields == [("tags", "a"), ("tags", "b")]
-
-
-def test_form_basemodel_empty_returns_urlencoded() -> None:
-    """测试 BaseModel 全部为 None 时返回空的 URLENCODED FormData。"""
-
-    class EmptyFormModel(BaseModel):
-        """所有字段均可为空的 Form 模型。"""
-
-        name: str | None = None
-        tags: list[str | None] | None = None
-
-    @router.post("/form-model-empty")
-    class EmptyForm(APIRoute[dict[str, Any]]):
-        data: Annotated[EmptyFormModel, Form()]
-
-    endpoint = EmptyForm(data=EmptyFormModel())
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.URLENCODED
-    assert isinstance(body.form_data, FormData)
-    assert body.form_data._fields == []
-
-
-def test_form_basemodel_list_field_non_scalar_raises() -> None:
-    """测试 BaseModel 的 list[str] 含 dict 元素时抛出 ValueError。"""
-
-    class InvalidTagsModel(BaseModel):
-        """声明为文本列表但用于构造非法元素的 Form 模型。"""
-
-        tags: list[str]
-
-    @router.post("/form-model-list-invalid")
-    class InvalidTagsForm(APIRoute[dict[str, Any]]):
-        data: Annotated[InvalidTagsModel, Form()]
-
-    invalid_data = InvalidTagsModel.model_construct(tags=[{"key": "value"}])
-    endpoint = InvalidTagsForm.model_construct(data=invalid_data)
-    with pytest.raises(ValueError, match="元素收到 dict"):
-        Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-
-
-def test_form_basemodel_with_other_scalar_form_raises() -> None:
-    """测试 BaseModel Form 与标量 Form 并存时触发互斥校验。"""
-
-    @router.post("/form-model-with-scalar")
-    class MixedForm(APIRoute[dict[str, Any]]):
-        data: Annotated[_FormFlatModel, Form()]
-        note: Annotated[str, Form()]
-
-    endpoint = MixedForm(data=_FormFlatModel(name="Alice", age=30), note="note")
-    with pytest.raises(ValueError, match="BaseModel Form 与其他参数互斥冲突"):
-        Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-
-
-def test_form_basemodel_with_uploadfile_raises(tmp_path: pathlib.Path) -> None:
-    """测试 BaseModel Form 与 UploadFile 并存时触发互斥校验。"""
-
-    file_path = tmp_path / "attachment.txt"
-    file_path.write_text("attachment", encoding="utf-8")
-
-    @router.post("/form-model-with-upload")
-    class MixedUploadForm(APIRoute[dict[str, Any]]):
-        data: Annotated[_FormFlatModel, Form()]
-        attachment: UploadFile
-
-    endpoint = MixedUploadForm(
-        data=_FormFlatModel(name="Alice", age=30),
-        attachment=UploadFile(path=file_path),
-    )
-    with pytest.raises(ValueError, match="BaseModel Form 与其他参数互斥冲突"):
-        Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-
-
-def test_form_basemodel_nested_basemodel_raises() -> None:
-    """测试 BaseModel Form 含嵌套 BaseModel 子字段时抛出 ValueError。"""
-
-    @router.post("/form-model-nested")
-    class CreateUserFormNested(APIRoute[dict[str, Any]]):
-        user: Annotated[_FormNestedUser, Form()]
-
-    endpoint = CreateUserFormNested(
-        user=_FormNestedUser(name="Alice", age=30, profile=_FormNestedProfile(bio="Software engineer")),
-    )
-    with pytest.raises(ValueError, match="嵌套 BaseModel"):
-        Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-
-
-def test_form_basemodel_bytes_field_raises() -> None:
-    """测试 BaseModel 的 bytes 子字段不支持 Form 序列化。"""
-
-    class BytesFormModel(BaseModel):
-        """含 bytes 子字段的 Form 模型。"""
-
-        payload: bytes
-
-    @router.post("/form-model-bytes")
-    class BytesForm(APIRoute[dict[str, Any]]):
-        data: Annotated[BytesFormModel, Form()]
-
-    endpoint = BytesForm(data=BytesFormModel(payload=b"payload"))
-    with pytest.raises(ValueError, match="收到 bytes"):
-        Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-
-
 def test_form_scalar_list_field() -> None:
     """测试函数级 Annotated[list[str], Form()] 追加多个同名字段。"""
 
@@ -654,6 +402,23 @@ def test_form_scalar_field_bytes_raises() -> None:
     endpoint = BytesForm(payload=b"payload")
     with pytest.raises(ValueError, match="收到 bytes 类型"):
         Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+
+
+def test_form_basemodel_raises_in_routing() -> None:
+    """``Annotated[BaseModel, Form()]`` 在路由分类阶段抛 ``ValueError``。
+
+    验证 ``Form`` 仅接受标量注解，``BaseModel`` 子字段路由期被拦截。
+    不使用 ``@router.post`` 装饰器（装饰期就会触发 raise，绕过断言），
+    改为直接调用 ``_get_dependant()`` 确保 raise 发生在调用期。
+    """
+
+    class SubmitFormEndpoint(APIRoute[dict[str, Any]]):
+        """含 BaseModel Form 字段的路由类。"""
+
+        data: Annotated[UserCreateRequest, Form()]
+
+    with pytest.raises(ValueError, match="Form 不支持 BaseModel 子字段"):
+        SubmitFormEndpoint._get_dependant(method="POST", path="/submit")
 
 
 def test_form_embed_kwarg_removed_raises_type_error() -> None:

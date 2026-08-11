@@ -118,19 +118,6 @@ def test_form_marked_optional_path_routes_to_file_body_params() -> None:
 # === Form-marked 非文件类型 → form_body_params（不变） ===
 
 
-def test_form_marked_basemodel_routes_to_form_body_params() -> None:
-    """Annotated[BaseModel, Form()] → form_body_params（不变）。"""
-
-    @router.post("/submit")
-    class SubmitFormEndpoint(APIRoute[UserData]):
-        data: Annotated[UserCreateRequest, Form()]
-
-    categories = get_param_categories(SubmitFormEndpoint)
-    assert "data" in categories["form_body_params"]
-    assert "data" not in categories["file_body_params"]
-    assert "data" not in categories["pure_body_params"]
-
-
 def test_form_marked_str_routes_to_form_body_params() -> None:
     """Annotated[str, Form()] → form_body_params（不变）。"""
 
@@ -188,10 +175,16 @@ def test_mixed_form_marked_params() -> None:
 
 
 def test_form_basemodel_raises_in_routing() -> None:
-    """Annotated[BaseModel, Form()] → ValueError（Form 不支持 BaseModel 子字段）。"""
+    """``Annotated[BaseModel, Form()]`` → ``ValueError``（Form 不支持 BaseModel 子字段）。
 
-    @router.post("/submit")
+    不使用 ``@router.post`` 装饰器（其内部 ``update_api_route`` 会调用
+    ``_get_dependant()``，导致 raise 在装饰期触发），
+    改为直接调用 ``_get_dependant()`` 确保 raise 发生在调用期。
+    """
+
     class SubmitFormEndpoint(APIRoute[UserData]):
+        """含 BaseModel Form 字段的路由类。"""
+
         data: Annotated[UserCreateRequest, Form()]
 
     with pytest.raises(ValueError, match="Form 不支持 BaseModel 子字段"):

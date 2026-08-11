@@ -619,33 +619,6 @@ class TestAllMethodsSend:
 # ===== Form / UploadFile / Mix Body 测试端点 =====
 
 
-class _LoginForm(BaseModel):
-    """Form 测试用登录表单（BaseModel + Form 平展）。"""
-
-    username: str
-    tags: list[str]
-
-
-class _UploadPathForm(BaseModel):
-    """BaseModel Form 含单个 ``pathlib.Path`` 文件子字段。"""
-
-    name: str
-    avatar: pathlib.Path
-
-
-class _OptionalPathForm(BaseModel):
-    """BaseModel Form 含可选 ``pathlib.Path`` 文件子字段。"""
-
-    name: str
-    avatar: pathlib.Path | None = None
-
-
-class _PathListForm(BaseModel):
-    """BaseModel Form 含 ``list[pathlib.Path]`` 多文件子字段。"""
-
-    files: list[pathlib.Path]
-
-
 @router.post("/login")
 class LoginRoute(APIRoute[dict[str, Any]]):
     """POST /login：多个标量 Form，端到端 urlencoded 序列化。"""
@@ -654,58 +627,11 @@ class LoginRoute(APIRoute[dict[str, Any]]):
     tags: Annotated[list[str], Form()]
 
 
-@router.post("/login")
-class LoginFlatRoute(APIRoute[dict[str, Any]]):
-    """POST /login：BaseModel + Form 子字段平展。
-
-    与 ``LoginRoute`` 共用 ``/login`` 端点——两者 wire 格式相同（stoma 平展子字段）。
-    """
-
-    data: Annotated[_LoginForm, Form()]
-
-
 @router.post("/login-list")
 class LoginListRoute(APIRoute[dict[str, Any]]):
     """POST /login-list：单个 ``Annotated[list[str], Form()]`` 标量列表。"""
 
     tags: Annotated[list[str], Form()]
-
-
-@router.post("/upload-with-path")
-class UploadPathRoute(APIRoute[dict[str, Any]]):
-    """POST /upload-with-path：BaseModel Form + 必填 ``pathlib.Path`` 子字段。"""
-
-    data: Annotated[_UploadPathForm, Form()]
-
-
-@router.post("/upload-with-path")
-class UploadOptionalPathRoute(APIRoute[dict[str, Any]]):
-    """POST /upload-with-path：BaseModel Form + 可选 ``pathlib.Path`` 子字段。"""
-
-    data: Annotated[_OptionalPathForm, Form()]
-
-
-@router.post("/upload-with-paths-list")
-class UploadPathListRoute(APIRoute[dict[str, Any]]):
-    """POST /upload-with-paths-list：BaseModel Form + ``list[pathlib.Path]`` 子字段。"""
-
-    data: Annotated[_PathListForm, Form()]
-
-
-@router.post("/login")
-class FormMutexScalarRoute(APIRoute[dict[str, Any]]):
-    """POST /login：BaseModel Form 与标量 Form 并存（互斥违规）。"""
-
-    data: Annotated[_LoginForm, Form()]
-    extra: Annotated[str, Form()]
-
-
-@router.post("/login")
-class FormMutexUploadFileRoute(APIRoute[dict[str, Any]]):
-    """POST /login：BaseModel Form 与 UploadFile 并存（互斥违规）。"""
-
-    data: Annotated[_LoginForm, Form()]
-    avatar: UploadFile
 
 
 @router.post("/upload")
@@ -771,113 +697,6 @@ class TestFormBody:
             "tags": ["vip", "beta"],
         }
 
-    def test_form_basemodel_all_text_flat_subfields(self, client: Client) -> None:
-        """BaseModel + ``Form()`` 纯文本子字段 → 平展到 form 顶层，e2e 验证服务端还原。
-
-        stoma 平展 BaseModel 子字段到 form 顶层：标量子字段原值、list 子字段逐元素
-        ``append``，与多个标量 ``Form()`` 路径 wire 格式相同。
-
-        :param client: 共享的 Client 实例。
-        """
-        endpoint = LoginFlatRoute(
-            data=_LoginForm(
-                username="bob",
-                tags=["admin", "staff"],
-            ),
-        )
-
-        response = client.send(endpoint)
-
-        assert response.raw.status == 200
-        assert response.validated == {
-            "username": "bob",
-            "tags": ["admin", "staff"],
-        }
-
-
-class TestBaseModelFormWithPath:
-    """BaseModel Form 含 ``pathlib.Path`` 子字段的端到端测试。
-
-    stoma 把 ``pathlib.Path`` 子字段直接交给 Playwright，由 Playwright 生成文件 part，
-    因此整体走 multipart，服务端（FastAPI）用 ``UploadFile`` 接收。
-    """
-
-    def test_single_file_upload(self, client: Client, tmp_path: pathlib.Path) -> None:
-        """单个 ``pathlib.Path`` 子字段 → MULTIPART，服务端收到文本字段 + 文件 part。
-
-        :param client: 共享的 Client 实例。
-        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
-        """
-        content = "path payload"
-        file_path = tmp_path / "profile.txt"
-        file_path.write_text(content, encoding="utf-8")
-
-        endpoint = UploadPathRoute(data=_UploadPathForm(name="dave", avatar=file_path))
-        response = client.send(endpoint)
-
-        assert response.raw.status == 200
-        assert response.validated == {
-            "name": "dave",
-            "filename": "profile.txt",
-            "size": len(content),
-            "content_type": "text/plain",
-        }
-
-    def test_optional_path_file(self, client: Client, tmp_path: pathlib.Path) -> None:
-        """``pathlib.Path | None`` 两态：``None`` 时无文件 part，有值时正常上传。
-
-        即便值为 ``None``，stoma 仍按注解判定为文件字段并走 multipart。
-
-        :param client: 共享的 Client 实例。
-        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
-        """
-        none_response = client.send(UploadOptionalPathRoute(data=_OptionalPathForm(name="erin")))
-
-        assert none_response.raw.status == 200
-        assert none_response.validated == {
-            "name": "erin",
-            "filename": None,
-            "size": 0,
-            "content_type": None,
-        }
-
-        content = "optional path"
-        file_path = tmp_path / "erin.txt"
-        file_path.write_text(content, encoding="utf-8")
-
-        value_response = client.send(
-            UploadOptionalPathRoute(data=_OptionalPathForm(name="erin", avatar=file_path)),
-        )
-
-        assert value_response.raw.status == 200
-        assert value_response.validated == {
-            "name": "erin",
-            "filename": "erin.txt",
-            "size": len(content),
-            "content_type": "text/plain",
-        }
-
-    def test_list_of_path_files(self, client: Client, tmp_path: pathlib.Path) -> None:
-        """``list[pathlib.Path]`` 子字段 → MULTIPART 同名多文件 part。
-
-        :param client: 共享的 Client 实例。
-        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
-        """
-        first = tmp_path / "one.txt"
-        second = tmp_path / "two.md"
-        first.write_text("first path", encoding="utf-8")
-        second.write_text("second path file", encoding="utf-8")
-
-        endpoint = UploadPathListRoute(data=_PathListForm(files=[first, second]))
-        response = client.send(endpoint)
-
-        assert response.raw.status == 200
-        assert response.validated == {
-            "filenames": ["one.txt", "two.md"],
-            "total_size": len("first path") + len("second path file"),
-        }
-
-
 class TestScalarFormList:
     """函数级 ``Annotated[list[str], Form()]`` 端到端测试。"""
 
@@ -891,65 +710,6 @@ class TestScalarFormList:
 
         assert response.raw.status == 200
         assert response.validated == {"tags": ["alpha", "beta", "gamma"]}
-
-
-class TestFormMutex:
-    """BaseModel Form 与其他请求体参数互斥的端到端测试。
-
-    冲突在序列化阶段抛 ``ValueError``，``Client.send`` 会将其包装为 ``HTTPError``，
-    因此这里断言 ``HTTPError`` 与冲突信息。
-    """
-
-    def test_basemodel_form_with_scalar_form_raises(self, client: Client) -> None:
-        """BaseModel Form + 标量 Form → 互斥冲突。
-
-        :param client: 共享的 Client 实例。
-        """
-        endpoint = FormMutexScalarRoute(
-            data=_LoginForm(username="frank", tags=["a", "b"]),
-            extra="nope",
-        )
-
-        with pytest.raises(HTTPError, match="互斥冲突"):
-            client.send(endpoint)
-
-    def test_basemodel_form_with_uploadfile_raises(
-        self, client: Client, tmp_path: pathlib.Path
-    ) -> None:
-        """BaseModel Form + UploadFile → 互斥冲突。
-
-        :param client: 共享的 Client 实例。
-        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
-        """
-        file_path = tmp_path / "mutex.txt"
-        file_path.write_text("mutex", encoding="utf-8")
-
-        endpoint = FormMutexUploadFileRoute(
-            data=_LoginForm(username="grace", tags=["a", "b"]),
-            avatar=UploadFile(path=file_path),
-        )
-
-        with pytest.raises(HTTPError, match="互斥冲突"):
-            client.send(endpoint)
-
-    def test_basemodel_form_with_body_raises(self, client: Client) -> None:
-        """BaseModel Form + Body → 在路由定义阶段即被拒绝。
-
-        ``routing`` 在 ``APIRoute`` 定义时就禁止 Body 与 Form 混用，因此冲突在类定义
-        时抛 ``ValueError``，不会走到 ``client.send`` 的序列化阶段。
-
-        :param client: 共享的 Client 实例（此用例不发起请求，仅保持签名一致）。
-        """
-        _ = client
-
-        with pytest.raises(ValueError, match="不能在同一 APIRoute 混用"):
-
-            @router.post("/login")
-            class _FormMutexBodyRoute(APIRoute[dict[str, Any]]):
-                """BaseModel Form 与 Body 并存（互斥违规）。"""
-
-                data: Annotated[_LoginForm, Form()]
-                payload: Annotated[dict, Body()]
 
 
 class TestUploadFileBody:
@@ -1120,6 +880,25 @@ class TestOptionalUploadFile:
             "filenames": ["a.txt", "b.md"],
             "total_size": len("first") + len("second"),
         }
+
+
+def test_form_basemodel_raises_in_routing() -> None:
+    """``Annotated[BaseModel, Form()]`` 在路由分类阶段抛 ``ValueError``。
+
+    集成测试的端到端场景：客户端构造路由类时即被路由层拒绝，
+    fail-fast 暴露错误用法，确保 user signature 错误不会走到序列化阶段。
+    不使用 ``@router.post`` 装饰器（其内部 ``update_api_route`` 会调用
+    ``_get_dependant()``，导致 raise 在装饰期触发），
+    改为直接调用 ``_get_dependant()`` 确保 raise 发生在调用期。
+    """
+
+    class SubmitFormEndpoint(APIRoute[dict[str, Any]]):
+        """含 BaseModel Form 字段的路由类。"""
+
+        data: Annotated[CreateUserRequest, Form()]
+
+    with pytest.raises(ValueError, match="Form 不支持 BaseModel 子字段"):
+        SubmitFormEndpoint._get_dependant(method="POST", path="/submit")
 
 
 if __name__ == "__main__":
