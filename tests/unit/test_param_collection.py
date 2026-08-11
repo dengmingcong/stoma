@@ -450,6 +450,35 @@ def test_form_basemodel_nested_embed_false() -> None:
     ]
 
 
+def test_form_basemodel_embed_true_with_file_multipart() -> None:
+    """测试 multipart + ``Form(embed=True)`` 同样 ``json.dumps`` BaseModel 整体 dump。
+
+    BaseModel dump 不再依赖请求体类型分派——multipart 与 urlencoded 行为一致，
+    都对 dump 结果再 ``json.dumps`` 一次。锁定 ``_fill_form_field`` 移除
+    ``json_encode`` 标志后的回归。
+    """
+
+    file_path = pathlib.Path("/tmp/stoma-regression-test.txt")
+    file_path.write_text("fixture", encoding="utf-8")
+
+    @router.post("/form-embed-multipart")
+    class EmbedFormRoute(APIRoute[dict[str, Any]]):
+        data: Annotated[_FormFlatModel, Form(embed=True)]
+        attachment: UploadFile
+
+    endpoint = EmbedFormRoute(
+        data=_FormFlatModel(name="Alice", age=30),
+        attachment=UploadFile(path=file_path),
+    )
+    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    assert body.kind is RequestBodyKind.MULTIPART
+    assert isinstance(body.form_data, FormData)
+    assert body.form_data._fields == [
+        ("data", '{"name": "Alice", "age": 30}'),
+        ("attachment", file_path),
+    ]
+
+
 def test_form_unserializable_raises() -> None:
     """测试 Form 字段值为集合且无法 JSON 序列化时抛出清晰错误。"""
 

@@ -258,7 +258,8 @@ class Client:
 
         - 标量（``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``）：原值存储。
         - 集合（``list`` / ``dict`` / ``tuple`` / ``set``）：``json.dumps`` 编码。
-        - ``BaseModel``：``embed=True`` 整体 dump，``embed=False`` 按子字段平展。
+        - ``BaseModel``：``embed=True`` 整体 dump 后 ``json.dumps`` 编码，
+          ``embed=False`` 按子字段平展（嵌套 BaseModel 子字段同样 ``json.dumps`` 包装）。
 
         :param api_route: APIRoute 实例。
         :param dependant: 参数依赖定义。
@@ -272,7 +273,7 @@ class Client:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
-            self._fill_form_field(form_data, model_field, value, json_encode=not has_files)
+            self._fill_form_field(form_data, model_field, value)
 
         for model_field in dependant.file_body_params:
             value = getattr(api_route, model_field.name)
@@ -300,21 +301,20 @@ class Client:
         form_data: FormData,
         model_field: ModelField,
         value: Any,
-        json_encode: bool = False,
     ) -> None:
         """把单个 Form 字段填入 ``FormData``。
 
-        序列化语义：
+        序列化语义（与请求体类型 multipart / urlencoded 无关，统一按值类型处理）：
 
         - 标量（``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``）：原值存储，
           不走 ``json.dumps``，与 FastAPI ``Form()`` 直接接收原始字符串/数字一致。
         - 集合（``list`` / ``dict`` / ``tuple`` / ``set``）：走 ``json.dumps``
           编码为字符串，服务端 ``Form()`` 字段定义为 ``list`` / ``dict`` 时按需
           ``json.loads`` 还原。
-        - ``BaseModel``：``embed=True`` 时整体 ``model_dump``，``embed=False`` 时
-          按 ``model_fields`` 子字段平展。``json_encode=True`` 对 dump 结果再
-          ``json.dumps``（用于 urlencoded 场景），``json_encode=False`` 直接存原值
-          （用于 multipart 场景）。平展后子字段中的标量/集合遵循上述统一规则。
+        - ``BaseModel``：``embed=True`` 时整体 ``model_dump`` 后 ``json.dumps``
+          编码；``embed=False`` 时按 ``model_fields`` 子字段平展，标量子字段原值、
+          集合子字段 ``json.dumps``、嵌套 BaseModel 子字段的 dump 同样 ``json.dumps``
+          包装。
 
         Pydantic 模型在 ``embed=False`` 时遍历 ``model_fields`` 而非 ``model_dump()``，
         避免别名和缺省值带来的偏差。
@@ -322,8 +322,6 @@ class Client:
         :param form_data: 待填充的表单。
         :param model_field: Form 字段定义。
         :param value: 字段值。
-        :param json_encode: 是否对 ``BaseModel`` ``model_dump`` 结果走 ``json.dumps``，
-            仅影响 BaseModel 分支；非 BaseModel 标量/集合已按类型固定处理。
         :raise ValueError: 当集合值无法 JSON 序列化。
         """
 
@@ -343,20 +341,19 @@ class Client:
             return
 
         if getattr(model_field.param_info, "embed", False):
-            dumped = value.model_dump(by_alias=True, exclude_none=True)
-            if json_encode:
-                dumped = json.dumps(dumped)
-            form_data.set(model_field.alias, dumped)
+            form_data.set(
+                model_field.alias,
+                json.dumps(value.model_dump(by_alias=True, exclude_none=True)),
+            )
             return
 
         for field_name in type(value).model_fields:
             sub_value = getattr(value, field_name)
             if isinstance(sub_value, BaseModel):
-                dumped = sub_value.model_dump(by_alias=True, exclude_none=True)
-                if json_encode:
-                    form_data.set(field_name, json.dumps(dumped))
-                else:
-                    form_data.set(field_name, dumped)
+                form_data.set(
+                    field_name,
+                    json.dumps(sub_value.model_dump(by_alias=True, exclude_none=True)),
+                )
             elif _is_scalar_type(sub_value):
                 form_data.set(field_name, sub_value)
             else:
