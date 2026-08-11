@@ -105,65 +105,9 @@ def _is_uploadfile_or_list_annotation(annotation: Any) -> bool:
 _SCALAR_TYPES: tuple[type, ...] = (str, int, float, bool, bytes)
 
 
-def _is_scalar_or_scalar_list_annotation(annotation: Any) -> bool:
-    """判断注解是否可识别为标量或标量列表字段（适用于 Form 请求体）。
-
-    支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法）：
-
-    - 标量类型：``str`` / ``int`` / ``float`` / ``bool`` / ``bytes``
-    - 标量列表：``list[str]`` / ``list[int]`` / ``list[float]`` / ``list[bool]`` / ``list[bytes]``
-    - 可选标量：``str | None`` / ``Optional[str]``
-    - 可选标量列表：``list[str] | None`` / ``Optional[list[str]]``
-    - 带 ``Annotated`` 包装：``Annotated[str, ...]`` / ``Annotated[list[str], ...]``
-    - 任意层 ``Union[X | None, ...]``（所有非 None 成员都必须是标量或 list[标量]）
-
-    明确不支持的形式（返回 False）：
-
-    - 文件类型：``UploadFile`` / ``list[UploadFile]``
-    - 路径类型：``pathlib.Path`` / ``list[pathlib.Path]``
-    - 复杂类型：``BaseModel`` / ``dict`` / ``dataclass``
-    - 多类型并集：``Union[str, int]``（两个及以上非 None 标量类型混合）
-    - 非标量列表：``list[BaseModel]`` / ``list[dict]``
-
-    实现要点：递归解包 ``Union`` / ``Optional`` / ``Annotated``，跳过 ``None`` 成员，
-    要求每个非 ``None`` 成员都是标量或 list[标量]。
-
-    :param annotation: 待检查的类型注解。
-    :return: 如果是合法的标量或标量列表字段类型则返回 True。
-    """
-    origin = get_origin(annotation)
-
-    # 递归处理 Annotated 包装
-    if origin is Annotated:
-        return _is_scalar_or_scalar_list_annotation(get_args(annotation)[0])
-
-    # 递归处理 Union / Optional 包装
-    if origin is Union or origin is UnionType:
-        args = get_args(annotation)
-        # 跳过 None 成员后，剩余成员全部必须是标量或 list[标量]
-        non_none_args = [arg for arg in args if arg is not type(None)]
-        if not non_none_args:
-            # 全是 None 的 Union（如 Union[None, None]）不符合要求
-            return False
-        return all(_is_scalar_or_scalar_list_annotation(arg) for arg in non_none_args)
-
-    # 直接检查标量类型
-    if annotation in _SCALAR_TYPES:
-        return True
-
-    # 检查 list[标量] 类型
-    if origin is list:
-        args = get_args(annotation)
-        if len(args) == 1 and args[0] in _SCALAR_TYPES:
-            return True
-
-    return False
-
-
 def _classify_form_field_kind(annotation: Any) -> Literal["scalar", "list"] | None:
     """判断 Form 字段注解的语义类别，返回 ``"scalar"`` / ``"list"`` / ``None``。
 
-    与 ``_is_scalar_or_scalar_list_annotation`` 不同：后者只返回 ``bool``，
     本函数返回 kind 字符串，供 ``src.routing`` 在分类阶段写入 ``Form.kind`` 属性。
 
     支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法）：

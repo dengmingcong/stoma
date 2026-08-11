@@ -13,7 +13,7 @@ from src.client import (
     _fill_scalar_form_field,
 )
 from src.dependencies import ModelField
-from src.dependencies.utils import _classify_form_field_kind, _is_scalar_or_scalar_list_annotation
+from src.dependencies.utils import _classify_form_field_kind
 from src import Form, Query, UploadFile
 from src.routing import APIRouter
 
@@ -32,57 +32,6 @@ class DataClassValue:
     """用于验证 dataclass 不属于标量 Form 类型。"""
 
     value: str
-
-
-# ============================================================
-# _is_scalar_or_scalar_list_annotation
-# ============================================================
-
-
-class TestIsScalarOrScalarListAnnotation:
-    """测试标量或标量列表注解识别。"""
-
-    @pytest.mark.parametrize(
-        "annotation",
-        [
-            str,
-            int,
-            float,
-            bool,
-            bytes,
-            list[str],
-            list[int],
-            Optional[str],
-            str | None,
-            Optional[list[str]],
-            list[str] | None,
-            Annotated[str, Form()],
-            Annotated[list[str], Form()],
-            Union[str | None, list[str] | None],
-        ],
-    )
-    def test_scalar_annotations_true(self, annotation: type) -> None:
-        """标量及其允许的包装形式 → True。"""
-        assert _is_scalar_or_scalar_list_annotation(annotation) is True
-
-    @pytest.mark.parametrize(
-        "annotation",
-        [
-            UploadFile,
-            list[UploadFile],
-            Optional[UploadFile],
-            pathlib.Path,
-            list[pathlib.Path],
-            Optional[pathlib.Path],
-            BaseModel,
-            dict,
-            DataClassValue,
-            Union[str, pathlib.Path],
-        ],
-    )
-    def test_non_scalar_annotations_false(self, annotation: type) -> None:
-        """文件、路径、复杂类型及混合并集 → False。"""
-        assert _is_scalar_or_scalar_list_annotation(annotation) is False
 
 
 # ============================================================
