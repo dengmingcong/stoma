@@ -31,7 +31,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from src.dependencies import Dependant, ModelField
-from src.dependencies.utils import field_annotation_is_complex, _lenient_issubclass as lenient_issubclass
+from src.dependencies.utils import field_annotation_is_complex
 from src.exceptions import HTTPError, ParseError, ValidationError
 from src.params import Body, Form, UploadFile
 from src.response import Response
@@ -132,17 +132,6 @@ def _classify_field_kind(annotation: Any) -> tuple[Literal["scalar", "list"], An
     return ("scalar", annotation)
 
 
-def _is_basemodel_form_field(model_field: ModelField) -> bool:
-    """判断 ModelField 是否为 BaseModel + Form 组合。
-
-    :param model_field: 模型字段。
-    :return: 如果是 BaseModel 子类注解且 param_info 为 Form 则返回 True。
-    """
-    return lenient_issubclass(model_field.field_info.annotation, BaseModel) and isinstance(
-        model_field.param_info, Form
-    )
-
-
 def _is_pathlib_path_annotation(annotation: Any) -> bool:
     """判断注解是否为 ``pathlib.Path`` 或 ``list[pathlib.Path]``（解包 Optional/Annotated）。
 
@@ -176,45 +165,8 @@ def _is_pathlib_path_annotation(annotation: Any) -> bool:
     return False
 
 
-def _describe_endpoint_form_mutex_violation(dependant: Dependant) -> str | None:
-    """描述端点 Form 参数互斥冲突。
-
-    当 ``form_body_params`` 中存在 BaseModel + Form 字段，且同端点仍有其他
-    ``form_body_params`` 项（非 BaseModel Form）、``file_body_params`` 或
-    ``pure_body_params`` 时返回冲突描述，否则返回 None。
-
-    :param dependant: 端点依赖定义。
-    :return: 冲突信息字符串，或 None（无冲突）。
-    """
-    # 查找 BaseModel + Form 字段
-    has_basemodel_form = any(_is_basemodel_form_field(f) for f in dependant.form_body_params)
-
-    if not has_basemodel_form:
-        return None
-
-    # 检测混合冲突
-    violations: list[str] = []
-
-    # form_body_params 中存在非 BaseModel Form 字段
-    non_basemodel_form = [
-        f.name for f in dependant.form_body_params if not _is_basemodel_form_field(f)
-    ]
-    if non_basemodel_form:
-        violations.append(f"form_body_params 中非 BaseModel Form 字段: {non_basemodel_form}")
-
-    if dependant.file_body_params:
-        violations.append(f"file_body_params 字段: {[f.name for f in dependant.file_body_params]}")
-
-    if dependant.pure_body_params:
-        violations.append(f"pure_body_params 字段: {[f.name for f in dependant.pure_body_params]}")
-
-    if violations:
-        return "; ".join(violations)
-    return None
-
-
 def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
-    """填充函数级非 BaseModel 的 Form 字段到 FormData。
+    """填充函数级 Form 字段到 FormData。
 
     按 ``(注解类别, 元素类别)`` 四象限派发：
 
@@ -230,8 +182,8 @@ def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value:
     :param form_data: 待填充的表单。
     :param model_field: Form 字段定义。
     :param value: 字段值。
-    :raise ValueError: 当值类型与注解不匹配，或值为 ``bytes`` / ``BaseModel`` /
-        ``dict`` 等 stoma 不再自动序列化的类型。
+    :raise ValueError: 当值类型与注解不匹配，或值为 ``bytes`` / ``dict``
+        等 stoma 不再自动序列化的类型。
     """
     if value is None:
         return
@@ -333,79 +285,6 @@ def _append_list_form_element(form_data: FormData, alias: str, element: Any, *, 
         raise ValueError(msg)
 
     form_data.append(alias, element)
-
-
-def _fill_basemodel_form_field(
-    form_data: FormData,
-    api_route: APIRoute,
-    model_field: ModelField,
-) -> bool:
-    """遍历 BaseModel 子字段，混合派发到表单。
-
-    - scalar text / list text：复用 ``_fill_scalar_form_field`` 派发，4 象限错误消息统一。
-    - scalar file (``pathlib.Path``) / list file (``list[pathlib.Path]``)：inline 派发，
-      ``Path`` 对象直传 ``FormData``，不走 ``_fill_scalar_form_field``（后者 ``is_file``
-      分支会抛"不应进入标量派发"）。
-    - 嵌套 ``BaseModel`` / ``bytes`` / 非标量复合类型：被 ``_fill_scalar_form_field`` /
-      inline 拦截并抛 ``ValueError``。
-
-    ``has_files`` 按注解独立判断（与子字段值是否存在无关），用于决定 multipart vs
-    urlencoded。
-
-    :param form_data: 待填充的表单。
-    :param api_route: APIRoute 实例。
-    :param model_field: BaseModel Form 字段定义。
-    :return: 是否包含文件子字段（含 ``pathlib.Path`` / ``list[pathlib.Path]``）。
-    :raise ValueError: 当子字段类型或值不支持表单派发时。
-    """
-    value = getattr(api_route, model_field.name)
-    if value is None:
-        return False
-
-    has_files = False
-    for field_name, field_info in type(value).model_fields.items():
-        annotation = field_info.annotation
-        is_file = _is_pathlib_path_annotation(annotation)
-        # 按注解决定 multipart 标记；与子字段值是否存在无关。
-        if is_file:
-            has_files = True
-
-        sub_value = getattr(value, field_name)
-        if sub_value is None:
-            continue
-
-        if is_file:
-            # file 派发：Path 对象直传，避开 _fill_scalar_form_field 的 is_file 拦截。
-            if isinstance(sub_value, list):
-                for elem in sub_value:
-                    if elem is None:
-                        continue
-                    if not isinstance(elem, pathlib.Path):
-                        msg = (
-                            f"Form 字段 {field_name!r} 元素期望 pathlib.Path，"
-                            f"收到 {type(elem).__name__}"
-                        )
-                        raise ValueError(msg)
-                    form_data.append(field_name, elem)
-            elif isinstance(sub_value, pathlib.Path):
-                form_data.set(field_name, sub_value)
-            else:
-                msg = (
-                    f"Form 字段 {field_name!r} 期望 pathlib.Path 或 list[pathlib.Path]，"
-                    f"收到 {type(sub_value).__name__}"
-                )
-                raise ValueError(msg)
-            continue
-
-        # text 派发：构造临时 ModelField 复用 _fill_scalar_form_field 的 4 象限派发。
-        template = ModelField(
-            name=field_name,
-            field_info=FieldInfo(annotation=annotation),
-            param_info=model_field.param_info,
-        )
-        _fill_scalar_form_field(form_data, template, sub_value)
-
-    return has_files
 
 
 class Client:
@@ -563,17 +442,12 @@ class Client:
     ) -> RequestBody:
         """按请求体字段列表分派，序列化为 RequestBody。
 
-        两类 Form 用法（互斥）：
-
-        - **BaseModel Form**（``form_body_params`` 中存在 ``BaseModel`` 子类 +
-          ``Form()`` 字段）：视为独立请求体类型，由 ``_fill_basemodel_form_field``
-          填充子字段。``pathlib.Path`` 子字段触发 multipart，纯文本子字段走
-          urlencoded。BaseModel Form 必须独占 endpoint，不允许与标量 Form、
-          UploadFile 或 Body 共存，否则抛 ``ValueError``。
-        - **多标量 Form**（``form_body_params`` 中均为非 BaseModel 字段）：
-          由 ``_fill_scalar_form_field`` 填充。list 值通过 ``form_data.append``
-          派发同名多 part（多次上传同一字段）。``pathlib.Path`` 值直接传递
-          给 FormData，不调用 ``str(Path)``，确保以文件 part 而非文本 part 发送。
+        Form 仅接受标量注解：``Annotated[BaseModel, Form()]`` 在路由分类阶段即被
+        拒绝；标量 Form + 函数级 ``UploadFile`` / ``pathlib.Path`` / ``list`` 全部
+        支持。``form_body_params`` 字段由 ``_fill_scalar_form_field`` 填充：list
+        值通过 ``form_data.append`` 派发同名多 part（多次上传同一字段）；
+        ``pathlib.Path`` 值直接传递给 ``FormData``，不调用 ``str(Path)``，确保以
+        文件 part 而非文本 part 发送。
 
         函数级 ``UploadFile``（含 ``Annotated[UploadFile, Form()]`` /
         ``Annotated[list[UploadFile], Form()]`` / ``Annotated[pathlib.Path, Form()]``
@@ -589,21 +463,8 @@ class Client:
         :param api_route: APIRoute 实例。
         :param dependant: 参数依赖定义。
         :return: 序列化后的请求体。
-        :raise ValueError: 当 BaseModel Form 与其他 Form / UploadFile / Body 并存时。
+        :raise ValueError: 当标量 Form 值类型不匹配时（如 ``bytes``）。
         """
-        has_basemodel = any(_is_basemodel_form_field(f) for f in dependant.form_body_params)
-
-        if has_basemodel:
-            err = _describe_endpoint_form_mutex_violation(dependant)
-            if err:
-                msg = f"BaseModel Form 与其他参数互斥冲突: {err}"
-                raise ValueError(msg)
-            form_data = FormData()
-            basemodel_field = next(f for f in dependant.form_body_params if _is_basemodel_form_field(f))
-            has_files = _fill_basemodel_form_field(form_data, api_route, basemodel_field)
-            kind = RequestBodyKind.MULTIPART if has_files else RequestBodyKind.URLENCODED
-            return RequestBody(kind=kind, form_data=form_data)
-
         has_files = bool(dependant.file_body_params)
         form_data = FormData()
 
