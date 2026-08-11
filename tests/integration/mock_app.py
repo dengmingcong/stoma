@@ -4,11 +4,13 @@
 通过 Pydantic 模型与 stoma 测试共享类型，复用 stoma 的 Pydantic 生态。
 """
 
+import json
 from typing import Annotated, Any
 
-from fastapi import FastAPI, File, Form, Query, Request, Response, UploadFile
+from fastapi import FastAPI, File, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 
 # 共享模型（与 stoma 测试期望对齐）
@@ -279,20 +281,72 @@ async def upload_files_optional(files: list[UploadFile] | None = File(None)) -> 
 
 
 @app.post("/login")
-async def login(
-    username: str = Form(...),
-    tags: list[str] = Form(...),
-    prefs: dict = Form(...),
-) -> dict[str, Any]:
+async def login(request: Request) -> dict[str, Any]:
     """POST /login：接收 form data。
 
-    :param username: 用户名。
-    :param tags: 标签列表。
-    :param prefs: 用户偏好设置。
-    :return: 解析后的表单数据。
+    stoma 序列化约定：标量原值、集合字段（``list`` / ``dict``）走 ``json.dumps``。
+    FastAPI 的 ``Form()`` 字段不能自动 JSON-decode 集合值（会返回 422），
+    因此用 ``Request`` 直接读 form，对单值字段尝试 ``json.loads``，
+    解析结果为 ``list`` / ``dict`` 时还原，否则保持字符串原值。
+    重复字段（同名多次出现）直接保留为 ``list[str]``。
+
+    同时覆盖 ``LoginRoute``（单字段 ``Form()``）和 ``LoginFlatRoute``（BaseModel + Form，
+    embed=False 默认会平展子字段）—— 两者 wire 格式相同。
+
+    :param request: FastAPI Request 对象。
+    :return: 解析后的表单数据，集合字段已还原为 ``list`` / ``dict``。
     """
-    return {
-        "username": username,
-        "tags": tags,
-        "prefs": prefs,
-    }
+    form = await request.form()
+    result: dict[str, Any] = {}
+    for key in form:
+        values = form.getlist(key)
+        if len(values) == 1:
+            v = values[0]
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, (list, dict)):
+                    result[key] = parsed
+                    continue
+            except (json.JSONDecodeError, TypeError):
+                pass
+            result[key] = v
+        else:
+            result[key] = values
+    return result
+
+
+@app.post("/upload-mix")
+async def upload_mix(request: Request) -> dict[str, Any]:
+    """POST /upload-mix：Form 平展字段 + UploadFile 共存。
+
+    stoma 发送 multipart/form-data：平展的 form 字段（标量原值、集合 ``json.dumps``）
+    加单文件 ``avatar``。FastAPI 的 ``Form()`` + ``File()`` 组合与 stoma 平展格式
+    不兼容（``Form()`` 不能 JSON-decode 集合值），因此用 ``Request`` 手动 parse。
+    文件字段通过 ``isinstance(value, StarletteUploadFile)`` 识别
+    （注意：``fastapi.UploadFile`` 与 ``starlette.datastructures.UploadFile``
+    是不同类，form 解析器产出 Starlette 版）。
+
+    :param request: FastAPI Request 对象。
+    :return: 平展字段值（集合字段已还原为 ``list`` / ``dict``）+ 文件元信息。
+    """
+    form = await request.form()
+    fields: dict[str, Any] = {}
+    file_meta: dict[str, Any] = {}
+    for key, value in form.multi_items():
+        if isinstance(value, StarletteUploadFile):
+            content = await value.read()
+            file_meta = {
+                "filename": value.filename,
+                "size": len(content),
+                "content_type": value.content_type,
+            }
+        else:
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, (list, dict)):
+                    fields[key] = parsed
+                    continue
+            except (json.JSONDecodeError, TypeError):
+                pass
+            fields[key] = value
+    return {**fields, **file_meta}

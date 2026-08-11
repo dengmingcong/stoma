@@ -14,10 +14,9 @@ import pathlib
 from typing import Annotated, Any
 
 import pytest
-from playwright.sync_api import FormData
 from pydantic import BaseModel, Field
 
-from src.client import Client, RequestBodyKind
+from src.client import Client
 from src.params import Body, Form, Path, Query, UploadFile
 from src.routing import APIRoute, APIRouter
 
@@ -629,16 +628,19 @@ class _LoginForm(BaseModel):
 
 @router.post("/login")
 class LoginRoute(APIRoute[dict[str, Any]]):
-    """POST /login：单字段 Form，验证 wire-level urlencoded 序列化。"""
+    """POST /login：单字段 Form，端到端 urlencoded 序列化。"""
 
     username: Annotated[str, Form()]
     tags: Annotated[list[str], Form()]
     prefs: Annotated[dict, Form()]
 
 
-@router.post("/login-flat")
+@router.post("/login")
 class LoginFlatRoute(APIRoute[dict[str, Any]]):
-    """POST /login-flat：BaseModel + Form（embed=False 默认）子字段平展。"""
+    """POST /login：BaseModel + Form（embed=False 默认）子字段平展。
+
+    与 ``LoginRoute`` 共用 ``/login`` 端点——两者 wire 格式相同（stoma 平展子字段）。
+    """
 
     data: Annotated[_LoginForm, Form()]
 
@@ -680,16 +682,15 @@ class UploadFilesOptRoute(APIRoute[dict[str, Any]]):
 
 
 class TestFormBody:
-    """Form 字段 wire-level 测试。
+    """Form 字段端到端测试。
 
-    注：mock_app /login 的 list/dict Form 字段与 Playwright ``form=`` 序列化存在
-    不兼容性（FastAPI 无法解析 stoma 生成的 JSON 编码字符串，会返回 422），
-    因此本测试类只做 wire-level 验证（``_serialize_body_params``），
-    不做端到端真实 HTTP。
+    走真 HTTP（mock_server）：mock_app ``/login`` 用 ``Request`` 直接读 form 并
+    对单值字段尝试 ``json.loads``，还原 ``list`` / ``dict`` 集合字段。
+    验证 stoma 的标量原值 + 集合 ``json.dumps`` 序列化约定服务端能正确解析。
     """
 
     def test_form_urlencoded_login(self, client: Client) -> None:
-        """单字段 Form() → URLENCODED，标量原值、列表/字典走 ``json.dumps``。
+        """单字段 ``Form()`` → URLENCODED，e2e：服务端还原标量原值与集合字段。
 
         :param client: 共享的 Client 实例。
         """
@@ -699,22 +700,20 @@ class TestFormBody:
             prefs={"theme": "dark", "lang": "en"},
         )
 
-        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
+        response = client.send(endpoint)
 
-        assert body.kind is RequestBodyKind.URLENCODED
-        assert body.form_data is not None
-        assert isinstance(body.form_data, FormData)
-        # str 标量原值存储，与 FastAPI Form() 直接接收字符串一致
-        assert body.form_data._fields[0] == ("username", "alice")
-        # list[str] 走 json.dumps → JSON 字符串（带空格）
-        assert body.form_data._fields[1] == ("tags", '["vip", "beta"]')
-        # dict 走 json.dumps → JSON 字符串
-        assert body.form_data._fields[2] == ("prefs", '{"theme": "dark", "lang": "en"}')
+        assert response.raw.status == 200
+        assert response.validated == {
+            "username": "alice",
+            "tags": ["vip", "beta"],
+            "prefs": {"theme": "dark", "lang": "en"},
+        }
 
     def test_form_basemodel_embed_false(self, client: Client) -> None:
-        """BaseModel + Form()（embed=False 默认）→ 子字段平展在 form_data 顶层。
+        """BaseModel + ``Form()``（embed=False 默认）→ 子字段平展，e2e 验证服务端还原。
 
-        标量子字段原值，集合子字段（list/dict）走 ``json.dumps``。
+        stoma 平展 BaseModel 子字段到 form 顶层，标量子字段原值、集合子字段
+        ``json.dumps``，与单字段 ``Form()`` 路径 wire 格式相同。
 
         :param client: 共享的 Client 实例。
         """
@@ -726,19 +725,14 @@ class TestFormBody:
             ),
         )
 
-        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
+        response = client.send(endpoint)
 
-        assert body.kind is RequestBodyKind.URLENCODED
-        assert body.form_data is not None
-        assert isinstance(body.form_data, FormData)
-        # embed=False 平展：BaseModel 子字段在 form_data 顶层。
-        # 平展字段名是 BaseModel 的 field_name，不是 alias。
-        # 标量子字段原值，集合子字段走 json.dumps。
-        assert body.form_data._fields == [
-            ("username", "bob"),
-            ("tags", '["admin"]'),
-            ("prefs", '{"theme": "light"}'),
-        ]
+        assert response.raw.status == 200
+        assert response.validated == {
+            "username": "bob",
+            "tags": ["admin"],
+            "prefs": {"theme": "light"},
+        }
 
 
 class TestUploadFileBody:
@@ -794,22 +788,22 @@ class TestUploadFileBody:
 
 
 class TestMixedFormAndFile:
-    """Form + UploadFile 混合字段 wire-level 测试。
+    """Form + UploadFile 混合字段端到端测试。
 
     当存在文件字段时，整体走 multipart：Form 标量字段原值、集合字段 ``json.dumps``
-    后写入 FormData。mock_app 暂未提供 Form + File 混合端点，因此保持 wire-level 验证。
+    后写入 ``FormData``。mock_app ``/upload-mix`` 用 ``Request`` 直接读 multipart，
+    对平展字段尝试 ``json.loads`` 还原集合，并对文件部分读取字节返回元信息。
     """
 
     def test_form_and_uploadfile_mix(self, client: Client, tmp_path: pathlib.Path) -> None:
-        """Form + UploadFile 共存 → MULTIPART，``FormData`` 同时包含表单字段和文件路径。
-
-        标量子字段原值，集合子字段（list/dict）走 ``json.dumps``。
+        """Form + UploadFile 共存 → MULTIPART，e2e：服务端还原平展字段和文件元信息。
 
         :param client: 共享的 Client 实例。
         :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
         """
         file_path = tmp_path / "avatar.png"
         file_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+        png_header_size = 8
 
         endpoint = MixedFormFileRoute(
             data=_LoginForm(
@@ -820,17 +814,17 @@ class TestMixedFormAndFile:
             avatar=UploadFile(path=file_path),
         )
 
-        body = client._serialize_body_params(endpoint, endpoint._get_dependant())
+        response = client.send(endpoint)
 
-        assert body.kind is RequestBodyKind.MULTIPART
-        assert isinstance(body.form_data, FormData)
-        # BaseModel embed=False 平展：标量子字段原值，集合子字段走 json.dumps。
-        assert body.form_data._fields == [
-            ("username", "charlie"),
-            ("tags", '["mix"]'),
-            ("prefs", '{"role": "user"}'),
-            ("avatar", file_path),
-        ]
+        assert response.raw.status == 200
+        assert response.validated == {
+            "username": "charlie",
+            "tags": ["mix"],
+            "prefs": {"role": "user"},
+            "filename": "avatar.png",
+            "size": png_header_size,
+            "content_type": "image/png",
+        }
 
 
 class TestOptionalUploadFile:
