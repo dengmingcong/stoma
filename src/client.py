@@ -19,7 +19,6 @@ URL/Query 处理说明：
 - 路径只需相对路径（如 /users/123），Playwright 自动拼接 base_url
 """
 
-import json
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 from typing import Any, NamedTuple
@@ -86,7 +85,7 @@ class RequestParams(NamedTuple):
     body: RequestBody
 
 
-def _fill_scalar_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
+def _fill_form_field(form_data: FormData, model_field: ModelField, value: Any) -> None:
     """填充函数级 Form 字段到 FormData。
 
     根据 ``value`` 类型派发（Pydantic 已保证类型一致性）：
@@ -161,9 +160,7 @@ class Client:
         """
         try:
             result = self._extract_request_params(api_route)
-            api_response = self._execute_request(
-                result.method, result.path, result.params, result.headers, result.body
-            )
+            api_response = self._execute_request(result.method, result.path, result.params, result.headers, result.body)
             return self._build_response(api_route, api_response)
         except (HTTPError, ParseError, ValidationError):
             raise
@@ -294,7 +291,7 @@ class Client:
             value = getattr(api_route, model_field.name)
             if value is None:
                 continue
-            _fill_scalar_form_field(form_data, model_field, value)
+            _fill_form_field(form_data, model_field, value)
 
         for model_field in dependant.file_body_params:
             value = getattr(api_route, model_field.name)
