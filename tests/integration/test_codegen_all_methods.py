@@ -66,9 +66,7 @@ def test_codegen_all_methods(
         check=False,
         cwd="/Users/dengmingcong/Workspace/stoma",
     )
-    assert result.returncode == 0, (
-        f"CLI 失败:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-    )
+    assert result.returncode == 0, f"CLI 失败:\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
     route_file = tmp_path / f"{snake_name}.py"
     assert route_file.exists(), f"生成的 {route_file} 不存在"
@@ -77,23 +75,19 @@ def test_codegen_all_methods(
 
     # Content grep: 验证具名装饰器字符串存在
     expected_path = f"/op{operation_id.removeprefix('op')}"
-    expected_decorator = f"@router.{router_method}(\"{expected_path}\")"
-    assert expected_decorator in route_code, (
-        f"生成的 route.py 缺少装饰器 {expected_decorator}\n"
-        f"实际内容:\n{route_code}"
-    )
+    expected_decorator = f'@router.{router_method}("{expected_path}")'
+    assert expected_decorator in route_code, f"生成的 route.py 缺少装饰器 {expected_decorator}\n实际内容:\n{route_code}"
 
     # AST 解析: 验证装饰器形式正确
     decorators = _extract_decorators(route_code)
     matching = [(m, a) for m, a in decorators if m == router_method and a == expected_path]
     assert len(matching) == 1, (
-        f"AST 未找到装饰器 @router.{router_method}(\"{expected_path}\")\n"
+        f'AST 未找到装饰器 @router.{router_method}("{expected_path}")\n'
         f"AST 解析到的装饰器: {decorators}\n"
         f"文件内容:\n{route_code}"
     )
 
     # 验证 import 语句包含 stoma
     assert "from stoma import APIRouter, APIRoute" in route_code, (
-        f"生成的 route.py 缺少 'from stoma import APIRouter, APIRoute'\n"
-        f"实际内容:\n{route_code}"
+        f"生成的 route.py 缺少 'from stoma import APIRouter, APIRoute'\n实际内容:\n{route_code}"
     )

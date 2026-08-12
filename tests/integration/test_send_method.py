@@ -16,9 +16,8 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel, Field
 
-from src.client import Client
-from src.exceptions import HTTPError
 from src import Body, Form, Path, Query, UploadFile
+from src.client import Client
 from src.routing import APIRoute, APIRouter
 
 
@@ -696,6 +695,7 @@ class TestFormBody:
             "username": "alice",
             "tags": ["vip", "beta"],
         }
+
 
 class TestScalarFormList:
     """函数级 ``Annotated[list[str], Form()]`` 端到端测试。"""

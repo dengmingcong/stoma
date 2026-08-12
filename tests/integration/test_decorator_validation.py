@@ -296,6 +296,7 @@ class TestAllMethods:
 
     def test_get(self):
         """验证 GET 方法装饰器。"""
+
         @router.get("/x")
         class X(APIRoute[dict]):
             pass
@@ -306,6 +307,7 @@ class TestAllMethods:
 
     def test_post(self):
         """验证 POST 方法装饰器。"""
+
         @router.post("/x")
         class X(APIRoute[dict]):
             pass
@@ -316,6 +318,7 @@ class TestAllMethods:
 
     def test_put(self):
         """验证 PUT 方法装饰器。"""
+
         @router.put("/x")
         class X(APIRoute[dict]):
             pass
@@ -326,6 +329,7 @@ class TestAllMethods:
 
     def test_patch(self):
         """验证 PATCH 方法装饰器。"""
+
         @router.patch("/x")
         class X(APIRoute[dict]):
             pass
@@ -336,6 +340,7 @@ class TestAllMethods:
 
     def test_delete(self):
         """验证 DELETE 方法装饰器。"""
+
         @router.delete("/x")
         class X(APIRoute[dict]):
             pass
@@ -346,6 +351,7 @@ class TestAllMethods:
 
     def test_head(self):
         """验证 HEAD 方法装饰器。"""
+
         @router.head("/x")
         class X(APIRoute[dict]):
             pass
@@ -356,6 +362,7 @@ class TestAllMethods:
 
     def test_options(self):
         """验证 OPTIONS 方法装饰器。"""
+
         @router.options("/x")
         class X(APIRoute[dict]):
             pass
@@ -366,6 +373,7 @@ class TestAllMethods:
 
     def test_trace(self):
         """验证 TRACE 方法装饰器。"""
+
         @router.trace("/x")
         class X(APIRoute[dict]):
             pass
