@@ -564,7 +564,7 @@ class TestUploadAsMultipartFlag:
         class R(APIRoute[dict]):
             files: list[UploadFile]
 
-        with pytest.raises(ValueError, match="不能是 list/Optional/Form 包装"):
+        with pytest.raises(ValueError, match="不能是 list/Form 包装"):
             R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
 
     def test_upload_as_multipart_false_with_form_raises(self) -> None:
@@ -598,6 +598,9 @@ class TestUploadAsMultipartFlag:
 
         Plan 增强：raw-body 模式现在接受 UploadFile | None（裸 Optional）。
         """
+        from types import UnionType
+        from typing import get_args, get_origin
+
         class R(APIRoute[dict]):
             file: UploadFile | None = None
 
@@ -605,7 +608,9 @@ class TestUploadAsMultipartFlag:
         assert d.upload_as_multipart is False
         assert len(d.file_body_params) == 1
         assert d.file_body_params[0].name == "file"
-        assert d.file_body_params[0].field_info.annotation is UploadFile | None
+        ann = d.file_body_params[0].field_info.annotation
+        assert get_origin(ann) is UnionType
+        assert get_args(ann) == (UploadFile, type(None))
 
     def test_upload_as_multipart_false_happy_path(self) -> None:
         """1 裸 UploadFile + flag False → 通过校验 + Dependant 正确。"""
