@@ -19,9 +19,9 @@ URL/Query 处理说明：
 - 路径只需相对路径（如 /users/123），Playwright 自动拼接 base_url
 """
 
+import mimetypes
 from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
-import mimetypes
 from typing import Any, NamedTuple
 
 from playwright.sync_api import APIRequestContext, APIResponse, FilePayload, FormData
