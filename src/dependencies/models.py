@@ -68,6 +68,8 @@ class Dependant:
     :vartype json_response_schema: type | None
     :var json_response_schema_adapter: JSON 响应校验器缓存。
     :vartype json_response_schema_adapter: TypeAdapter | None
+    :var upload_as_multipart: 上传文件时是否以 multipart/form-data 形式发送。默认 True。
+    :vartype upload_as_multipart: bool
     """
 
     method: str
@@ -79,4 +81,5 @@ class Dependant:
     form_body_params: list[ModelField] = field(default_factory=list)
     file_body_params: list[ModelField] = field(default_factory=list)
     json_response_schema: type | None = None
+    upload_as_multipart: bool = field(default=True)
     json_response_schema_adapter: TypeAdapter[Any] | None = None
