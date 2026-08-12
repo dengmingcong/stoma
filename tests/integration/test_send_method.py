@@ -670,6 +670,28 @@ class UploadFilesOptRoute(APIRoute[dict[str, Any]]):
     files: list[UploadFile] | None = None
 
 
+@router.post("/upload-raw", upload_as_multipart=False)
+class UploadRawRoute(APIRoute[dict[str, Any]]):
+    """POST /upload-raw：单文件 raw body 上传（整条 body 是文件内容）。"""
+
+    file: UploadFile
+
+
+@router.post("/upload-raw", upload_as_multipart=False)
+class UploadRawOptRoute(APIRoute[dict[str, Any]]):
+    """POST /upload-raw-optional（路径复用 /upload-raw）：可选 UploadFile，未传时发空 body。
+
+    注解是 ``UploadFile = None``（不是 ``UploadFile | None = None``），
+    原因是 raw-body 启动期校验要求 ``field.field_info.annotation is UploadFile``
+    （裸 UploadFile）；但 default 设成 ``None``，让 client 走空 body 分支。
+    路径复用 ``/upload-raw``（mock_app 仅一个 raw 端点）：
+    - ``UploadRawRoute`` 提交文件字节 + Content-Type
+    - ``UploadRawOptRoute()`` 提交空 body，Playwright 自动填 octet-stream
+    """
+
+    file: UploadFile = None  # type: ignore[assignment]
+
+
 class TestFormBody:
     """Form 字段端到端测试。
 
@@ -880,6 +902,98 @@ class TestOptionalUploadFile:
             "filenames": ["a.txt", "b.md"],
             "total_size": len("first") + len("second"),
         }
+
+
+class TestRawUploadBody:
+    """``upload_as_multipart=False`` 模式端到端测试。
+
+    走真 HTTP（mock_server）：整条 body 是裸文件字节，Content-Type 来自
+    ``mimetypes.guess_type(file_path)``。验证服务端能正确读出 size 和 content_type。
+    """
+
+    def test_raw_upload_pdf(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """``.pdf`` 文件 → 服务端收到 ``application/pdf`` 和实际字节数。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
+        """
+        pdf = tmp_path / "doc.pdf"
+        pdf_bytes = b"%PDF-1.4 fake content"
+        pdf.write_bytes(pdf_bytes)
+        endpoint = UploadRawRoute(file=UploadFile(path=pdf))
+
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {"size": len(pdf_bytes), "content_type": "application/pdf"}
+
+    def test_raw_upload_png(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """``.png`` 文件 → 服务端收到 ``image/png`` 和实际字节数。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
+        """
+        png = tmp_path / "img.png"
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"fake-ihdr-data"
+        png.write_bytes(png_bytes)
+        endpoint = UploadRawRoute(file=UploadFile(path=png))
+
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {"size": len(png_bytes), "content_type": "image/png"}
+
+    def test_raw_upload_txt(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """``.txt`` 文件 → 服务端收到 ``text/plain`` 和实际字节数。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
+        """
+        txt = tmp_path / "note.txt"
+        txt_bytes = b"Hello, raw world!"
+        txt.write_bytes(txt_bytes)
+        endpoint = UploadRawRoute(file=UploadFile(path=txt))
+
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {"size": len(txt_bytes), "content_type": "text/plain"}
+
+    def test_raw_upload_optional_none(self, client: Client) -> None:
+        """``file: UploadFile = None`` + 不传 → 服务端收到 0 字节 + 空 content-type。
+
+        value=None 时 client 发 ``b""`` 且不显式 set Content-Type，
+        Playwright Node 端 :func:`fetch` 对空字节数据**不**自动填
+        ``application/octet-stream``（实测验证），服务端读到的 content-type
+        是空字符串。
+
+        :param client: 共享的 Client 实例。
+        """
+        endpoint = UploadRawOptRoute()  # 缺省值 None
+
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {"size": 0, "content_type": ""}
+
+    def test_raw_upload_unknown_extension(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """``.unknownext`` 文件（``mimetypes.guess_type`` 返回 None）→ octet-stream fallback。
+
+        与 ``.xyz`` 不同（stdlib 把 ``.xyz`` 映射成 ``chemical/x-xyz``，并非 None），
+        ``.unknownext`` 保证 ``guess_type`` 返回 ``(None, None)``，验证兜底分支。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture，用于创建临时文件。
+        """
+        unknown = tmp_path / "data.unknownext"
+        unknown_bytes = b"some random data"
+        unknown.write_bytes(unknown_bytes)
+        endpoint = UploadRawRoute(file=UploadFile(path=unknown))
+
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {"size": len(unknown_bytes), "content_type": "application/octet-stream"}
 
 
 def test_form_marked_uploadfile_raises() -> None:
