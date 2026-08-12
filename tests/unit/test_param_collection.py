@@ -593,13 +593,19 @@ class TestUploadAsMultipartFlag:
         ):
             R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
 
-    def test_upload_as_multipart_false_optional_uploadfile_raises(self) -> None:
-        """Optional[UploadFile] + flag False → raise（Optional 包装不允许）。"""
+    def test_upload_as_multipart_false_optional_uploadfile_works(self) -> None:
+        """UploadFile | None = None + flag False → 通过校验 + Dependant 正确。
+
+        Plan 增强：raw-body 模式现在接受 UploadFile | None（裸 Optional）。
+        """
         class R(APIRoute[dict]):
             file: UploadFile | None = None
 
-        with pytest.raises(ValueError, match="不能是 list/Optional/Form 包装"):
-            R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
+        d = R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
+        assert d.upload_as_multipart is False
+        assert len(d.file_body_params) == 1
+        assert d.file_body_params[0].name == "file"
+        assert d.file_body_params[0].field_info.annotation is UploadFile | None
 
     def test_upload_as_multipart_false_happy_path(self) -> None:
         """1 裸 UploadFile + flag False → 通过校验 + Dependant 正确。"""
