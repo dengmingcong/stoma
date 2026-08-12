@@ -19,7 +19,7 @@ URL/Query 处理说明：
 - 路径只需相对路径（如 /users/123），Playwright 自动拼接 base_url
 """
 
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
 from typing import Any, NamedTuple
 
@@ -47,6 +47,7 @@ class RequestBodyKind(Enum):
     JSON = "application/json"
     URLENCODED = "application/x-www-form-urlencoded"
     MULTIPART = "multipart/form-data"
+    RAW_BINARY = "application/octet-stream"
 
 
 @dataclass
@@ -58,11 +59,15 @@ class RequestBody:
     :var kind: 请求体类型。
     :var json_body: JSON 请求体数据（当 kind 为 JSON 时）。
     :var form_data: 表单请求体数据（当 kind 为 URLENCODED 或 MULTIPART 时）。
+    :var raw_body: 原始字节请求体（当 kind 为 RAW_BINARY 时）。
+    :var headers: 请求体附加的 headers（当 kind 为 RAW_BINARY 时，例如 Content-Type）。
     """
 
     kind: RequestBodyKind
     json_body: dict | None = None
     form_data: FormData | None = None
+    raw_body: bytes | None = field(default=None)
+    headers: dict[str, str] | None = field(default=None)
 
 
 class RequestParams(NamedTuple):
