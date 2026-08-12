@@ -308,11 +308,13 @@ class APIRouter:
             pass
     """
 
-    def get[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+    def get[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """GET 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
+        :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
+        :type upload_as_multipart: bool
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -322,13 +324,15 @@ class APIRouter:
             class GetUsers(APIRoute[list[UserData]]):
                 limit: int = 20
         """
-        return api_route_decorator(method="GET", path=path)
+        return api_route_decorator(method="GET", path=path, upload_as_multipart=upload_as_multipart)
 
-    def post[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+    def post[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """POST 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
+        :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
+        :type upload_as_multipart: bool
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -339,16 +343,20 @@ class APIRouter:
                 name: str
                 email: str
         """
-        return api_route_decorator(method="POST", path=path)
+        return api_route_decorator(method="POST", path=path, upload_as_multipart=upload_as_multipart)
 
     def put[T: APIRoute](
         self,
         path: str,
+        *,
+        upload_as_multipart: bool = True,
     ) -> Callable[[type[T]], type[T]]:
         """PUT 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
+        :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
+        :type upload_as_multipart: bool
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -359,13 +367,15 @@ class APIRouter:
                 user_id: Annotated[int, Path()]
                 name: str
         """
-        return api_route_decorator(method="PUT", path=path)
+        return api_route_decorator(method="PUT", path=path, upload_as_multipart=upload_as_multipart)
 
-    def patch[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+    def patch[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """PATCH 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
+        :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
+        :type upload_as_multipart: bool
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -376,13 +386,15 @@ class APIRouter:
                 user_id: Annotated[int, Path()]
                 email: str | None = None
         """
-        return api_route_decorator(method="PATCH", path=path)
+        return api_route_decorator(method="PATCH", path=path, upload_as_multipart=upload_as_multipart)
 
-    def delete[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+    def delete[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """DELETE 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
+        :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
+        :type upload_as_multipart: bool
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -392,13 +404,15 @@ class APIRouter:
             class DeleteUser(APIRoute[dict[str, str]]):
                 user_id: Annotated[int, Path()]
         """
-        return api_route_decorator(method="DELETE", path=path)
+        return api_route_decorator(method="DELETE", path=path, upload_as_multipart=upload_as_multipart)
 
-    def head[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+    def head[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """HEAD 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
+        :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
+        :type upload_as_multipart: bool
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -408,13 +422,15 @@ class APIRouter:
             class HeadUsers(APIRoute[dict]):
                 pass
         """
-        return api_route_decorator(method="HEAD", path=path)
+        return api_route_decorator(method="HEAD", path=path, upload_as_multipart=upload_as_multipart)
 
-    def options[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+    def options[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """OPTIONS 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
+        :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
+        :type upload_as_multipart: bool
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -424,13 +440,15 @@ class APIRouter:
             class OptionsUsers(APIRoute[dict]):
                 pass
         """
-        return api_route_decorator(method="OPTIONS", path=path)
+        return api_route_decorator(method="OPTIONS", path=path, upload_as_multipart=upload_as_multipart)
 
-    def trace[T: APIRoute](self, path: str) -> Callable[[type[T]], type[T]]:
+    def trace[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """TRACE 请求装饰器。
 
         :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
         :type path: str
+        :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
+        :type upload_as_multipart: bool
         :return: 类装饰器函数。
         :rtype: Callable[[type[T]], type[T]]
 
@@ -440,4 +458,4 @@ class APIRouter:
             class TraceUsers(APIRoute[dict]):
                 pass
         """
-        return api_route_decorator(method="TRACE", path=path)
+        return api_route_decorator(method="TRACE", path=path, upload_as_multipart=upload_as_multipart)
