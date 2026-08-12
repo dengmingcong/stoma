@@ -21,6 +21,7 @@ URL/Query 处理说明：
 
 from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
+import mimetypes
 from typing import Any, NamedTuple
 
 from playwright.sync_api import APIRequestContext, APIResponse, FormData
@@ -288,6 +289,25 @@ class Client:
         :param dependant: 参数依赖定义。
         :return: 序列化后的请求体。
         """
+        # raw-body 短路：``upload_as_multipart=False`` 时，整条 body 走 raw bytes。
+        if not dependant.upload_as_multipart and dependant.file_body_params:
+            field = dependant.file_body_params[0]
+            value = getattr(api_route, field.name)
+            if value is None:
+                return RequestBody(kind=RequestBodyKind.RAW_BINARY, raw_body=b"", headers=None)
+            if isinstance(value, UploadFile):
+                data = value.path.read_bytes()
+                mime, _ = mimetypes.guess_type(str(value.path))
+                return RequestBody(
+                    kind=RequestBodyKind.RAW_BINARY,
+                    raw_body=data,
+                    headers={"Content-Type": mime} if mime else {"Content-Type": "application/octet-stream"},
+                )
+            # 启动期校验已保证 ``file_body_params`` 只有 ``UploadFile`` / ``list[UploadFile]``，
+            # 这里仅是兜底，正常情况下不可达。
+            msg = f"raw body 模式下字段 {field.name!r} 的值类型 {type(value).__name__} 不被支持"
+            raise ValueError(msg)
+
         has_files = bool(dependant.file_body_params)
         form_data = FormData()
 
