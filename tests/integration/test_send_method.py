@@ -679,17 +679,14 @@ class UploadRawRoute(APIRoute[dict[str, Any]]):
 
 @router.post("/upload-raw", upload_as_multipart=False)
 class UploadRawOptRoute(APIRoute[dict[str, Any]]):
-    """POST /upload-raw-optional（路径复用 /upload-raw）：可选 UploadFile，未传时发空 body。
+    """POST /upload-raw-optional（路径复用 /upload-raw）：可选 UploadFile | None，未传时发空 body。
 
-    注解是 ``UploadFile = None``（不是 ``UploadFile | None = None``），
-    原因是 raw-body 启动期校验要求 ``field.field_info.annotation is UploadFile``
-    （裸 UploadFile）；但 default 设成 ``None``，让 client 走空 body 分支。
     路径复用 ``/upload-raw``（mock_app 仅一个 raw 端点）：
     - ``UploadRawRoute`` 提交文件字节 + Content-Type
     - ``UploadRawOptRoute()`` 提交空 body，Playwright 自动填 octet-stream
     """
 
-    file: UploadFile = None  # type: ignore[assignment]
+    file: UploadFile | None = None
 
 
 class TestFormBody:
