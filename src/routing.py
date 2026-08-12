@@ -22,7 +22,7 @@ from src.dependencies.utils import (
     field_annotation_is_complex,
     validate_form_field_annotation,
 )
-from src.params import Form, Param, ParamTypes
+from src.params import Form, Param, ParamTypes, UploadFile
 
 
 class APIRoute[T](BaseModel):
@@ -181,6 +181,24 @@ class APIRoute[T](BaseModel):
 
             if cls._dependant.pure_body_params and (cls._dependant.form_body_params or cls._dependant.file_body_params):
                 raise ValueError("Body 与 Form/UploadFile 字段不能在同一 APIRoute 混用")
+
+            if not upload_as_multipart:
+                if len(cls._dependant.file_body_params) != 1:
+                    raise ValueError(
+                        f"upload_as_multipart=False 要求 body 恰好包含一个 UploadFile 字段，"
+                        f"实际有 {len(cls._dependant.file_body_params)} 个"
+                    )
+                field = cls._dependant.file_body_params[0]
+                if field.field_info.annotation is not UploadFile:
+                    raise ValueError(
+                        f"upload_as_multipart=False 时 UploadFile 字段必须是裸 UploadFile"
+                        f"（不能是 list/Optional/Form 包装），"
+                        f"字段 {field.name!r} 的注解是 {field.field_info.annotation!r}"
+                    )
+                if cls._dependant.form_body_params:
+                    raise ValueError("upload_as_multipart=False 时不允许 Form 字段")
+                if cls._dependant.pure_body_params:
+                    raise ValueError("upload_as_multipart=False 时不允许 Body() 字段")
 
         return cls._dependant
 
