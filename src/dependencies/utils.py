@@ -101,17 +101,17 @@ def _is_uploadfile_or_list_annotation(annotation: Any) -> bool:
     return False
 
 
-def _is_raw_body_uploadfile_annotation(annotation: Any) -> bool:
-    """判断注解是否可识别为 raw-body 模式的 UploadFile 字段。
+def validate_binary_body_annotation(annotation: Any, *, field_name: str) -> None:
+    """校验注解是否为 binary-body 模式的合法 UploadFile 字段，非法时抛 ``ValueError``。
 
-    raw-body 模式仅接受以下形式：
+    binary-body 模式仅接受以下形式：
 
     - ``UploadFile``
     - ``UploadFile | None`` / ``Optional[UploadFile]``
 
     不接受（由其他校验处理）：
 
-    - ``list[UploadFile]`` —— raw-body 只支持单文件
+    - ``list[UploadFile]`` —— binary-body 只支持单文件
     - ``Annotated[UploadFile, Form()]`` —— 已被 multipart 路径接管
     - 任意层 ``Union[UploadFile, str]`` —— 多语义冲突
 
@@ -119,16 +119,23 @@ def _is_raw_body_uploadfile_annotation(annotation: Any) -> bool:
     已被 strip 掉 ``Annotated`` 包装，所以本函数不需要处理 Annotated。
 
     :param annotation: 待检查的类型注解。
-    :return: 是否为合法的 raw-body UploadFile 字段类型。
+    :param field_name: 字段名，用于错误信息中定位。
+    :raise ValueError: 当注解不是合法的 binary-body UploadFile 字段类型。
     """
     if annotation is UploadFile:
-        return True
+        return
     origin = get_origin(annotation)
     if origin is Union or origin is UnionType:
         args = get_args(annotation)
         non_none_args = [arg for arg in args if arg is not type(None)]
-        return len(non_none_args) == 1 and non_none_args[0] is UploadFile
-    return False
+        if len(non_none_args) == 1 and non_none_args[0] is UploadFile:
+            return
+    msg = (
+        f"upload_as_multipart=False 时 UploadFile 字段必须是裸 UploadFile"
+        f"或 UploadFile | None（不能是 list/Form 包装），"
+        f"字段 {field_name!r} 的注解是 {annotation!r}"
+    )
+    raise ValueError(msg)
 
 
 # Playwright ``FormDataValue`` 支持的标量类型集合。
