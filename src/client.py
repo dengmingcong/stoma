@@ -438,8 +438,9 @@ class Client:
         elif body.kind is RequestBodyKind.URLENCODED:
             payload = {"form": body.form_data}
         elif body.kind is RequestBodyKind.BINARY:
-            assert body.binary_body is not None, "BINARY 必须有 binary_body"
-            payload = {"data": body.binary_body["buffer"]}
+            if body.binary_body is not None:
+                payload = {"data": body.binary_body["buffer"]}
+            # else: payload stays empty (no data, no Content-Type from binary_body).
         elif body.kind is RequestBodyKind.JSON:
             payload = {"data": body.json_body if body.json_body else None}
         else:
