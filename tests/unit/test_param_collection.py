@@ -537,3 +537,85 @@ def test_pure_form_mutual_exclusion_raise() -> None:
         class MixedRoute(APIRoute[dict[str, Any]]):
             body: Annotated[dict[str, int], Body()]
             note: Annotated[str, Form()]
+
+
+class TestUploadAsMultipartFlag:
+    """upload_as_multipart=False 启动期校验。"""
+
+    def test_upload_as_multipart_false_zero_files_raises(self) -> None:
+        """无 UploadFile 字段 + flag False → raise。"""
+        class R(APIRoute[dict]):
+            pass
+
+        with pytest.raises(ValueError, match="upload_as_multipart=False 要求 body 恰好包含一个 UploadFile 字段"):
+            R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
+
+    def test_upload_as_multipart_false_two_files_raises(self) -> None:
+        """2 个 UploadFile + flag False → raise。"""
+        class R(APIRoute[dict]):
+            file1: UploadFile
+            file2: UploadFile
+
+        with pytest.raises(ValueError, match="实际有 2 个"):
+            R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
+
+    def test_upload_as_multipart_false_list_uploadfile_raises(self) -> None:
+        """list[UploadFile] + flag False → raise（list 包装不允许）。"""
+        class R(APIRoute[dict]):
+            files: list[UploadFile]
+
+        with pytest.raises(ValueError, match="不能是 list/Optional/Form 包装"):
+            R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
+
+    def test_upload_as_multipart_false_with_form_raises(self) -> None:
+        """1 UploadFile + 1 Form + flag False → raise。"""
+        class R(APIRoute[dict]):
+            file: UploadFile
+            data: Annotated[str, Form()]
+
+        with pytest.raises(ValueError, match="不允许 Form 字段"):
+            R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
+
+    def test_upload_as_multipart_false_with_body_raises(self) -> None:
+        """1 UploadFile + 1 Body + flag False → raise。
+
+        注意：现有 "Body 与 Form/UploadFile 混用" 互斥校验会先 fire，
+        所以错误消息可能是 "Body 与 Form/UploadFile..." 而非 "不允许 Body() 字段"。
+        两种消息都接受。
+        """
+        class R(APIRoute[dict]):
+            file: UploadFile
+            data: Annotated[dict, Body()]
+
+        with pytest.raises(
+            ValueError,
+            match="不允许 Body\\(\\) 字段|Body 与 Form/UploadFile 字段不能在同一 APIRoute 混用",
+        ):
+            R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
+
+    def test_upload_as_multipart_false_optional_uploadfile_raises(self) -> None:
+        """Optional[UploadFile] + flag False → raise（Optional 包装不允许）。"""
+        class R(APIRoute[dict]):
+            file: UploadFile | None = None
+
+        with pytest.raises(ValueError, match="不能是 list/Optional/Form 包装"):
+            R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
+
+    def test_upload_as_multipart_false_happy_path(self) -> None:
+        """1 裸 UploadFile + flag False → 通过校验 + Dependant 正确。"""
+        class R(APIRoute[dict]):
+            file: UploadFile
+
+        d = R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
+        assert d.upload_as_multipart is False
+        assert len(d.file_body_params) == 1
+        assert d.file_body_params[0].name == "file"
+
+    def test_upload_as_multipart_default_true_passes(self) -> None:
+        """默认值（不传 upload_as_multipart=True）允许裸 UploadFile。"""
+        class R(APIRoute[dict]):
+            file: UploadFile
+
+        d = R._get_dependant(method="POST", path="/x")
+        assert d.upload_as_multipart is True
+        assert len(d.file_body_params) == 1
