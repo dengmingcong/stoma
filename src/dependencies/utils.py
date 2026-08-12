@@ -101,6 +101,36 @@ def _is_uploadfile_or_list_annotation(annotation: Any) -> bool:
     return False
 
 
+def _is_raw_body_uploadfile_annotation(annotation: Any) -> bool:
+    """判断注解是否可识别为 raw-body 模式的 UploadFile 字段。
+
+    raw-body 模式仅接受以下形式：
+
+    - ``UploadFile``
+    - ``UploadFile | None`` / ``Optional[UploadFile]``
+
+    不接受（由其他校验处理）：
+
+    - ``list[UploadFile]`` —— raw-body 只支持单文件
+    - ``Annotated[UploadFile, Form()]`` —— 已被 multipart 路径接管
+    - 任意层 ``Union[UploadFile, str]`` —— 多语义冲突
+
+    Pydantic v2 在 ``APIRoute._get_dependant`` 中获取的 ``field_info.annotation``
+    已被 strip 掉 ``Annotated`` 包装，所以本函数不需要处理 Annotated。
+
+    :param annotation: 待检查的类型注解。
+    :return: 是否为合法的 raw-body UploadFile 字段类型。
+    """
+    if annotation is UploadFile:
+        return True
+    origin = get_origin(annotation)
+    if origin is Union or origin is UnionType:
+        args = get_args(annotation)
+        non_none_args = [arg for arg in args if arg is not type(None)]
+        return len(non_none_args) == 1 and non_none_args[0] is UploadFile
+    return False
+
+
 # Playwright ``FormDataValue`` 支持的标量类型集合。
 # bytes 不在其中（见 ``src.client._fill_scalar_form_field`` 的运行时检查），
 # 因此 Form 不再接受 ``bytes`` / ``list[bytes]`` 字段。
