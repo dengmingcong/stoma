@@ -24,7 +24,7 @@ from enum import Enum
 import mimetypes
 from typing import Any, NamedTuple
 
-from playwright.sync_api import APIRequestContext, APIResponse, FormData
+from playwright.sync_api import APIRequestContext, APIResponse, FilePayload, FormData
 from pydantic import BaseModel
 
 from src.dependencies import Dependant, ModelField
@@ -48,7 +48,7 @@ class RequestBodyKind(Enum):
     JSON = "application/json"
     URLENCODED = "application/x-www-form-urlencoded"
     MULTIPART = "multipart/form-data"
-    RAW_BINARY = "application/octet-stream"
+    BINARY = "application/octet-stream"
 
 
 @dataclass
@@ -60,15 +60,14 @@ class RequestBody:
     :var kind: 请求体类型。
     :var json_body: JSON 请求体数据（当 kind 为 JSON 时）。
     :var form_data: 表单请求体数据（当 kind 为 URLENCODED 或 MULTIPART 时）。
-    :var raw_body: 原始字节请求体（当 kind 为 RAW_BINARY 时）。
-    :var headers: 请求体附加的 headers（当 kind 为 RAW_BINARY 时，例如 Content-Type）。
+    :var binary_body: 二进制请求体数据（当 kind 为 BINARY 时），以 Playwright
+        ``FilePayload`` 结构 ``{name, mimeType, buffer}`` 承载。
     """
 
     kind: RequestBodyKind
     json_body: dict | None = None
     form_data: FormData | None = None
-    raw_body: bytes | None = field(default=None)
-    headers: dict[str, str] | None = field(default=None)
+    binary_body: FilePayload | None = field(default=None)
 
 
 class RequestParams(NamedTuple):
@@ -289,19 +288,23 @@ class Client:
         :param dependant: 参数依赖定义。
         :return: 序列化后的请求体。
         """
-        # raw-body 短路：``upload_as_multipart=False`` 时，整条 body 走 raw bytes。
+        # raw-body 短路：``upload_as_multipart=False`` 时，整条 body 走 binary 字节。
         if not dependant.upload_as_multipart and dependant.file_body_params:
             field = dependant.file_body_params[0]
             value = getattr(api_route, field.name)
             if value is None:
-                return RequestBody(kind=RequestBodyKind.RAW_BINARY, raw_body=b"", headers=None)
+                return RequestBody(kind=RequestBodyKind.BINARY, binary_body=None)
             if isinstance(value, UploadFile):
                 data = value.path.read_bytes()
                 mime, _ = mimetypes.guess_type(str(value.path))
+                binary_body: FilePayload = {
+                    "name": str(value.path.name),
+                    "mimeType": mime if mime else "application/octet-stream",
+                    "buffer": data,
+                }
                 return RequestBody(
-                    kind=RequestBodyKind.RAW_BINARY,
-                    raw_body=data,
-                    headers={"Content-Type": mime} if mime else {"Content-Type": "application/octet-stream"},
+                    kind=RequestBodyKind.BINARY,
+                    binary_body=binary_body,
                 )
             # 启动期校验已保证 ``file_body_params`` 只有 ``UploadFile`` / ``list[UploadFile]``，
             # 这里仅是兜底，正常情况下不可达。
@@ -434,17 +437,20 @@ class Client:
             payload = {"multipart": body.form_data}
         elif body.kind is RequestBodyKind.URLENCODED:
             payload = {"form": body.form_data}
-        elif body.kind is RequestBodyKind.RAW_BINARY:
-            assert body.raw_body is not None, "RAW_BINARY 必须有 raw_body"
-            payload = {"data": body.raw_body}
+        elif body.kind is RequestBodyKind.BINARY:
+            assert body.binary_body is not None, "BINARY 必须有 binary_body"
+            payload = {"data": body.binary_body["buffer"]}
         elif body.kind is RequestBodyKind.JSON:
             payload = {"data": body.json_body if body.json_body else None}
         else:
             msg = f"未知的 RequestBodyKind: {body.kind!r}"
             raise ValueError(msg)
 
-        # 合并 headers：caller 的 headers + body 自带的 headers（body 优先——raw body 的 Content-Type 由 Serialize 阶段决定）。
-        merged_headers: dict[str, str] = {**(headers or {}), **(body.headers or {})}
+        # 合并 headers：自动派生的 Content-Type + APIRoute 的 headers（APIRoute 优先——允许覆盖自动 mime）。
+        derived_headers: dict[str, str] = {}
+        if body.binary_body and body.binary_body.get("mimeType"):
+            derived_headers["Content-Type"] = body.binary_body["mimeType"]
+        merged_headers: dict[str, str] = {**derived_headers, **(headers or {})}
 
         try:
             return self._context.fetch(
