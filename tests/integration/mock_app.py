@@ -361,3 +361,16 @@ async def upload_raw(request: Request) -> dict[str, Any]:
         "size": len(body),
         "content_type": request.headers.get("content-type", ""),
     }
+
+
+@app.post("/upload-raw-override")
+async def upload_raw_override(request: Request) -> dict[str, Any]:
+    """POST /upload-raw-override：raw body 上传，回显 Content-Type。
+
+    与 ``/upload-raw`` 行为一致；单独注册是为避免占用 ``/upload-raw`` 路径。
+    """
+    body = await request.body()
+    return {
+        "size": len(body),
+        "content_type": request.headers.get("content-type", ""),
+    }

@@ -16,7 +16,7 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel, Field
 
-from src import Body, Form, Path, Query, UploadFile
+from src import Body, Form, Header, Path, Query, UploadFile
 from src.client import Client
 from src.routing import APIRoute, APIRouter
 
@@ -689,6 +689,18 @@ class UploadRawOptRoute(APIRoute[dict[str, Any]]):
     file: UploadFile | None = None
 
 
+@router.post("/upload-raw-override", upload_as_multipart=False)
+class UploadRawOverrideRoute(APIRoute[dict[str, Any]]):
+    """POST /upload-raw-override：单文件 raw body，APIRoute 显式声明 Content-Type。
+
+    验证 APIRoute Header() 覆盖自动派生的 Content-Type（FilePayload.mimeType）。
+    路径不复用 /upload-raw，避免影响原测试用例。
+    """
+
+    file: UploadFile
+    content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/x-custom"
+
+
 class TestFormBody:
     """Form 字段端到端测试。
 
@@ -991,6 +1003,25 @@ class TestRawUploadBody:
 
         assert response.raw.status == 200
         assert response.validated == {"size": len(unknown_bytes), "content_type": "application/octet-stream"}
+
+    def test_raw_upload_apiroute_content_type_override(self, client: Client, tmp_path: pathlib.Path) -> None:
+        """APIRoute 显式 ``Content-Type`` 覆盖自动派生的 mime。
+
+        :param client: 共享的 Client 实例。
+        :param tmp_path: pytest 内置 tmp_path fixture。
+        """
+        pdf = tmp_path / "doc.pdf"
+        pdf_bytes = b"%PDF-1.4 fake content"
+        pdf.write_bytes(pdf_bytes)
+        endpoint = UploadRawOverrideRoute(file=UploadFile(path=pdf))
+
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated == {
+            "size": len(pdf_bytes),
+            "content_type": "application/x-custom",
+        }
 
 
 def test_form_marked_uploadfile_raises() -> None:
