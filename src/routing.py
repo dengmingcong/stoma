@@ -12,13 +12,16 @@ APIRoute 本身不持有 Playwright context，也不直接发送请求。
 
 import re
 from collections.abc import Callable
-from types import UnionType  # Python 3.10+
-from typing import Annotated, Any, ClassVar, Literal, Union, get_args, get_origin
+from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from src.dependencies import Dependant, ModelField
-from src.dependencies.utils import _is_uploadfile_or_list_annotation, field_annotation_is_complex, validate_form_field_annotation
+from src.dependencies.utils import (
+    _is_uploadfile_or_list_annotation,
+    field_annotation_is_complex,
+    validate_form_field_annotation,
+)
 from src.params import Form, Param, ParamTypes
 
 
@@ -174,9 +177,7 @@ class APIRoute[T](BaseModel):
                 json_response_schema_adapter=json_response_schema_adapter,
             )
 
-            if cls._dependant.pure_body_params and (
-                cls._dependant.form_body_params or cls._dependant.file_body_params
-            ):
+            if cls._dependant.pure_body_params and (cls._dependant.form_body_params or cls._dependant.file_body_params):
                 raise ValueError("Body 与 Form/UploadFile 字段不能在同一 APIRoute 混用")
 
         return cls._dependant
