@@ -69,6 +69,7 @@ class Dependant:
     :var json_response_schema_adapter: JSON 响应校验器缓存。
     :vartype json_response_schema_adapter: TypeAdapter | None
     :var upload_as_multipart: 上传文件时是否以 multipart/form-data 形式发送。默认 True。
+        False 表示按照 Postman body 为 binary 形式发送，适用于单文件上传接口。
     :vartype upload_as_multipart: bool
     """
 
