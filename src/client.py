@@ -429,18 +429,29 @@ class Client:
         :return: Playwright APIResponse 对象。
         :raise HTTPError: 网络层失败时抛出，消息包含 method/path 便于排错。
         """
-        payload: dict[str, Any] = {"data": body.json_body if body.json_body else None}
+        payload: dict[str, Any] = {}
         if body.kind is RequestBodyKind.MULTIPART:
             payload = {"multipart": body.form_data}
         elif body.kind is RequestBodyKind.URLENCODED:
             payload = {"form": body.form_data}
+        elif body.kind is RequestBodyKind.RAW_BINARY:
+            assert body.raw_body is not None, "RAW_BINARY 必须有 raw_body"
+            payload = {"data": body.raw_body}
+        elif body.kind is RequestBodyKind.JSON:
+            payload = {"data": body.json_body if body.json_body else None}
+        else:
+            msg = f"未知的 RequestBodyKind: {body.kind!r}"
+            raise ValueError(msg)
+
+        # 合并 headers：caller 的 headers + body 自带的 headers（body 优先——raw body 的 Content-Type 由 Serialize 阶段决定）。
+        merged_headers: dict[str, str] = {**(headers or {}), **(body.headers or {})}
 
         try:
             return self._context.fetch(
                 path,
                 method=method,
                 params=params if params else None,
-                headers=headers if headers else None,
+                headers=merged_headers or None,
                 **payload,
             )
         except Exception as e:
