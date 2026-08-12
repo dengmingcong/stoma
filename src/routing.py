@@ -58,6 +58,7 @@ class APIRoute[T](BaseModel):
         cls,
         method: str | None = None,
         path: str | None = None,
+        upload_as_multipart: bool = True,
     ) -> Dependant:
         """获取参数依赖定义缓存（懒加载）。
 
@@ -175,6 +176,7 @@ class APIRoute[T](BaseModel):
                 file_body_params=file_body_params,
                 json_response_schema=json_response_schema,
                 json_response_schema_adapter=json_response_schema_adapter,
+                upload_as_multipart=upload_as_multipart,
             )
 
             if cls._dependant.pure_body_params and (cls._dependant.form_body_params or cls._dependant.file_body_params):
@@ -231,6 +233,7 @@ def api_route_decorator[T: APIRoute](
     *,
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"],
     path: str,
+    upload_as_multipart: bool = True,
 ) -> Callable[[type[T]], type[T]]:
     """类装饰器工厂函数，用于注入路由元数据到接口类。
 
@@ -265,7 +268,7 @@ def api_route_decorator[T: APIRoute](
         :rtype: type[T]
         """
         # 调用 _get_dependant 生成并缓存元数据
-        cls._get_dependant(method=method, path=path)
+        cls._get_dependant(method=method, path=path, upload_as_multipart=upload_as_multipart)
         return cls
 
     return update_api_route
