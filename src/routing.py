@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter
 from src.dependencies import Dependant, ModelField
 from src.dependencies.utils import (
     _is_uploadfile_or_list_annotation,
+    _is_raw_body_uploadfile_annotation,
     field_annotation_is_complex,
     validate_form_field_annotation,
 )
@@ -89,6 +90,8 @@ class APIRoute[T](BaseModel):
         :type method: str | None
         :param path: 路由路径，首次调用时必须提供。
         :type path: str | None
+        :param upload_as_multipart: 上传文件时是否以 multipart/form-data 形式发送。默认为 True。
+        :type upload_as_multipart: bool
         :return: 参数依赖定义对象。
         :rtype: Dependant
         """
@@ -189,10 +192,10 @@ class APIRoute[T](BaseModel):
                         f"实际有 {len(cls._dependant.file_body_params)} 个"
                     )
                 field = cls._dependant.file_body_params[0]
-                if field.field_info.annotation is not UploadFile:
+                if not _is_raw_body_uploadfile_annotation(field.field_info.annotation):
                     raise ValueError(
                         f"upload_as_multipart=False 时 UploadFile 字段必须是裸 UploadFile"
-                        f"（不能是 list/Optional/Form 包装），"
+                        f"或 UploadFile | None（不能是 list/Form 包装），"
                         f"字段 {field.name!r} 的注解是 {field.field_info.annotation!r}"
                     )
                 if cls._dependant.form_body_params:
