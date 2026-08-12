@@ -344,3 +344,20 @@ async def upload_mix(request: Request) -> dict[str, Any]:
         else:
             fields[key] = value
     return {**fields, **file_meta}
+
+
+@app.post("/upload-raw")
+async def upload_raw(request: Request) -> dict[str, Any]:
+    """POST /upload-raw：raw body 上传，验证 wire-level 序列化。
+
+    与 /upload 不同，/upload-raw 不解析 multipart——整个 body 是裸字节，
+    Content-Type 头标识文件 mime（来自 client.mimetypes.guess_type）。
+
+    :param request: FastAPI Request 对象。
+    :return: 字节大小和 content-type。
+    """
+    body = await request.body()
+    return {
+        "size": len(body),
+        "content_type": request.headers.get("content-type", ""),
+    }
