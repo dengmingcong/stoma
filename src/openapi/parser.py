@@ -15,7 +15,9 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,7 +25,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from src.openapi.model_generator import _detect_parameter_cycle, _expand_parameter_refs
-from src.openapi.models import Endpoint
+from src.openapi.models import BodyKind, Endpoint, RequestBodyField
 from src.openapi.models_types import SpecVersion
 from src.openapi.reference_types import (
     OpenAPI30,
@@ -37,6 +39,29 @@ from src.openapi.reference_types import (
     Response30,
     Response31,
 )
+
+
+@dataclass
+class BodyDetection:
+    """请求体探测结果。
+
+    :var kind: 请求体类型枚举。
+    :vartype kind: BodyKind
+    :var schema_dict: schema 的 JSON 序列化字典，供 renderer 读取 format/type/properties。
+        BINARY 类型 schema_dict 为空字典。
+    :vartype schema_dict: dict[str, Any]
+    """
+
+    kind: BodyKind
+    schema_dict: dict[str, Any]
+
+
+PYTHON_TYPE_MAP: dict[str, str] = {
+    "string": "str",
+    "integer": "int",
+    "number": "float",
+    "boolean": "bool",
+}
 
 
 class OpenAPISchemaError(Exception):
@@ -183,6 +208,60 @@ class OpenAPIParser[
         media_type = content.get("application/json")
         return media_type is not None and getattr(media_type, "media_type_schema", None) is not None
 
+    @staticmethod
+    def _detect_scalar_json_body(content: dict[str, Any]) -> BodyDetection | None:
+        media_type_obj = content.get("application/json")
+        if media_type_obj is None:
+            return None
+        media_type_schema = getattr(media_type_obj, "media_type_schema", None)
+        if media_type_schema is None:
+            return None
+        schema_dict = media_type_schema.model_dump(mode="json")
+        schema_type = schema_dict.get("type", "")
+        if schema_type not in {"string", "integer", "number", "boolean"}:
+            return None
+        return BodyDetection(kind=BodyKind.SCALAR_JSON, schema_dict=schema_dict)
+
+    @staticmethod
+    def _detect_form_body(content: dict[str, Any]) -> BodyDetection | None:
+        media_type_obj = content.get("application/x-www-form-urlencoded")
+        if media_type_obj is None:
+            return None
+        media_type_schema = getattr(media_type_obj, "media_type_schema", None)
+        if media_type_schema is None:
+            return None
+        schema_dict = media_type_schema.model_dump(mode="json")
+        if "properties" not in schema_dict:
+            return None
+        return BodyDetection(kind=BodyKind.FORM_URLENCODED, schema_dict=schema_dict)
+
+    @staticmethod
+    def _detect_multipart_body(content: dict[str, Any]) -> BodyDetection | None:
+        media_type_obj = content.get("multipart/form-data")
+        if media_type_obj is None:
+            return None
+        media_type_schema = getattr(media_type_obj, "media_type_schema", None)
+        if media_type_schema is None:
+            return None
+        schema_dict = media_type_schema.model_dump(mode="json")
+        if "properties" not in schema_dict:
+            return None
+        return BodyDetection(kind=BodyKind.MULTIPART, schema_dict=schema_dict)
+
+    @staticmethod
+    def _detect_binary_body(content: dict[str, Any]) -> BodyDetection | None:
+        binary_media_types = {
+            "application/octet-stream",
+            "application/pdf",
+        }
+        binary_prefixes = ("image/", "audio/", "video/", "font/")
+        for media_type in content:
+            if media_type in binary_media_types:
+                return BodyDetection(kind=BodyKind.BINARY, schema_dict={})
+            if media_type.startswith(binary_prefixes):
+                return BodyDetection(kind=BodyKind.BINARY, schema_dict={})
+        return None
+
     def validate_operation_ids(self) -> None:
         """校验所有操作均有非空 ``operationId``。"""
         if self._spec is None:
@@ -242,6 +321,67 @@ class OpenAPIParser[
                 operation_params = cast(
                     Sequence[ParameterT], getattr(operation, "parameters", None) or ()
                 )
+                body_kind: BodyKind = BodyKind.NONE
+                body_fields: list[RequestBodyField] = []
+                upload_as_multipart: bool = False
+                if request_body is not None:
+                    content: dict[str, Any] | None = getattr(request_body, "content", None)
+                    if isinstance(content, dict):
+                        detection = self._detect_multipart_body(content)
+                        if detection is None:
+                            detection = self._detect_form_body(content)
+                        if detection is None:
+                            detection = self._detect_binary_body(content)
+                        if detection is None:
+                            detection = self._detect_scalar_json_body(content)
+                        if detection is not None:
+                            body_kind = detection.kind
+                            schema_dict = detection.schema_dict
+                            if body_kind == BodyKind.MULTIPART:
+                                upload_as_multipart = True
+                                properties = schema_dict.get("properties", {})
+                                for prop_name, prop_schema in properties.items():
+                                    prop_type = prop_schema.get("type", "str")
+                                    prop_format = prop_schema.get("schema_format", "") or prop_schema.get("format", "")
+                                    if prop_format == "binary":
+                                        body_fields.append(
+                                            RequestBodyField(
+                                                name=_to_snake_case(prop_name),
+                                                type="UploadFile",
+                                                marker="uploadfile",
+                                            )
+                                        )
+                                    elif prop_type in {"string", "integer", "number", "boolean"}:
+                                        py_type = PYTHON_TYPE_MAP[prop_type]
+                                        body_fields.append(
+                                            RequestBodyField(
+                                                name=_to_snake_case(prop_name),
+                                                type=py_type,
+                                                marker="form",
+                                            )
+                                        )
+                            elif body_kind == BodyKind.FORM_URLENCODED:
+                                properties = schema_dict.get("properties", {})
+                                for prop_name, prop_schema in properties.items():
+                                    prop_type = prop_schema.get("type", "str")
+                                    py_type = PYTHON_TYPE_MAP.get(prop_type, "str")
+                                    body_fields.append(
+                                        RequestBodyField(
+                                            name=_to_snake_case(prop_name),
+                                            type=py_type,
+                                            marker="form",
+                                        )
+                                    )
+                            elif body_kind == BodyKind.SCALAR_JSON:
+                                schema_type = schema_dict.get("type", "str")
+                                py_type = PYTHON_TYPE_MAP.get(schema_type, "str")
+                                body_fields.append(
+                                    RequestBodyField(
+                                        name=_to_snake_case(operation_id if isinstance(operation_id, str) else ""),
+                                        type=py_type,
+                                        marker="body",
+                                    )
+                                )
                 endpoint = Endpoint[ParameterT, RequestBodyT, ResponseT](
                     operation_id=operation_id if isinstance(operation_id, str) else "",
                     method=method.upper(),
@@ -252,11 +392,20 @@ class OpenAPIParser[
                     request_body=request_body,
                     responses=responses,
                     spec_version=self.spec_version,
+                    body_kind=body_kind,
+                    body_fields=body_fields,
+                    upload_as_multipart=upload_as_multipart,
                 )
                 endpoints.append(endpoint)
 
         self._has_payloads = has_payloads
         return endpoints
+
+
+def _to_snake_case(name: str) -> str:
+    """将 PascalCase 或 camelCase 字符串转换为 snake_case。"""
+    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
 
 
 def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, Any, Any]:
