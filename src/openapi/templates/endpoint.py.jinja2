@@ -8,19 +8,19 @@ from __future__ import annotations
 {% if imported_models -%}
 from .models import {{ imported_models | join(', ') }}
 {% endif -%}
-{% if header_fields or request_body_type or uses_field_import -%}
+{% if header_fields or request_body_type or scalar_body_field or form_fields or uses_field_import -%}
 from typing import Annotated
 {% endif -%}
 {% if uses_field_import -%}
 from pydantic import Field
 {% endif %}
-from stoma import APIRouter, APIRoute{% if header_fields %}, Header{% endif %}{% if request_body_type %}, Body{% endif %}
+from stoma import APIRouter, APIRoute{% if header_fields %}, Header{% endif %}{% if request_body_type or scalar_body_field %}, Body{% endif %}{% if form_fields %}, Form{% endif %}{% if file_fields or (scalar_body_field and not upload_as_multipart) %}, UploadFile{% endif %}
 
 
 router = APIRouter()
 
 
-@router.{{ method }}("{{ path }}")
+@router.{{ method }}("{{ path }}"{% if not upload_as_multipart %}, upload_as_multipart=False{% endif %})
 class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type | join(' | ') }}]{% endif %}):
     """{{ summary | default(operation_id) }}。{{ "\n    " + description if description else "" }}
     """
@@ -34,7 +34,7 @@ class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type | join(' 
     {{ field }}
 {% endfor %}
 {% endif %}
-{% if request_body_type %}
+{% if request_body_type and not form_fields and not file_fields and not scalar_body_field %}
     body: {{ request_body_type }}
 {% endif %}
 {% if scalar_body_field %}
