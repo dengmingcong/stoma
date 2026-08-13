@@ -167,6 +167,13 @@ class EchoHeadersOverrideRoute(APIRoute[dict[str, str]]):
     content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/x-custom"
 
 
+@router.post("/echo-body")
+class StrBodyRoute(APIRoute[dict[str, str]]):
+    """POST /echo-body：``Annotated[str, Body(media_type="text/plain")]`` 字符串标量 body 验证。"""
+
+    text: Annotated[str, Body(media_type="text/plain")]
+
+
 # ===== APIRoute 不带泛型参数测试端点 =====
 
 
@@ -520,6 +527,21 @@ class TestMediaTypeIntegration:
         assert response.validated is not None
         assert "application/x-custom" in response.validated["content_type"]
         assert "text/plain" not in response.validated["content_type"]
+
+
+class TestStrBodyIntegration:
+    """``Annotated[str, Body(media_type=...)]`` 字符串标量 body wire-level 集成测试。"""
+
+    def test_str_scalar_body_received_by_server(self, client: Client) -> None:
+        """``Annotated[str, Body(media_type="text/plain")]`` → 服务端收到裸字符串 + text/plain Content-Type。"""
+
+        endpoint = StrBodyRoute(text="hello world 测试")
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated is not None
+        assert response.validated["body"] == "hello world 测试"
+        assert "text/plain" in response.validated["content_type"]
 
 
 class TestClient:

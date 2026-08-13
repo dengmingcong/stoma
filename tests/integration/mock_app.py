@@ -220,6 +220,24 @@ async def echo_headers_override(request: Request) -> dict[str, str]:
     return {"content_type": request.headers.get("content-type", "")}
 
 
+@app.post("/echo-body")
+async def echo_body(request: Request) -> JSONResponse:
+    """POST /echo-body：回显原始 body 与 Content-Type。
+
+    用于验证 ``Annotated[str, Body(media_type=...)]`` 字符串标量 body 的
+    wire format。用 ``request.body()`` 读裸字节（绕过 FastAPI 自动 JSON
+    解析），返回 ``{"body": <string>, "content_type": <header>}``。
+
+    :param request: FastAPI Request 对象。
+    :return: 原始 body 字符串与 Content-Type header 值。
+    """
+    raw = await request.body()
+    return JSONResponse(content={
+        "body": raw.decode("utf-8"),
+        "content_type": request.headers.get("content-type", ""),
+    })
+
+
 @app.head("/probe")
 def probe_head() -> Response:
     """HEAD /probe：探测端点，验证 HEAD 方法支持。
