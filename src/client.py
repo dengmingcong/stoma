@@ -52,7 +52,7 @@ class RawPayload(NamedTuple):
 class RequestBodyKind(Enum):
     """请求体类型枚举。"""
 
-    RAW = "application/raw"
+    RAW = "application/json"
     URLENCODED = "application/x-www-form-urlencoded"
     MULTIPART = "multipart/form-data"
     BINARY = "application/octet-stream"
@@ -67,9 +67,14 @@ class RequestBody:
     :var kind: 请求体类型。
     :var raw_data: 原始请求体数据（当 kind 为 RAW 时），以 ``RawPayload``
         承载 ``value`` 与可选 ``media_type``。
+
+        参考 Postman Body 的 raw 模式。
+
     :var form_data: 表单请求体数据（当 kind 为 URLENCODED 或 MULTIPART 时）。
     :var binary_file: 二进制请求体数据（当 kind 为 BINARY 时），以 Playwright
         ``FilePayload`` 结构 ``{name, mimeType, buffer}`` 承载。
+
+        参考 Postman Body 的 binary 模式。
     """
 
     kind: RequestBodyKind
