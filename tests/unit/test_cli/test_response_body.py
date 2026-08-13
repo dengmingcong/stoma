@@ -977,14 +977,14 @@ components:
         行为契约：
         - spec 仅声明 ``400`` + ``500`` 两种 JSON 响应、没有 ``200``/``201`` 成功
           响应,且 ``components.schemas`` 故意为空（只有 ``$ref`` 指向的占位
-          名）——目的是把模型生成的唯一开关留给 ``parser.has_payloads``,
+          名）——目的是把模型生成的唯一开关留给 ``parser.has_json_payloads``,
           而不是 ``components.schemas`` 兜底分支。
-        - ``parser.has_payloads`` 必须为 ``True``（与 renderer 对所有 JSON status
+        - ``parser.has_json_payloads`` 必须为 ``True``（与 renderer 对所有 JSON status
           一视同仁保持一致）,CLI 必须生成 ``models.py``,并由 route 文件引用
           两个错误模型。
-        - 这是 ``src/openapi/parser.py:get_endpoints`` 中 ``has_payloads`` 过滤器
+        - 这是 ``src/openapi/parser.py:get_endpoints`` 中 ``has_json_payloads`` 过滤器
           从 ``{"200", "201"}`` 改为"全部 status"后的一致性回归锁。
-        - 防御：若 ``has_payloads`` 过滤器未更新,CLI 会跳过 ``models.py``
+        - 防御：若 ``has_json_payloads`` 过滤器未更新,CLI 会跳过 ``models.py``
           生成,但 route 仍生成 ``from .models import Error, ServerError`` ——导入
           指向不存在的文件,运行时 ``ImportError``。本测试在生成阶段就拦截
           这种「silent missing import」漂移。
@@ -995,7 +995,7 @@ components:
           ``DanglingRefWarning`` 并生成 ``class Error(RootModel[Any])`` 占位,
           满足断言 ``class Error in models`` / ``class ServerError in models``。
         - 这样 spec 仍然合法、可加载,但 ``components.schemas`` 是空 dict,
-          ``schemas = {} or has_payloads`` 中只有 ``has_payloads=True`` 才能
+          ``schemas = {} or has_json_payloads`` 中只有 ``has_json_payloads=True`` 才能
           让 CLI 生成 ``models.py``。
         """
         spec = """\
@@ -1035,9 +1035,9 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        # ``has_payloads`` 为 True 时 CLI 必须生成 ``models.py``,包含两个错误类。
+        # ``has_json_payloads`` 为 True 时 CLI 必须生成 ``models.py``,包含两个错误类。
         assert (out_dir / "models.py").exists(), (
-            "models.py 未生成 ——parser.has_payloads 在仅有错误响应时仍为 False,"
+            "models.py 未生成 ——parser.has_json_payloads 在仅有错误响应时仍为 False,"
             "CLI 跳过了 generate_models 调用"
         )
         models = (out_dir / "models.py").read_text(encoding="utf-8")
@@ -1048,14 +1048,14 @@ paths:
         assert "APIRoute[Error | ServerError]" in route
         assert "from .models import Error, ServerError" in route
 
-    def test_parser_has_payloads_true_when_only_error_responses(
+    def test_parser_has_json_payloads_true_when_only_error_responses(
         self, cli_runner: CliRunner, tmp_path: Path
     ) -> None:
-        """直接走 parser 探测 ``has_payloads``,验证错误响应纳入判定。
+        """直接走 parser 探测 ``has_json_payloads``,验证错误响应纳入判定。
 
         行为契约：
         - 与 ``test_response_with_only_error_status_codes_generates_models``
-          互补,直接走 ``make_openapi_parser`` 验证 ``parser.has_payloads``
+          互补,直接走 ``make_openapi_parser`` 验证 ``parser.has_json_payloads``
           属性值,避免 CLI 副作用掩盖判定错误。
         - 这是 MUST DO 中的「Probe misleading-success-output」步骤。
         """
@@ -1094,8 +1094,8 @@ paths:
 
         parser = make_openapi_parser(spec_file)
         parser.load()
-        # ``get_endpoints()`` 必须先调,``has_payloads`` 由它内部计算。
+        # ``get_endpoints()`` 必须先调,``has_json_payloads`` 由它内部计算。
         parser.get_endpoints()
-        assert parser.has_payloads is True, (
-            "parser.has_payloads 应为 True ——4xx/5xx JSON 响应必须纳入判定"
+        assert parser.has_json_payloads is True, (
+            "parser.has_json_payloads 应为 True ——4xx/5xx JSON 响应必须纳入判定"
         )

@@ -36,8 +36,6 @@ OpenAPI 3.0 和 3.1 的 ``Reference`` 在 openapi-pydantic 里是互相独立的
 
 from __future__ import annotations
 
-import keyword
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, TypeGuard
@@ -45,6 +43,7 @@ from typing import Any, Protocol, TypeGuard
 from jinja2 import Environment, FileSystemLoader, Template
 from pydantic.alias_generators import to_snake
 
+from src.openapi._naming import _is_snake_case, _to_field_name, _to_pascal_case
 from src.openapi.models import BodyKind, Endpoint
 from src.openapi.models_types import SpecVersion
 from src.openapi.parser import OpenAPISchemaError
@@ -107,33 +106,6 @@ class RequestBodyFields:
     upload_as_multipart: bool = True
     imported_models: list[str] = field(default_factory=list)
     body_kind: BodyKind = BodyKind.NONE
-
-
-def _is_snake_case(name: str) -> bool:
-    """检测 name 是否已经是合法的 snake_case（且不是 Python 关键字）。"""
-    if not name:
-        return False
-    if keyword.iskeyword(name):
-        return False
-    return bool(re.fullmatch(r"[a-z][a-z0-9_]*", name))
-
-
-def _to_field_name(name: str) -> str:
-    """将 OpenAPI 参数名转为合法的 snake_case field 名。"""
-    cleaned = re.sub(r"[^a-zA-Z0-9_]", "_", name)
-    cleaned = re.sub(r"_+", "_", cleaned).strip("_") or "param"
-    if cleaned[0].isdigit():
-        cleaned = f"n_{cleaned}"
-    if keyword.iskeyword(cleaned):
-        cleaned = f"p_{cleaned}"
-    return to_snake(cleaned)
-
-
-def _to_pascal_case(operation_id: str) -> str:
-    """将 operationId 转换为 PascalCase 类名。"""
-    normalized = operation_id.replace("-", "_")
-    words = re.split(r"[_-]+|(?<=[a-z0-9])(?=[A-Z])", normalized)
-    return "".join(word.capitalize() for word in words if word)
 
 
 class EndpointRenderer[ReferenceT: _ReferenceLike]:

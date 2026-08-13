@@ -68,7 +68,7 @@ class TestMakeRequestBodyFormMultipart:
         compile(content, "login_user.py", "exec")
 
     def test_form_urlencoded_array(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 form-urlencoded 含数组字段时 fallback 到 str（parser 对 list 类型无专门分支）。"""
+        """验证 form-urlencoded 含数组字段时派生 list[T]（从 items.type 取元素类型）。"""
         spec = _build_spec(
             "/tags",
             "post",
@@ -94,10 +94,44 @@ class TestMakeRequestBodyFormMultipart:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "add_tags.py").read_text(encoding="utf-8")
-        # parser 对 array 类型无专门分支，fallback 到 str
-        assert "tags: Annotated[str, Form()]" in content
+        # 数组字段从 items.type 派生 list[T];与 runtime Annotated[list[str], Form()] 一致
+        assert "tags: Annotated[list[str], Form()]" in content
         assert "from stoma import APIRouter, APIRoute, Form" in content
         compile(content, "add_tags.py", "exec")
+
+    def test_form_urlencoded_array_with_int_items(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 form-urlencoded 数组字段以 items.type 为元素类型派生 list[int]。"""
+        spec = _build_spec(
+            "/scores",
+            "post",
+            "addScores",
+            """\
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                scores:
+                  type: array
+                  items:
+                    type: integer
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "add_scores.py").read_text(encoding="utf-8")
+        # items.type=integer → list[int]
+        assert "scores: Annotated[list[int], Form()]" in content
+        assert "from stoma import APIRouter, APIRoute, Form" in content
+        compile(content, "add_scores.py", "exec")
 
     def test_multipart_single_file(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 multipart/form-data 含 format: binary 单文件字段生成 UploadFile（无 Form import）。"""
