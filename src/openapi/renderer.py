@@ -38,13 +38,14 @@ from __future__ import annotations
 
 import keyword
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, TypeGuard
 
 from jinja2 import Environment, FileSystemLoader, Template
 from pydantic.alias_generators import to_snake
 
-from src.openapi.models import Endpoint
+from src.openapi.models import BodyKind, Endpoint
 from src.openapi.models_types import SpecVersion
 from src.openapi.parser import OpenAPISchemaError
 from src.openapi.reference_types import Reference30, Reference31
@@ -62,6 +63,50 @@ class _ReferenceLike(Protocol):
     """
 
     ref: str
+
+
+@dataclass
+class RequestBodyFields:
+    """请求体字段渲染信息的容器。
+
+    按 :class:`BodyKind` 派发后，各分支填充不同字段：
+
+    - ``JSON_MODEL``：``imported_models`` 填充 model 名字符串，
+      其余字段保持默认值（``scalar_body_field=None`` 等）；
+      template 用旧 ``body: <model>`` 单字段路径渲染。
+    - ``FORM_URLENCODED``：``form_fields`` 填充
+      ``"    <name>: Annotated[<type>, Form()]"`` 列表，
+      其余字段为空。
+    - ``MULTIPART``：``form_fields`` / ``file_fields`` 分别填充，
+      ``upload_as_multipart=True``。
+    - ``SCALAR_JSON``：单字段放进 ``scalar_body_field: str``，
+      构造为 ``"    <name>: Annotated[<type>, Body()]"``。
+    - ``BINARY``：单字段放进 ``scalar_body_field: str``，
+      构造为 ``"    <name>: UploadFile"``，
+      ``upload_as_multipart=False``。
+    - ``NONE``：全部字段保持默认值（template 跳过所有分支）。
+
+    :var scalar_body_field: 单字段声明字符串（SCALAR_JSON / BINARY）。
+    :vartype scalar_body_field: str | None
+    :var form_fields: form 字段声明字符串列表（FORM_URLENCODED / MULTIPART）。
+    :vartype form_fields: list[str]
+    :var file_fields: file 字段声明字符串列表（MULTIPART）。
+    :vartype file_fields: list[str]
+    :var upload_as_multipart: 是否以 ``multipart/form-data`` 传输（MULTIPART
+        为 ``True``，BINARY 为 ``False``）。
+    :vartype upload_as_multipart: bool
+    :var imported_models: 待导入的模型名列表（JSON_MODEL 路径填充）。
+    :vartype imported_models: list[str]
+    :var body_kind: 请求体类型枚举（方便 template 做路由判断）。
+    :vartype body_kind: BodyKind
+    """
+
+    scalar_body_field: str | None = None
+    form_fields: list[str] = field(default_factory=list)
+    file_fields: list[str] = field(default_factory=list)
+    upload_as_multipart: bool = True
+    imported_models: list[str] = field(default_factory=list)
+    body_kind: BodyKind = BodyKind.NONE
 
 
 def _is_snake_case(name: str) -> bool:
@@ -156,14 +201,17 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         class_name = _to_pascal_case(operation_id)
         file_name = f"{to_snake(operation_id)}.py"
         response_type = self._extract_response_info(endpoint.responses, endpoint)
-        request_body_type = self._extract_request_body_info(endpoint.request_body, endpoint)
+        body_fields_template = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields, uses_field_import = self._extract_params(endpoint.parameters)
 
         # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
+        # imported_models 来自 response_type + body_fields_template.imported_models。
         models_for_import: list[str] = list(response_type)
-        if request_body_type:
-            models_for_import.append(request_body_type)
-        imported_models: list[str] = list(dict.fromkeys(models_for_import))
+        models_for_import.extend(body_fields_template.imported_models)
+        imported_models = list(dict.fromkeys(models_for_import))
+
+        # request_body_type 保留字符串形式供 template 旧路径使用（JSON_MODEL → body: <Type>）。
+        request_body_type = body_fields_template.imported_models[0] if body_fields_template.imported_models else ""
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
         rendered_code = template.render(
@@ -175,6 +223,10 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             description=endpoint.description,
             response_type=response_type,
             request_body_type=request_body_type,
+            scalar_body_field=body_fields_template.scalar_body_field,
+            form_fields=body_fields_template.form_fields,
+            file_fields=body_fields_template.file_fields,
+            upload_as_multipart=body_fields_template.upload_as_multipart,
             header_fields=header_fields,
             param_fields=param_fields,
             imported_models=imported_models,
@@ -235,31 +287,114 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         self,
         request_body: Any,
         endpoint: Endpoint[Any, Any, Any],
-    ) -> str:
-        """提取请求体对应的模型名（同时也是要从 ``.models`` 导入的类名）。
+    ) -> RequestBodyFields:
+        """提取请求体字段渲染信息。
 
-        ``$ref`` 路径取末段并 PascalCase 化（对齐 ``datamodel-code-generator``
-        对 ``components.schemas`` key 的自动 PascalCase 行为，例如
-        ``user-profile`` → ``UserProfile``）；inline object 路径派生为
-        ``{PascalOpId}Request``（对齐 ``datamodel-code-generator`` 的
-        ``use_operation_id_as_name=True`` —— ``datamodel-code-generator``
-        在该模式下对 inline request body 用 ``{operationId}Request`` 命名）。
+        按 ``endpoint.body_kind`` 派发到 5 条路径：
+
+        - ``JSON_MODEL``：走原有逻辑——读 ``request_body.content["application/json"]``
+          schema 并 PascalCase 化，结果放进 ``imported_models``；让 template
+          的旧 ``body: <model>`` 单字段块渲染。
+        - ``FORM_URLENCODED``：遍历 ``endpoint.body_fields``，对
+          ``marker == "form"`` 的字段构造
+          ``"    <name>: Annotated[<type>, Form()]"`` 填入 ``form_fields``。
+        - ``MULTIPART``：``marker == "form"`` → ``form_fields``，
+          ``marker == "uploadfile"`` → ``file_fields``
+          （``"    <name>: UploadFile"``）。
+        - ``SCALAR_JSON``：从 ``endpoint.body_fields[0]`` 派生
+          ``"    <name>: Annotated[<type>, Body()]"`` 填入 ``scalar_body_field``。
+        - ``BINARY``：从 ``endpoint.body_fields[0]`` 派生
+          ``"    <name>: UploadFile"`` 填入 ``scalar_body_field``，
+          ``upload_as_multipart=False``。
+        - ``NONE``：返回空 ``RequestBodyFields()``（template 跳过所有分支）。
 
         :param request_body: :class:`RequestBody` 对象（来自 openapi-pydantic）。
         :param endpoint: 当前 :class:`Endpoint` IR 对象。
-        :return: 请求体模型名；无 request body / 无 application/json 时返回
-            空字符串（无 body 不需要 import）。
+        :return: :class:`RequestBodyFields` 结构。
         """
-        if not request_body:
-            return ""
+        body_kind = endpoint.body_kind
 
-        content = request_body.content or {}
-        json_content = content.get("application/json", {})
-        schema = getattr(json_content, "media_type_schema", None)
+        # NONE 或未匹配的旧路径 → 空结构（template 不渲染任何 body 字段）。
+        if body_kind == BodyKind.NONE:
+            # 尝试走原有逻辑处理旧 spec 路径（body_kind 未被 Todo 2 填充的场景）。
+            if not request_body:
+                return RequestBodyFields()
+            content = request_body.content or {}
+            json_content = content.get("application/json", {})
+            schema = getattr(json_content, "media_type_schema", None)
+            if schema is not None:
+                if self._is_reference(schema):
+                    model_name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
+                    return RequestBodyFields(
+                        imported_models=[model_name],
+                        body_kind=BodyKind.JSON_MODEL,
+                    )
+                model_name = f"{_to_pascal_case(endpoint.operation_id)}Request"
+                return RequestBodyFields(
+                    imported_models=[model_name],
+                    body_kind=BodyKind.JSON_MODEL,
+                )
+            return RequestBodyFields()
 
-        if self._is_reference(schema):
-            return _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
-        return f"{_to_pascal_case(endpoint.operation_id)}Request"
+        if body_kind == BodyKind.JSON_MODEL:
+            # body_fields 不为空时走这里（Todo 2 填充了 body_fields 但 body_kind=JSON_MODEL）。
+            if not request_body:
+                return RequestBodyFields()
+            content = request_body.content or {}
+            json_content = content.get("application/json", {})
+            schema = getattr(json_content, "media_type_schema", None)
+            if schema is None:
+                return RequestBodyFields()
+            if self._is_reference(schema):
+                model_name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
+            else:
+                model_name = f"{_to_pascal_case(endpoint.operation_id)}Request"
+            return RequestBodyFields(imported_models=[model_name], body_kind=body_kind)
+
+        if body_kind == BodyKind.FORM_URLENCODED:
+            form_fields: list[str] = []
+            for bf in endpoint.body_fields:
+                if bf.marker == "form":
+                    form_fields.append(f"{bf.name}: Annotated[{bf.type}, Form()]")
+            return RequestBodyFields(form_fields=form_fields, body_kind=body_kind)
+
+        if body_kind == BodyKind.MULTIPART:
+            form_fields = []
+            file_fields = []
+            for bf in endpoint.body_fields:
+                if bf.marker == "form":
+                    form_fields.append(f"{bf.name}: Annotated[{bf.type}, Form()]")
+                elif bf.marker == "uploadfile":
+                    file_fields.append(f"{bf.name}: UploadFile")
+            return RequestBodyFields(
+                form_fields=form_fields,
+                file_fields=file_fields,
+                upload_as_multipart=endpoint.upload_as_multipart,
+                body_kind=body_kind,
+            )
+
+        if body_kind == BodyKind.SCALAR_JSON:
+            if not endpoint.body_fields:
+                return RequestBodyFields()
+            bf = endpoint.body_fields[0]
+            scalar = f"{bf.name}: Annotated[{bf.type}, Body()]"
+            return RequestBodyFields(scalar_body_field=scalar, body_kind=body_kind)
+
+        if body_kind == BodyKind.BINARY:
+            # BINARY schema_dict 为 {}，body_fields 可能为空；此时用 operation_id 派生字段名。
+            if endpoint.body_fields:
+                bf = endpoint.body_fields[0]
+                scalar = f"{bf.name}: UploadFile"
+            else:
+                field_name = to_snake(endpoint.operation_id)
+                scalar = f"{field_name}: UploadFile"
+            return RequestBodyFields(
+                scalar_body_field=scalar,
+                upload_as_multipart=False,
+                body_kind=body_kind,
+            )
+
+        return RequestBodyFields()
 
     def _extract_response_info(
         self,

@@ -37,3 +37,16 @@ class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type | join(' 
 {% if request_body_type %}
     body: {{ request_body_type }}
 {% endif %}
+{% if scalar_body_field %}
+    {{ scalar_body_field }}
+{% endif %}
+{% if form_fields %}
+{% for field in form_fields %}
+    {{ field }}
+{% endfor %}
+{% endif %}
+{% if file_fields %}
+{% for field in file_fields %}
+    {{ field }}
+{% endfor %}
+{% endif %}
