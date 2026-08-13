@@ -19,11 +19,11 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter
 from src.dependencies import Dependant, ModelField
 from src.dependencies.utils import (
     _is_uploadfile_or_list_annotation,
-    validate_binary_body_annotation,
     field_annotation_is_complex,
+    validate_binary_body_annotation,
     validate_form_field_annotation,
 )
-from src.params import Form, Param, ParamTypes, UploadFile
+from src.params import Form, Param, ParamTypes
 
 
 class APIRoute[T](BaseModel):

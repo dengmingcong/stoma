@@ -20,7 +20,7 @@ URL/Query 处理说明：
 """
 
 import mimetypes
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 from typing import Any, NamedTuple
 
@@ -42,10 +42,17 @@ class BodyItem(NamedTuple):
     dumped: dict[str, Any] | Any
 
 
+class RawPayload(NamedTuple):
+    """原始 body 复合类型：值（dict 或 scalar）+ 可选 media_type。"""
+
+    value: Any
+    media_type: str | None = None
+
+
 class RequestBodyKind(Enum):
     """请求体类型枚举。"""
 
-    JSON = "application/json"
+    RAW = "application/raw"
     URLENCODED = "application/x-www-form-urlencoded"
     MULTIPART = "multipart/form-data"
     BINARY = "application/octet-stream"
@@ -58,16 +65,17 @@ class RequestBody:
     用于在序列化过程中携带不同类型请求体的元信息。
 
     :var kind: 请求体类型。
-    :var json_body: JSON 请求体数据（当 kind 为 JSON 时）。
+    :var raw_data: 原始请求体数据（当 kind 为 RAW 时），以 ``RawPayload``
+        承载 ``value`` 与可选 ``media_type``。
     :var form_data: 表单请求体数据（当 kind 为 URLENCODED 或 MULTIPART 时）。
-    :var binary_body: 二进制请求体数据（当 kind 为 BINARY 时），以 Playwright
+    :var binary_file: 二进制请求体数据（当 kind 为 BINARY 时），以 Playwright
         ``FilePayload`` 结构 ``{name, mimeType, buffer}`` 承载。
     """
 
     kind: RequestBodyKind
-    json_body: dict | None = None
+    raw_data: RawPayload | None = None
     form_data: FormData | None = None
-    binary_body: FilePayload | None = field(default=None)
+    binary_file: FilePayload | None = None
 
 
 class RequestParams(NamedTuple):
@@ -272,7 +280,7 @@ class Client:
         """按请求体字段列表分派，序列化为 RequestBody。
 
         Form 仅接受标量或 ``list[标量]`` 注解（含 Optional 形式）。
-        ``form_body_params`` 字段由 ``_fill_scalar_form_field`` 填充：list 值通过
+        ``form_body_params`` 字段由 ``_fill_form_field`` 填充：list 值通过
         ``form_data.append`` 派发同名多 part。
 
         函数级 ``UploadFile`` 或 ``list[UploadFile]`` 由 routing 路由到
@@ -293,18 +301,18 @@ class Client:
             field = dependant.file_body_params[0]
             value = getattr(api_route, field.name)
             if value is None:
-                return RequestBody(kind=RequestBodyKind.BINARY, binary_body=None)
+                return RequestBody(kind=RequestBodyKind.BINARY, binary_file=None)
             if isinstance(value, UploadFile):
                 data = value.path.read_bytes()
                 mime, _ = mimetypes.guess_type(str(value.path))
-                binary_body: FilePayload = {
+                binary_file: FilePayload = {
                     "name": str(value.path.name),
                     "mimeType": mime if mime else "application/octet-stream",
                     "buffer": data,
                 }
                 return RequestBody(
                     kind=RequestBodyKind.BINARY,
-                    binary_body=binary_body,
+                    binary_file=binary_file,
                 )
             # 启动期校验已保证 ``file_body_params`` 只有 ``UploadFile`` / ``list[UploadFile]``，
             # 这里仅是兜底，正常情况下不可达。
@@ -339,25 +347,39 @@ class Client:
         # FormData 没有 ``__bool__`` / ``__len__``，空实例仍为真，必须用 ``_fields`` 判断非空。
         if form_data._fields:
             return RequestBody(kind=RequestBodyKind.URLENCODED, form_data=form_data)
-        return RequestBody(kind=RequestBodyKind.JSON, json_body=self._build_json_body(api_route, dependant))
+        raw_value = self._build_raw_body(api_route, dependant)
+        media_type = None
+        if raw_value is not None and len(dependant.pure_body_params) == 1:
+            field = dependant.pure_body_params[0]
+            param_info = field.param_info
+            if (
+                isinstance(param_info, Body)
+                and not param_info.embed
+                and not field_annotation_is_complex(field.field_info.annotation)
+                and param_info.media_type is not None
+            ):
+                media_type = param_info.media_type
+        return RequestBody(
+            kind=RequestBodyKind.RAW,
+            raw_data=RawPayload(value=raw_value, media_type=media_type),
+        )
 
-    def _build_json_body(
+    def _build_raw_body(
         self,
         api_route: APIRoute,
         dependant: Dependant,
     ) -> dict[str, Any]:
-        """根据 FastAPI Body Multiple Parameters 规则序列化 JSON 请求体。
+        """根据 FastAPI Body Multiple Parameters 规则序列化 raw 请求体。
 
         规则（参考 https://fastapi.tiangolo.com/tutorial/body-multiple-params/）：
 
-        - 单个 Pydantic 模型（自动识别）：平展
-        - 多个 body 参数：每个独立嵌入
-        - Body(embed=True)：嵌入
-        - 标量 Body()：嵌入
+        - 单 body 参数 + ``Body(embed=True)``：按 alias 嵌入。
+        - 单 body 参数 + ``Body(embed=False)``：直接返回 dumped（BaseModel 平展、scalar 裸值）。
+        - 多 body 参数：每字段独立按 alias 嵌入（``embed`` 被忽略）。
 
         :param api_route: APIRoute 实例。
         :param dependant: 参数依赖定义。
-        :return: JSON 请求体，无请求体字段时返回空字典。
+        :return: raw 请求体，无请求体字段时返回空字典。
         """
         if not dependant.pure_body_params:
             return {}
@@ -385,26 +407,19 @@ class Client:
         if not body_items:
             return {}
 
-        # 多个 body 参数：必须嵌入
+        # 多个 body 参数：必须嵌入，embed 被忽略
         if has_multiple:
             return {item.alias: item.dumped for item in body_items}
 
-        # 单个 body 参数：根据 Body(embed=...) 或是否为标量类型决定是否嵌入
+        # 单个 body 参数：仅 ``Body(embed=True)`` 时按 alias 嵌入；否则直接返回 dumped
         model_field = dependant.pure_body_params[0]
         param_info = model_field.param_info
-        is_explicit_body = isinstance(param_info, Body)
-        # 仅 Body 类有效；Form 已移除 embed（T1 变更）。
-        explicit_embed = getattr(param_info, "embed", False) if is_explicit_body else False
-        field_type = model_field.field_info.annotation
+        explicit_embed = isinstance(param_info, Body) and param_info.embed
 
-        should_embed = (is_explicit_body and explicit_embed) or (
-            is_explicit_body and not field_annotation_is_complex(field_type)
-        )
+        if explicit_embed:
+            return {body_items[0].alias: body_items[0].dumped}
 
-        if not should_embed:
-            return body_items[0].dumped
-
-        return {body_items[0].alias: body_items[0].dumped}
+        return body_items[0].dumped
 
     # ===== 私有方法：发送请求 =====
 
@@ -438,19 +453,21 @@ class Client:
         elif body.kind is RequestBodyKind.URLENCODED:
             payload = {"form": body.form_data}
         elif body.kind is RequestBodyKind.BINARY:
-            if body.binary_body is not None:
-                payload = {"data": body.binary_body["buffer"]}
-            # else: payload stays empty (no data, no Content-Type from binary_body).
-        elif body.kind is RequestBodyKind.JSON:
-            payload = {"data": body.json_body if body.json_body else None}
+            if body.binary_file is not None:
+                payload = {"data": body.binary_file["buffer"]}
+            # else: payload stays empty (no data, no Content-Type from binary_file).
+        elif body.kind is RequestBodyKind.RAW:
+            payload = {"data": body.raw_data.value if body.raw_data else None}
         else:
             msg = f"未知的 RequestBodyKind: {body.kind!r}"
             raise ValueError(msg)
 
         # 合并 headers：自动派生的 Content-Type + APIRoute 的 headers（APIRoute 优先——允许覆盖自动 mime）。
         derived_headers: dict[str, str] = {}
-        if body.binary_body and body.binary_body.get("mimeType"):
-            derived_headers["Content-Type"] = body.binary_body["mimeType"]
+        if body.raw_data and body.raw_data.media_type:
+            derived_headers["Content-Type"] = body.raw_data.media_type
+        elif body.binary_file and body.binary_file.get("mimeType"):
+            derived_headers["Content-Type"] = body.binary_file["mimeType"]
         merged_headers: dict[str, str] = {**derived_headers, **(headers or {})}
 
         try:

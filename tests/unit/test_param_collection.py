@@ -18,8 +18,8 @@ import pytest
 from playwright.sync_api import FormData
 from pydantic import BaseModel, Field
 
-from src.client import Client, RequestBodyKind
 from src import Body, Form, Header, Path, Query, UploadFile
+from src.client import Client, RequestBodyKind
 from src.routing import APIRoute, APIRouter
 
 # 创建测试用的路由器
@@ -234,7 +234,7 @@ def test_multiple_body_params() -> None:
         data2: Annotated[dict[str, int], Body()]
 
     endpoint = PostData(data1={"a": 1}, data2={"b": 2})
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # 多个 body 参数 → 每个独立命名
     assert body_data == {"data1": {"a": 1}, "data2": {"b": 2}}
@@ -251,7 +251,7 @@ def test_single_pydantic_body_flat() -> None:
         data: UserCreateRequest
 
     endpoint = CreateUser(data=UserCreateRequest(name="Alice", email="alice@example.com", age=30))
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # 单 Pydantic 模型自动识别 → 平展
     assert body_data == {"name": "Alice", "email": "alice@example.com", "age": 30}
@@ -265,21 +265,21 @@ def test_single_pydantic_body_embed_true() -> None:
         data: Annotated[UserCreateRequest, Body(embed=True)]
 
     endpoint = CreateUserEmbed(data=UserCreateRequest(name="Bob", email="bob@example.com"))
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # Body(embed=True) → 嵌入到 data 键下
     assert body_data == {"data": {"name": "Bob", "email": "bob@example.com"}}
 
 
 def test_single_scalar_body_embedded() -> None:
-    """测试标量 Body() 默认嵌入（标量必须嵌入）。"""
+    """测试标量 Body(embed=True) 嵌入。"""
 
     @router.post("/importance")
     class SetImportance(APIRoute[dict[str, Any]]):
-        importance: Annotated[int, Body()]
+        importance: Annotated[int, Body(embed=True)]
 
     endpoint = SetImportance(importance=5)
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # 标量必须嵌入（无法平展）
     assert body_data == {"importance": 5}
@@ -297,7 +297,7 @@ def test_multiple_body_pydantic_and_scalar() -> None:
         item=UserCreateRequest(name="Charlie", email="charlie@example.com"),
         importance=10,
     )
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).json_body
+    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # 多个 body → 每个独立命名
     assert body_data == {
@@ -630,3 +630,303 @@ class TestUploadAsMultipartFlag:
         d = R._get_dependant(method="POST", path="/x")
         assert d.upload_as_multipart is True
         assert len(d.file_body_params) == 1
+
+
+class TestRawPayloadAndMediaType:
+    """RawPayload / Body.media_type / Form 继承 / RAW enum 测试。"""
+
+    def test_raw_payload_namedtuple(self) -> None:
+        """RawPayload 字段可访问。"""
+        from src.client import RawPayload
+        rp = RawPayload(value={"a": 1}, media_type="application/xml")
+        assert rp.value == {"a": 1}
+        assert rp.media_type == "application/xml"
+
+    def test_raw_payload_media_type_optional(self) -> None:
+        """RawPayload.media_type 默认 None。"""
+        from src.client import RawPayload
+        rp = RawPayload(value=5)
+        assert rp.value == 5
+        assert rp.media_type is None
+
+    def test_body_media_type_scalar_only(self) -> None:
+        """Body(media_type) 三条件全满足：scalar + embed=False + 1 body → media_type 设置。"""
+        from typing import Annotated
+
+        @router.post("/scalar-media")
+        class ScalarMedia(APIRoute[dict[str, Any]]):
+            value: Annotated[int, Body(media_type="text/plain")]
+
+        body = Client(context=None)._serialize_body_params(
+            ScalarMedia(value=5),
+            ScalarMedia._get_dependant(),
+        )
+        assert body.kind is RequestBodyKind.RAW
+        assert body.raw_data is not None
+        assert body.raw_data.value == 5
+        assert body.raw_data.media_type == "text/plain"
+
+    def test_body_media_type_default_none(self) -> None:
+        """Body() 不显式设 media_type → raw_data.media_type is None。"""
+        from typing import Annotated
+
+        @router.post("/scalar-default")
+        class ScalarDefault(APIRoute[dict[str, Any]]):
+            value: Annotated[int, Body()]
+
+        body = Client(context=None)._serialize_body_params(
+            ScalarDefault(value=42),
+            ScalarDefault._get_dependant(),
+        )
+        assert body.kind is RequestBodyKind.RAW
+        assert body.raw_data is not None
+        assert body.raw_data.value == 42
+        assert body.raw_data.media_type is None
+
+    def test_body_media_type_ignored_with_multiple_body_params(self) -> None:
+        """多 body + media_type → media_type 被忽略。"""
+        from typing import Annotated
+
+        @router.post("/multi-media")
+        class MultiMedia(APIRoute[dict[str, Any]]):
+            name: Annotated[str, Body()]
+            age: Annotated[int, Body(media_type="text/plain")]
+
+        body = Client(context=None)._serialize_body_params(
+            MultiMedia(name="alice", age=30),
+            MultiMedia._get_dependant(),
+        )
+        assert body.kind is RequestBodyKind.RAW
+        assert body.raw_data is not None
+        assert body.raw_data.media_type is None
+
+    def test_body_media_type_ignored_when_embed_true(self) -> None:
+        """Body(embed=True, media_type=...) → media_type 被忽略。"""
+        from typing import Annotated
+
+        @router.post("/embed-media")
+        class EmbedMedia(APIRoute[dict[str, Any]]):
+            value: Annotated[int, Body(embed=True, media_type="text/plain")]
+
+        body = Client(context=None)._serialize_body_params(
+            EmbedMedia(value=7),
+            EmbedMedia._get_dependant(),
+        )
+        assert body.kind is RequestBodyKind.RAW
+        assert body.raw_data is not None
+        assert body.raw_data.media_type is None
+
+    def test_body_media_type_ignored_for_basemodel(self) -> None:
+        """BaseModel + media_type → media_type 被忽略。"""
+        from typing import Annotated
+
+        @router.post("/basemodel-media")
+        class BM(APIRoute[dict[str, Any]]):
+            data: Annotated[UserCreateRequest, Body(media_type="application/xml")]
+
+        body = Client(context=None)._serialize_body_params(
+            BM(data=UserCreateRequest(name="x", email="y@z.com")),
+            BM._get_dependant(),
+        )
+        assert body.kind is RequestBodyKind.RAW
+        assert body.raw_data is not None
+        assert body.raw_data.media_type is None
+
+    def test_body_media_type_ignored_for_list(self) -> None:
+        """list[T] + media_type → media_type 被忽略（list 非标量）。"""
+        from typing import Annotated
+
+        @router.post("/list-media")
+        class ListMedia(APIRoute[dict[str, Any]]):
+            values: Annotated[list[int], Body(media_type="text/plain")]
+
+        body = Client(context=None)._serialize_body_params(
+            ListMedia(values=[1, 2, 3]),
+            ListMedia._get_dependant(),
+        )
+        assert body.kind is RequestBodyKind.RAW
+        assert body.raw_data is not None
+        assert body.raw_data.media_type is None
+
+    def test_raw_data_scalar_value(self) -> None:
+        """scalar Body() → raw_data.value 是裸值。"""
+        from typing import Annotated
+
+        @router.post("/scalar-bare")
+        class ScalarBare(APIRoute[dict[str, Any]]):
+            importance: Annotated[int, Body()]
+
+        body = Client(context=None)._serialize_body_params(
+            ScalarBare(importance=99),
+            ScalarBare._get_dependant(),
+        )
+        assert body.raw_data is not None
+        assert body.raw_data.value == 99  # 裸值，不是 dict
+
+    def test_raw_data_scalar_no_embed(self) -> None:
+        """scalar Body(embed=False) → raw_data.value 是裸值。"""
+        from typing import Annotated
+
+        @router.post("/scalar-no-embed")
+        class ScalarNoEmbed(APIRoute[dict[str, Any]]):
+            importance: Annotated[int, Body(embed=False)]
+
+        body = Client(context=None)._serialize_body_params(
+            ScalarNoEmbed(importance=10),
+            ScalarNoEmbed._get_dependant(),
+        )
+        assert body.raw_data is not None
+        assert body.raw_data.value == 10
+
+    def test_raw_data_dict_value_default_no_media_type(self) -> None:
+        """BaseModel + no media_type → raw_data.value is dict, media_type None。"""
+
+        @router.post("/bm-default")
+        class BMDefault(APIRoute[dict[str, Any]]):
+            data: UserCreateRequest
+
+        body = Client(context=None)._serialize_body_params(
+            BMDefault(data=UserCreateRequest(name="alice", email="a@b.com")),
+            BMDefault._get_dependant(),
+        )
+        assert body.raw_data is not None
+        assert isinstance(body.raw_data.value, dict)
+        assert body.raw_data.value["name"] == "alice"
+        assert body.raw_data.media_type is None
+
+    def test_form_no_longer_inherits_body(self) -> None:
+        """Form.__mro__ 不含 Body。"""
+        from src import Body as BodyCls
+        from src.params import Form
+
+        assert BodyCls not in Form.__mro__
+
+    def test_form_has_no_init_method(self) -> None:
+        """Form.__init__ 是 object.__init__ / Param.__init__（无自己定义）。"""
+        from src.params import Form, Param
+
+        assert Form.__init__ is Param.__init__
+        assert Form.__init__ is object.__init__
+
+    def test_body_embed_ignored_with_multiple_params(self) -> None:
+        """多 body 参数时 Body(embed=True) 被忽略，每字段独立嵌入。"""
+        from typing import Annotated
+
+        @router.post("/multi-embed")
+        class MultiEmbed(APIRoute[dict[str, Any]]):
+            a: Annotated[str, Body(embed=True)]
+            b: Annotated[int, Body(embed=True)]
+
+        body = Client(context=None)._serialize_body_params(
+            MultiEmbed(a="x", b=1),
+            MultiEmbed._get_dependant(),
+        )
+        # 多 body 时 embed 被忽略，每个独立命名
+        assert body.raw_data is not None
+        assert body.raw_data.value == {"a": "x", "b": 1}
+
+    def test_request_body_kind_raw_enum(self) -> None:
+        """RequestBodyKind.RAW 存在，RequestBodyKind.JSON 不存在。"""
+        assert hasattr(RequestBodyKind, "RAW")
+        assert not hasattr(RequestBodyKind, "JSON")
+
+    def test_request_body_field_names(self) -> None:
+        """RequestBody 字段名：raw_data / binary_file 存在；json_body / binary_body 不存在。"""
+        from src.client import RequestBody
+
+        assert "raw_data" in RequestBody.__dataclass_fields__
+        assert "binary_file" in RequestBody.__dataclass_fields__
+        assert "json_body" not in RequestBody.__dataclass_fields__
+        assert "binary_body" not in RequestBody.__dataclass_fields__
+
+    def test_execute_request_raw_payload_dispatch(self) -> None:
+        """_execute_request 对 RAW + dict body → data=dict。"""
+        from unittest.mock import MagicMock
+
+        from src.client import Client, RawPayload, RequestBody
+
+        mock_fetch = MagicMock()
+        mock_context = MagicMock(fetch=mock_fetch)
+        client = Client(context=mock_context)
+
+        client._execute_request(
+            "POST",
+            "/x",
+            {},
+            {},
+            RequestBody(
+                kind=RequestBodyKind.RAW,
+                raw_data=RawPayload(value={"k": 1}, media_type=None),
+            ),
+        )
+        kwargs = mock_fetch.call_args.kwargs
+        assert kwargs["data"] == {"k": 1}
+
+    def test_execute_request_raw_payload_scalar_dispatch(self) -> None:
+        """_execute_request 对 RAW + scalar body → data=scalar。"""
+        from unittest.mock import MagicMock
+
+        from src.client import Client, RawPayload, RequestBody
+
+        mock_fetch = MagicMock()
+        mock_context = MagicMock(fetch=mock_fetch)
+        client = Client(context=mock_context)
+
+        client._execute_request(
+            "POST",
+            "/x",
+            {},
+            {},
+            RequestBody(
+                kind=RequestBodyKind.RAW,
+                raw_data=RawPayload(value=5, media_type=None),
+            ),
+        )
+        kwargs = mock_fetch.call_args.kwargs
+        assert kwargs["data"] == 5
+
+    def test_raw_payload_media_type_sets_content_type_header(self) -> None:
+        """_execute_request: raw_data.media_type → Content-Type header。"""
+        from unittest.mock import MagicMock
+
+        from src.client import Client, RawPayload, RequestBody
+
+        mock_fetch = MagicMock()
+        mock_context = MagicMock(fetch=mock_fetch)
+        client = Client(context=mock_context)
+
+        client._execute_request(
+            "POST",
+            "/x",
+            {},
+            {},
+            RequestBody(
+                kind=RequestBodyKind.RAW,
+                raw_data=RawPayload(value=5, media_type="text/plain"),
+            ),
+        )
+        kwargs = mock_fetch.call_args.kwargs
+        assert kwargs["headers"] == {"Content-Type": "text/plain"}
+
+    def test_raw_payload_header_overrides_media_type(self) -> None:
+        """_execute_request: caller headers 覆盖 raw_data.media_type。"""
+        from unittest.mock import MagicMock
+
+        from src.client import Client, RawPayload, RequestBody
+
+        mock_fetch = MagicMock()
+        mock_context = MagicMock(fetch=mock_fetch)
+        client = Client(context=mock_context)
+
+        client._execute_request(
+            "POST",
+            "/x",
+            {},
+            {"Content-Type": "application/x-custom"},
+            RequestBody(
+                kind=RequestBodyKind.RAW,
+                raw_data=RawPayload(value=5, media_type="text/plain"),
+            ),
+        )
+        kwargs = mock_fetch.call_args.kwargs
+        assert kwargs["headers"] == {"Content-Type": "application/x-custom"}

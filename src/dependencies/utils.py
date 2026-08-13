@@ -139,7 +139,7 @@ def validate_binary_body_annotation(annotation: Any, *, field_name: str) -> None
 
 
 # Playwright ``FormDataValue`` 支持的标量类型集合。
-# bytes 不在其中（见 ``src.client._fill_scalar_form_field`` 的运行时检查），
+# bytes 不在其中（见 ``src.client._fill_form_field`` 的运行时检查），
 # 因此 Form 不再接受 ``bytes`` / ``list[bytes]`` 字段。
 _PLAYWRIGHT_FORM_SCALAR_TYPES: tuple[type, ...] = (str, int, float, bool)
 

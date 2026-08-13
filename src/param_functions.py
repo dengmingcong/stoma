@@ -44,13 +44,16 @@ def Header() -> _Header:
     return _Header()
 
 
-def Body(embed: bool = False) -> _Body:
+def Body(embed: bool = False, media_type: str | None = None) -> _Body:
     """创建请求体参数标记实例。
 
-    :param embed: 是否嵌入单个字段。
+    :param embed: 是否嵌入单个字段。仅 1 个 body 参数时生效；多 body 参数时被忽略，
+        每个字段始终按 alias 独立嵌入。
+    :param media_type: 显式 Content-Type。仅当同时满足三个条件时生效：仅 1 个 body
+        参数 + ``embed=False`` + 字段类型是标量。任一条件不满足静默忽略。
     :return: ``src.params.Body`` 实例。
     """
-    return _Body(embed=embed)
+    return _Body(embed=embed, media_type=media_type)
 
 
 def Form() -> _Form:

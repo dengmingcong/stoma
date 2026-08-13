@@ -195,6 +195,31 @@ async def create_multi(request: Request) -> dict[str, Any]:
     }
 
 
+@app.post("/echo-headers")
+async def echo_headers(request: Request) -> dict[str, str]:
+    """POST /echo-headers：回显 Content-Type header。
+
+    用于验证 Body(media_type=...) 是否真正设置到 wire 上的 Content-Type。
+
+    :param request: FastAPI Request 对象。
+    :return: dict 包含 content-type header 值。
+    """
+    return {"content_type": request.headers.get("content-type", "")}
+
+
+@app.post("/echo-headers-override")
+async def echo_headers_override(request: Request) -> dict[str, str]:
+    """POST /echo-headers-override：回显 Content-Type header。
+
+    用于验证 Header(Content-Type) 覆盖 Body(media_type=) 的优先级。
+    与 ``/echo-headers`` 行为一致；单独注册是为避免占用 ``/echo-headers`` 路径。
+
+    :param request: FastAPI Request 对象。
+    :return: dict 包含 content-type header 值。
+    """
+    return {"content_type": request.headers.get("content-type", "")}
+
+
 @app.head("/probe")
 def probe_head() -> Response:
     """HEAD /probe：探测端点，验证 HEAD 方法支持。

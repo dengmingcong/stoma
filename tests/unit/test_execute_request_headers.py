@@ -7,6 +7,9 @@
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
+from src import Form
 from src.client import Client, RequestBody, RequestBodyKind
 
 
@@ -18,7 +21,7 @@ def _make_client() -> tuple[Client, MagicMock]:
 
 
 class TestExecuteRequestBinaryHeaders:
-    """BINARY + binary_body + caller headers 派发路径。"""
+    """BINARY + binary_file + caller headers 派发路径。"""
 
     BINARY_PAYLOAD: dict[str, Any] = {
         "name": "a.txt",
@@ -27,14 +30,14 @@ class TestExecuteRequestBinaryHeaders:
     }
 
     def test_binary_default_headers_applied(self) -> None:
-        """BINARY + 空 caller headers → ``Content-Type`` 来自 binary_body.mimeType。"""
+        """BINARY + 空 caller headers → ``Content-Type`` 来自 binary_file.mimeType。"""
         client, fetch = _make_client()
         client._execute_request(
             "POST",
             "/x",
             {},
             {},
-            RequestBody(kind=RequestBodyKind.BINARY, binary_body=self.BINARY_PAYLOAD),
+            RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
         )
         kwargs = fetch.call_args.kwargs
         assert kwargs["data"] == b"x"
@@ -48,7 +51,7 @@ class TestExecuteRequestBinaryHeaders:
             "/x",
             {},
             {"Content-Type": "application/x-custom"},
-            RequestBody(kind=RequestBodyKind.BINARY, binary_body=self.BINARY_PAYLOAD),
+RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
         )
         kwargs = fetch.call_args.kwargs
         assert kwargs["headers"] == {"Content-Type": "application/x-custom"}
@@ -61,20 +64,20 @@ class TestExecuteRequestBinaryHeaders:
             "/x",
             {},
             {"X-Trace": "1"},
-            RequestBody(kind=RequestBodyKind.BINARY, binary_body=self.BINARY_PAYLOAD),
+            RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
         )
         kwargs = fetch.call_args.kwargs
         assert kwargs["headers"] == {"Content-Type": "text/plain", "X-Trace": "1"}
 
-    def test_binary_body_none_sends_no_data_and_no_derived_content_type(self) -> None:
-        """BINARY + ``binary_body=None`` → 不发 data，不派生 Content-Type。"""
+    def test_binary_file_none_sends_no_data_and_no_derived_content_type(self) -> None:
+        """BINARY + ``binary_file=None`` → 不发 data，不派生 Content-Type。"""
         client, fetch = _make_client()
         client._execute_request(
             "POST",
             "/x",
             {},
             {},
-            RequestBody(kind=RequestBodyKind.BINARY, binary_body=None),
+            RequestBody(kind=RequestBodyKind.BINARY, binary_file=None),
         )
         kwargs = fetch.call_args.kwargs
         assert "data" not in kwargs
@@ -85,15 +88,21 @@ class TestExecuteRequestJsonEmpty:
     """JSON 空 body 路径。"""
 
     def test_json_none_body_no_data_no_headers(self) -> None:
-        """JSON + ``json_body=None`` + 空 caller headers → ``data=None``, headers 缺失或空。"""
+        """RAW + ``raw_data=None`` + 空 caller headers → ``data=None``, headers 缺失或空。"""
         client, fetch = _make_client()
         client._execute_request(
             "POST",
             "/x",
             {},
             {},
-            RequestBody(kind=RequestBodyKind.JSON, json_body=None),
+            RequestBody(kind=RequestBodyKind.RAW, raw_data=None),
         )
         kwargs = fetch.call_args.kwargs
         assert kwargs["data"] is None
         assert kwargs.get("headers") in (None, {})
+
+
+def test_form_media_type_kwarg_raises_type_error() -> None:
+    """Form(media_type=...) 抛 TypeError（不接受此参数）。"""
+    with pytest.raises(TypeError):
+        Form(media_type="text/plain")

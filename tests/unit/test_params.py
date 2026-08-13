@@ -97,6 +97,11 @@ class TestBody:
         body_param = Body(embed=True)
         assert body_param.embed is True
 
+    def test_body_media_type_attribute(self) -> None:
+        """Body.media_type 字段设置与默认行为。"""
+        assert Body(media_type="application/xml").media_type == "application/xml"
+        assert Body().media_type is None
+
     def test_body_in_model(self) -> None:
         """测试在 Pydantic 模型中使用 Body。"""
 

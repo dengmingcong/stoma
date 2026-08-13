@@ -137,7 +137,7 @@ class CreateUserEmbed(APIRoute[dict[str, Any]]):
 class SetImportance(APIRoute[dict[str, Any]]):
     """标量 Body() 测试：importance 嵌入。"""
 
-    importance: Annotated[int, Body()]
+    importance: Annotated[int, Body(embed=True)]
 
 
 @router.post("/multi")
@@ -146,6 +146,25 @@ class CreateItemMulti(APIRoute[dict[str, Any]]):
 
     item: CreateUserRequest
     importance: Annotated[int, Body()]
+
+
+@router.post("/echo-headers")
+class EchoHeadersRoute(APIRoute[dict[str, str]]):
+    """POST /echo-headers：Body(media_type=...) 设置 Content-Type 验证。"""
+
+    value: Annotated[int, Body(media_type="text/plain")]
+
+
+@router.post("/echo-headers-override")
+class EchoHeadersOverrideRoute(APIRoute[dict[str, str]]):
+    """POST /echo-headers-override：Header(Content-Type) 覆盖 Body(media_type)。
+
+    同时声明 Body(media_type) 和 Header(Content-Type)，验证 caller header
+    覆盖 Body 派生 Content-Type 的优先级。
+    """
+
+    value: Annotated[int, Body(media_type="text/plain")]
+    content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/x-custom"
 
 
 # ===== APIRoute 不带泛型参数测试端点 =====
@@ -472,6 +491,35 @@ class TestBodyMultipleParams:
         assert response.validated is not None
         assert response.validated["name"] == "Charlie"
         assert response.validated["importance"] == 99
+
+
+class TestMediaTypeIntegration:
+    """Body(media_type=...) wire-level 集成测试。"""
+
+    def test_body_media_type_sets_content_type_wire(self, client: Client) -> None:
+        """Body(media_type="text/plain") → 服务端收到 text/plain Content-Type。"""
+
+        endpoint = EchoHeadersRoute(value=42)
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated is not None
+        assert "text/plain" in response.validated["content_type"]
+
+    def test_body_media_type_overridden_by_header(self, client: Client) -> None:
+        """Header(alias="Content-Type") 覆盖 Body(media_type) 优先级。
+
+        路由同时声明 ``Body(media_type="text/plain")`` 和 ``Header(Content-Type="application/x-custom")``，
+        验证 wire 上服务端收到的是 caller header 的 Content-Type，而非 Body 派生的。
+        """
+
+        endpoint = EchoHeadersOverrideRoute(value=99)
+        response = client.send(endpoint)
+
+        assert response.raw.status == 200
+        assert response.validated is not None
+        assert "application/x-custom" in response.validated["content_type"]
+        assert "text/plain" not in response.validated["content_type"]
 
 
 class TestClient:

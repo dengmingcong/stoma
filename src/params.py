@@ -107,7 +107,13 @@ class Body(Param):
 
     用于标记接口类中的请求体字段。请求体会被序列化为 JSON 发送到服务器。
 
-    :param embed: 是否嵌入单个字段。default: False
+    :param embed: 是否嵌入单个字段。仅 1 个 body 参数时生效：``embed=True`` 嵌入到
+        ``{alias: value}``；``embed=False`` 直接返回 dumped 值（BaseModel 平展、
+        标量裸值）。多个 body 参数时 ``embed`` 被忽略，每个字段始终按 alias 独立嵌入。
+        default: ``False``
+    :param media_type: 显式 Content-Type。仅当同时满足三个条件时生效：仅 1 个 body
+        参数 + ``embed=False`` + 字段类型是标量。任一条件不满足静默忽略；同名
+        ``Header()`` 参数的优先级更高。default: ``None``
 
     Example::
 
@@ -125,34 +131,36 @@ class Body(Param):
 
     in_ = ParamTypes.body
 
-    def __init__(self, embed: bool = False) -> None:
+    def __init__(self, embed: bool = False, media_type: str | None = None) -> None:
         """初始化 Body 标记。
 
         :param embed: 是否嵌入单个字段。
+        :param media_type: 显式 Content-Type。仅在 1 个 body + ``embed=False`` + 标量字段
+            三条件同时满足时生效；任一条件不满足静默忽略。
         """
         self.embed = embed
+        self.media_type = media_type
 
 
-class Form(Body):
+class Form(Param):
     """表单参数标记。
 
     用于标记接口类中的表单字段。表单数据会被编码后发送到服务器。
 
-    ``Form`` 不携带任何运行时状态（无 ``kind`` 缓存）：字段语义类别（scalar / list）
-    在 ``src.routing`` 分类阶段由 ``validate_form_field_annotation`` 校验，
-    ``src.client`` 直接基于 ``field_info.annotation`` 自行判断 dispatch 路径。
+    ``Form`` 直接继承 ``Param``（不继承 ``Body``），无 ``embed`` / ``media_type`` 等
+    运行时状态。字段语义类别（scalar / list）在 ``src.routing`` 分类阶段由
+    ``validate_form_field_annotation`` 校验，``src.client`` 直接基于
+    ``field_info.annotation`` 自行判断 dispatch 路径。
 
     .. versionchanged:: 1.0.0
-        ``Form`` 不再支持 ``embed`` 关键字参数，调用 ``Form(embed=...)`` 会
-        抛 ``TypeError``。``Form`` 仅接受标量或 ``list[标量]``（含 Optional 形式）；
-        文件上传请直接使用 ``UploadFile`` / ``list[UploadFile]``（不要加 ``Form()`` 标记）。
+        ``Form`` 不再继承 ``Body``，移除了 ``embed`` 字段与 ``__init__`` 方法。
+        调用 ``Form(embed=...)`` 或 ``Form(media_type=...)`` 会抛 ``TypeError``
+        （继承自 ``Param`` / ``object`` 的 ``__init__`` 不接受任何关键字参数）。
+        ``Form`` 仅接受标量或 ``list[标量]``（含 Optional 形式）；文件上传请直接使用
+        ``UploadFile`` / ``list[UploadFile]``（不要加 ``Form()`` 标记）。
     """
 
     in_ = ParamTypes.body
-
-    def __init__(self) -> None:
-        """初始化 Form 标记，无运行时状态。"""
-        pass
 
 
 @dataclass

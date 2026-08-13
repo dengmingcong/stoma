@@ -1,4 +1,4 @@
-"""validate_binary_body_annotation 与 binary_body 形状的单元测试。
+"""validate_binary_body_annotation 与 binary_file 形状的单元测试。
 
 覆盖重命名后的抛错校验函数，以及 ``_serialize_body_params`` 在
 ``upload_as_multipart=False`` 模式下构造 ``FilePayload`` 的行为。
@@ -73,7 +73,7 @@ class TestBinaryBodySerialization:
             R._get_dependant(method="POST", path="/upload-raw", upload_as_multipart=False),
         )
         assert body.kind is RequestBodyKind.BINARY
-        assert body.binary_body == {
+        assert body.binary_file == {
             "name": "note.txt",
             "mimeType": "text/plain",
             "buffer": b"hi",
@@ -89,12 +89,12 @@ class TestBinaryBodySerialization:
             R._get_dependant(method="POST", path="/upload-raw", upload_as_multipart=False),
         )
         assert body.kind is RequestBodyKind.BINARY
-        assert body.binary_body is not None
-        assert body.binary_body["mimeType"] == "application/octet-stream"
-        assert body.binary_body["buffer"] == b"raw bytes"
+        assert body.binary_file is not None
+        assert body.binary_file["mimeType"] == "application/octet-stream"
+        assert body.binary_file["buffer"] == b"raw bytes"
 
-    def test_optional_none_yields_binary_body_none(self) -> None:
-        """``UploadFile | None = None`` + 不传 → ``binary_body`` 为 None。"""
+    def test_optional_none_yields_binary_file_none(self) -> None:
+        """``UploadFile | None = None`` + 不传 → ``binary_file`` 为 None。"""
         router = APIRouter()
 
         @router.post("/upload-raw-opt", upload_as_multipart=False)
@@ -106,4 +106,4 @@ class TestBinaryBodySerialization:
             R._get_dependant(method="POST", path="/upload-raw-opt", upload_as_multipart=False),
         )
         assert body.kind is RequestBodyKind.BINARY
-        assert body.binary_body is None
+        assert body.binary_file is None
