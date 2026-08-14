@@ -52,12 +52,14 @@ class RawPayload(NamedTuple):
 class RequestBodyKind(Enum):
     """请求体类型枚举。
 
+    :var NONE: 相当于 Postman 'none' body，表示无请求体。
     :var MULTIPART_FORM: 相当于 Postman 'form-data' body，使用 multipart/form-data 编码。
     :var URLENCODED_FORM: 相当于 Postman 'x-www-form-urlencoded' body，使用 application/x-www-form-urlencoded 编码。
     :var RAW: 相当于 Postman 'raw' body，使用 application/json 或其他纯文本类型编码。
     :var BINARY: 相当于 Postman 'binary' body，发送单个文件，Content-Type 由文件 mimeType 决定。
     """
 
+    NONE = auto()
     MULTIPART_FORM = auto()
     URLENCODED_FORM = auto()
     RAW = auto()
