@@ -76,7 +76,6 @@ NONE 路径返回 ``None``（不再返回 ``BaseRequestBodyFields()`` 实例）�
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -84,8 +83,6 @@ from pydantic import BaseModel, Field
 from src.openapi.models_types import SpecVersion
 
 __all__ = [
-    "BodyKind",
-    "RequestBodyField",
     "Endpoint",
     "BaseRequestBodyFields",
     "JSONRequestBodyFields",
@@ -94,40 +91,6 @@ __all__ = [
     "BinaryRequestBodyFields",
     "ScalarRequestBodyFields",
 ]
-
-
-class BodyKind(Enum):
-    """请求体类型的 IR 枚举。
-
-    用于代码生成阶段判断请求体的结构化类型，决定 renderer 如何渲染字段列表。
-    NONE 为默认值，表示该 endpoint 没有 ``requestBody`` 声明。
-    """
-
-    JSON_MODEL = "json_model"
-    FORM_URLENCODED = "form_urlencoded"
-    MULTIPART = "multipart"
-    BINARY = "binary"
-    SCALAR_JSON = "scalar_json"
-    NONE = "none"
-
-
-class RequestBodyField(BaseModel):
-    """单一请求体字段的结构化描述。
-
-    描述一个已展开的请求体属性（不含 $ref），供 renderer 生成
-    ``Annotated[T, Form()]`` / ``Annotated[T, Body()]`` / ``UploadFile`` 等字段声明。
-
-    :var name: 字段名（snake_case）。
-    :vartype name: str
-    :var type: Python 类型名字符串（如 ``"str"`` / ``"int"`` / ``"UploadFile"``）。
-    :vartype type: str
-    :var marker: 字段标记，取值 ``"body"`` / ``"form"`` / ``"uploadfile"`` / ``"none"``。
-    :vartype marker: str
-    """
-
-    name: str
-    type: str
-    marker: str
 
 
 class BaseRequestBodyFields(BaseModel):
@@ -244,14 +207,6 @@ class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseMo
     :var spec_version: 当前 Endpoint 对应的 OpenAPI spec 主版本（``3.0``
         或 ``3.1``），供 renderer 按版本派发 reference 检测。
     :vartype spec_version: SpecVersion
-    :var body_kind: 请求体结构类型，决定 renderer 如何渲染字段列表。
-        默认为 ``BodyKind.NONE``（无 requestBody 时）。
-    :vartype body_kind: BodyKind
-    :var body_fields: 请求体字段列表（已展开 $ref），每个元素描述一个属性。
-    :vartype body_fields: list[RequestBodyField]
-    :var upload_as_multipart: 是否有文件上传字段需要以 ``multipart/form-data`` 传输。
-        当 ``body_kind`` 为 ``MULTIPART`` 且含 ``format: binary`` 字段时为 ``True``。
-    :vartype upload_as_multipart: bool
     :var expanded_raw_request_body: 经 jsonref 展开后的 ``requestBody`` dict
         （由 :func:`src.openapi.model_generator._expand_path_refs` 抽离出来），
         供 renderer 在判别 body 形态后直接读取 schema 内容。无 requestBody
@@ -268,7 +223,4 @@ class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseMo
     request_body: RequestBodyT | None
     responses: dict[str, ResponseT] | None
     spec_version: SpecVersion
-    body_kind: BodyKind = BodyKind.NONE
-    body_fields: list[RequestBodyField] = []
-    upload_as_multipart: bool = False
     expanded_raw_request_body: dict[str, Any] | None = None

@@ -222,7 +222,13 @@ class TestMakeRequestBodyFormMultipart:
         compile(content, "upload_with_form.py", "exec")
 
     def test_scalar_json_integer(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 application/json 含 integer scalar schema 生成 Annotated[int, Body()]。"""
+        """验证 application/json 含 integer scalar schema 生成 Annotated[int, Body()]。
+
+        operation_id 为 ``setImportance``（非 snake_case）时追加
+        ``Field(serialization_alias='setImportance')`` 保留原 name（与 form /
+        multipart file 字段一致——Body 场景下虽然 wire 是裸值，但 alias
+        保证类型语义自洽）。
+        """
         spec = _build_spec(
             "/importance",
             "post",
@@ -252,14 +258,19 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "set_importance.py").read_text(encoding="utf-8")
-        assert "importance: Annotated[int, Body()]" in content
+        assert "set_importance: Annotated[int, Body(), Field(serialization_alias='setImportance')]" in content
         # auto Content-Type header 触发 Header + Field import
+        assert "from pydantic import Field" in content
         assert "from stoma import APIRouter, APIRoute, Header, Body" in content
         assert _content_type_line("application/json") in content
         compile(content, "set_importance.py", "exec")
 
     def test_scalar_json_string(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 application/json 含 string scalar schema 生成 Annotated[str, Body()]。"""
+        """验证 application/json 含 string scalar schema 生成 Annotated[str, Body()]。
+
+        operation_id 为 ``postScalar``（非 snake_case）时同样追加
+        ``Field(serialization_alias='postScalar')``。
+        """
         spec = _build_spec(
             "/scalar",
             "post",
@@ -289,14 +300,19 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "post_scalar.py").read_text(encoding="utf-8")
-        assert "scalar: Annotated[str, Body()]" in content
+        assert "post_scalar: Annotated[str, Body(), Field(serialization_alias='postScalar')]" in content
         # auto Content-Type header 触发 Header + Field import
+        assert "from pydantic import Field" in content
         assert "from stoma import APIRouter, APIRoute, Header, Body" in content
         assert _content_type_line("application/json") in content
         compile(content, "post_scalar.py", "exec")
 
     def test_binary_octet_stream(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 application/octet-stream 生成 UploadFile + upload_as_multipart=False。"""
+        """验证 application/octet-stream 生成 UploadFile + upload_as_multipart=False。
+
+        operation_id 为 ``uploadRaw``（非 snake_case）时追加
+        ``Field(serialization_alias='uploadRaw')``。
+        """
         spec = _build_spec(
             "/raw",
             "post",
@@ -318,15 +334,19 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "upload_raw.py").read_text(encoding="utf-8")
-        assert "upload_raw: UploadFile" in content
+        assert "upload_raw: Annotated[UploadFile, Field(serialization_alias='uploadRaw')]" in content
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
+        assert "from pydantic import Field" in content
         assert "from stoma import APIRouter, APIRoute, Header, UploadFile" in content
         assert _content_type_line("application/octet-stream") in content
         compile(content, "upload_raw.py", "exec")
 
     def test_binary_image_png(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 image/png 生成 UploadFile + upload_as_multipart=False。"""
+        """验证 image/png 生成 UploadFile + upload_as_multipart=False。
+
+        operation_id 为 ``uploadImage``（非 snake_case）时同样追加 alias。
+        """
         spec = _build_spec(
             "/image",
             "post",
@@ -348,9 +368,10 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "upload_image.py").read_text(encoding="utf-8")
-        assert "upload_image: UploadFile" in content
+        assert "upload_image: Annotated[UploadFile, Field(serialization_alias='uploadImage')]" in content
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
+        assert "from pydantic import Field" in content
         assert "from stoma import APIRouter, APIRoute, Header, UploadFile" in content
         assert _content_type_line("image/png") in content
         compile(content, "upload_image.py", "exec")
@@ -492,3 +513,71 @@ components:
         # 错误信息提示多 media type（来自 result.exception 或 output）
         error_repr = repr(result.exception) if result.exception else result.output
         assert "Multiple media types" in error_repr
+
+    def test_multipart_file_field_non_snake_case_property(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 multipart file property 名非 snake_case 时自动加 ``Field(serialization_alias=...)``。
+
+        对应第三轮 follow-up ⑥：``_build_upload_file_field_line`` 现在对非 snake_case
+        字段名追加 ``Field(serialization_alias=<origin>)``，与 form 标量字段一致。
+        """
+        spec = _build_spec(
+            "/upload-non-snake",
+            "post",
+            "uploadNonSnake",
+            """\
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar-file:
+                  type: string
+                  format: binary
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "upload_non_snake.py").read_text(encoding="utf-8")
+        assert "avatar_file: Annotated[UploadFile, Field(serialization_alias='avatar-file')]" in content
+        assert "from pydantic import Field" in content
+        assert "from stoma import APIRouter, APIRoute, UploadFile" in content
+        compile(content, "upload_non_snake.py", "exec")
+
+    def test_binary_non_snake_case_operation_id(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 binary body operation_id 非 snake_case（如 ``uploadFile``）时追加 alias。
+
+        对应第三轮 follow-up ⑥：``_build_binary_body`` 从 operation_id 派生 field name，
+        非 snake_case 时加 ``Field(serialization_alias=<origin>)``。
+        """
+        spec = _build_spec(
+            "/file",
+            "post",
+            "uploadFile",
+            """\
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "upload_file.py").read_text(encoding="utf-8")
+        assert "upload_file: Annotated[UploadFile, Field(serialization_alias='uploadFile')]" in content
+        assert "upload_as_multipart=False" in content
+        assert "from pydantic import Field" in content
+        assert "from stoma import APIRouter, APIRoute, Header, UploadFile" in content
+        compile(content, "upload_file.py", "exec")
