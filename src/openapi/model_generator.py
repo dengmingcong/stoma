@@ -25,7 +25,7 @@ from datamodel_code_generator.enums import DataModelType
 
 # ``OpenAPISchemaError`` 定义在 :mod:`src.openapi.parser`，而
 # :func:`parser.make_openapi_parser` 后续会反过来调用本模块
-# 的 :func:`_expand_parameter_refs`，因此运行时 ``import`` 必须延迟到
+# 的 :func:`_expand_path_refs`，因此运行时 ``import`` 必须延迟到
 # 函数内部，模块顶层只用 ``TYPE_CHECKING`` 给静态检查器提供类型。
 if TYPE_CHECKING:  # pragma: no cover
     from src.openapi.parser import OpenAPISchemaError  # noqa: F401
@@ -121,26 +121,36 @@ def _detect_parameter_cycle(raw_spec: dict[str, Any]) -> str | None:
     return None
 
 
-def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
-    """在 ``raw_spec`` 内仅展开 ``paths[*]`` 下 ``parameters`` 中的 ``$ref``。
+def _expand_path_refs(
+    raw_spec: dict[str, Any],
+) -> tuple[dict[str, Any], dict[tuple[str, str], dict[str, Any]]]:
+    """在 ``raw_spec`` 内展开 ``paths[*]`` 下 ``parameters`` 与 ``requestBody`` 中的 ``$ref``。
 
     OpenAPI 允许 ``parameters`` 出现在两个层级：
     path item 级（直接挂在 ``paths[/x]`` 上，对该路径下所有 operation 生效）
     和 operation 级（挂在 ``paths[/x][<method>]`` 上）。两者都会被纳入合成规范
-    并展开，而 ``requestBody``、``responses``、``summary``、``description``、``security`` 等键被丢弃，
+    并展开，而 ``responses``、``summary``、``description``、``security`` 等键被丢弃，
     原样附带 ``components``，交给 :func:`jsonref.replace_refs` 立即解析。
-    ``requestBody`` 和 ``responses`` 中的 ``$ref`` 字符串因此原封不动地留在
-    原 ``raw_spec`` 中——datamodel-code-generator 会自行处理它们。
 
-    解析结果以 path item 和 method 两个维度回写到 ``raw_spec``：
+    ``parameters`` 的展开结果以 path item 和 method 两个维度回写到 ``raw_spec``：
     path item 级 ``parameters`` 直接落到 ``raw_spec["paths"][<path>]["parameters"]``，
     operation 级 ``parameters`` 落到对应方法上；其余字段保持不变。
+
+    ``requestBody`` 的展开结果**不写回** ``raw_spec``，而是抽离到返回的
+    ``request_body_map`` 字典中（key 是 ``(path, method_upper)`` 元组，value
+    是展开后的 ``requestBody`` 字典），由 renderer 通过 ``endpoint.expanded_raw_request_body``
+    读取。这样既避免污染原始 ``$.ref`` 字符串（datamodel-code-generator
+    会自行处理原样 ``$ref``），又让 renderer 无需重复 jsonref 调用。
+
     ``jsonref.JsonRefError``（例如指向外部文件且无法解析的 ``$ref``）
     会被包装为 :class:`OpenAPISchemaError` 抛出。
 
     :param raw_spec: 待修改的 OpenAPI 规范字典（会被就地修改）。
-    :return: 修改后的 ``raw_spec``。
-    :raise OpenAPISchemaError: ``jsonref`` 解析参数 ``$ref`` 失败。
+    :return: ``(modified_raw_spec, request_body_map)`` 二元组。
+        ``modified_raw_spec`` 是写回 ``parameters`` 展开结果后的 ``raw_spec``；
+        ``request_body_map`` 的 key 是 ``(path, method_upper)``，value 是
+        展开后的 ``requestBody`` 字典。
+    :raise OpenAPISchemaError: ``jsonref`` 解析参数或 requestBody ``$ref`` 失败。
     """
     original_paths = raw_spec.get("paths")
     if not isinstance(original_paths, dict):
@@ -149,11 +159,12 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
         raw_spec["paths"] = original_paths
 
     # ---- 第 1 步：构造合成规范 ----
-    # 合成规范只包含 ``parameters`` 键（path item 级 + 各 operation 级），
-    # 其余键（``requestBody``、``responses`` 等）原样不在合成 spec 中出现，
+    # 合成规范只包含 ``parameters`` + ``requestBody`` 键（path item 级 + 各 operation 级），
+    # 其余键（``responses``、``summary``、``description`` 等）原样不在合成 spec 中出现，
     # 因此 jsonref 不会展开它们的 ``$ref``——datamodel-code-generator 仍按
     # ``components.schemas`` 里的命名规则生成对应的 Pydantic 类。
     synthetic_paths: dict[str, Any] = {}
+    request_body_synthetic: dict[tuple[str, str], dict[str, Any]] = {}
     for path_key, path_item in original_paths.items():
         if not isinstance(path_item, dict):
             # path item 不是 dict（如 yaml 里写成了字符串）的容错：跳过。
@@ -164,14 +175,21 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
         if "parameters" in path_item:
             filtered_item["parameters"] = path_item["parameters"]
         # 各 operation（``GET``/``POST``/``PUT``/``PATCH``/``DELETE``/``HEAD``/``OPTIONS``/``TRACE``）
-        # 也可能有自己的 ``parameters``，同样收入合成 spec。
+        # 也可能有自己的 ``parameters`` 与 ``requestBody``，同样收入合成 spec。
         for method_key, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
+            method_synthetic: dict[str, Any] = {}
             if "parameters" in operation:
-                filtered_item[str(method_key)] = {"parameters": operation["parameters"]}
-        # 只有当这个路径至少有一处 ``parameters`` 时才纳入合成 spec。
-        # 没有任何参数的路径加进去只会让 jsonref 多走无意义的分支。
+                method_synthetic["parameters"] = operation["parameters"]
+            if "requestBody" in operation:
+                method_synthetic["requestBody"] = operation["requestBody"]
+                # 记录 (path, method_upper) 以便回抽展开后的 requestBody。
+                request_body_synthetic[(str(path_key), str(method_key).upper())] = operation["requestBody"]
+            if method_synthetic:
+                filtered_item[str(method_key)] = method_synthetic
+        # 只有当这个路径至少有一处 ``parameters`` 或 ``requestBody`` 时才纳入合成 spec。
+        # 没有任何引用内容的路径加进去只会让 jsonref 多走无意义的分支。
         if filtered_item:
             synthetic_paths[str(path_key)] = filtered_item
 
@@ -193,11 +211,12 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
         # 保留原始异常链便于调试（``from exc``）。
         from src.openapi.parser import OpenAPISchemaError
 
-        msg = f"Failed to resolve parameter $ref: {exc}"
+        msg = f"Failed to resolve parameter or requestBody $ref: {exc}"
         raise OpenAPISchemaError(msg) from exc
 
     # ---- 第 3 步：回写展开结果到原 raw_spec ----
-    # 仅替换 ``parameters`` 键；其他键（如 ``summary``）保持原样不动。
+    # 仅替换 ``parameters`` 键；``requestBody`` 不写回，由 request_body_map 单独承载。
+    # 其他键（如 ``summary``、``requestBody`` 本身）保持原样不动。
     expanded_paths: object = expanded["paths"] if isinstance(expanded, dict) else {}
     if not isinstance(expanded_paths, dict):
         # 防御性 fallback：jsonref 正常情况下总返回 dict，但若上游出错时
@@ -217,7 +236,7 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
         expanded_path_item_params = path_item.get("parameters")
         if expanded_path_item_params is not None:
             target_path_item["parameters"] = expanded_path_item_params
-        # 回写各 operation 级 ``parameters``。
+        # 回写各 operation 级 ``parameters``（``requestBody`` 不写回）。
         for method_key, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
@@ -232,4 +251,19 @@ def _expand_parameter_refs(raw_spec: dict[str, Any]) -> dict[str, Any]:
                 # 操作是合成 spec 临时加的（method 没在原 spec 里出现），新建一个最小 dict。
                 target_path_item[str(method_key)] = {"parameters": expanded_params}
 
-    return raw_spec
+    # ---- 第 4 步：抽离展开后的 requestBody 到 map ----
+    # expanded 操作中的 ``requestBody`` 是 jsonref 展开后的 dict；按 (path, method_upper) 收集。
+    request_body_map: dict[tuple[str, str], dict[str, Any]] = {}
+    expanded_paths_dict = expanded_paths if isinstance(expanded_paths, dict) else {}
+    for path_key, path_item in expanded_paths_dict.items():
+        if not isinstance(path_item, dict):
+            continue
+        for method_key, operation in path_item.items():
+            if not isinstance(operation, dict):
+                continue
+            expanded_request_body = operation.get("requestBody")
+            if expanded_request_body is None:
+                continue
+            request_body_map[(str(path_key), str(method_key).upper())] = expanded_request_body
+
+    return raw_spec, request_body_map

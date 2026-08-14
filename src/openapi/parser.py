@@ -7,9 +7,12 @@
 ``Union[Parameter, Reference]`` 等类型与本模块泛型之间通过 ``cast`` 在
 边界处对齐（运行时已由 jsonref 上游保证引用已展开）。
 
-参数层的 ``$ref`` 解析由工厂在上游通过 :func:`src.openapi.model_generator._expand_parameter_refs`
-完成（基于 ``jsonref``），本模块只负责接收已展开的 spec 并做 Pydantic 校验
-+ IR 构建，不再自行解析参数引用。
+参数与 ``requestBody`` 的 ``$ref`` 解析由工厂在上游通过
+:func:`src.openapi.model_generator._expand_path_refs` 完成（基于 ``jsonref``），
+本模块只负责接收已展开的 spec 并做 Pydantic 校验 + IR 构建，不再自行
+解析引用。``requestBody`` 的展开结果以 ``(path, method_upper)`` 键存入
+解析器实例的 ``request_body_map``，由 :meth:`get_endpoints` 按需填充到
+``Endpoint.expanded_raw_request_body``。
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from typing import Any, cast
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from src.openapi.model_generator import _detect_parameter_cycle, _expand_parameter_refs
+from src.openapi.model_generator import _detect_parameter_cycle, _expand_path_refs
 from src.openapi.models import Endpoint
 from src.openapi.models_types import SpecVersion
 from src.openapi.reference_types import (
@@ -99,6 +102,7 @@ class OpenAPIParser[
         Response: type[ResponseT],  # noqa: N803
         spec_version: SpecVersion,
         raw_spec: dict[str, Any],
+        request_body_map: dict[tuple[str, str], dict[str, Any]] | None = None,
     ) -> None:
         """初始化解析器。
 
@@ -109,6 +113,9 @@ class OpenAPIParser[
         :param Response: 当前版本的响应模型类。
         :param spec_version: 当前解析器处理的 OpenAPI 主版本。
         :param raw_spec: 已读取的原始规范字典（由工厂预填充）。
+        :param request_body_map: ``(path, method_upper)`` → 展开后 requestBody 字典的映射，
+            由工厂通过 :func:`src.openapi.model_generator._expand_path_refs` 提供。
+            ``None`` 时按空 dict 处理（保持向后兼容，便于测试 / mock）。
         """
         self.OpenAPI = OpenAPI
         self.Reference = Reference
@@ -119,6 +126,10 @@ class OpenAPIParser[
         self._raw_spec_dict: dict[str, Any] = raw_spec
         self._spec: OpenAPIT | None = None
         self._has_json_payloads = False
+        # (path, method_upper) → 展开后的 requestBody dict。
+        # 由工厂预填充，供 :meth:`get_endpoints` 按 endpoint 注入
+        # :attr:`Endpoint.expanded_raw_request_body`。
+        self._request_body_map: dict[tuple[str, str], dict[str, Any]] = request_body_map or {}
 
     @property
     def raw_spec_dict(self) -> dict[str, Any]:
@@ -187,25 +198,6 @@ class OpenAPIParser[
             return False
         media_type = content.get("application/json")
         return media_type is not None and getattr(media_type, "media_type_schema", None) is not None
-
-    @staticmethod
-    def _get_schema_dict(content: dict[str, Any], media_type: str) -> dict[str, Any] | None:
-        """从 ``content`` dict 取指定 ``media_type`` 的 schema 序列化字典。
-
-        模板代码（4 个 detector 共享）：media_type 不存在 / 无 schema 时返回
-        ``None``，避免每个 detector 重复书写三步样板。
-
-        :param content: OpenAPI ``MediaType`` 字典（``request_body.content``）。
-        :param media_type: 目标 media type（如 ``"application/json"``）。
-        :return: schema 的 JSON 序列化字典，缺失时返回 ``None``。
-        """
-        media_type_obj = content.get(media_type)
-        if media_type_obj is None:
-            return None
-        media_type_schema = getattr(media_type_obj, "media_type_schema", None)
-        if media_type_schema is None:
-            return None
-        return media_type_schema.model_dump(mode="json")
 
     def validate_operation_ids(self) -> None:
         """校验所有操作均有非空 ``operationId``。"""
@@ -276,6 +268,9 @@ class OpenAPIParser[
                     request_body=request_body,
                     responses=responses,
                     spec_version=self.spec_version,
+                    expanded_raw_request_body=self._request_body_map.get(
+                        (str(path), method.upper())
+                    ),
                 )
                 endpoints.append(endpoint)
 
@@ -289,9 +284,11 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
     工厂会先沿 :func:`src.openapi.model_generator._detect_parameter_cycle`
     检查 ``components.parameters`` 中的 ``$ref`` 链是否有环，遇到环立即
     抛出 :class:`OpenAPISchemaError`（避免 jsonref 陷入无限递归）。
-    随后调用 :func:`src.openapi.model_generator._expand_parameter_refs`
-    在 ``paths[*]`` 操作级 ``parameters`` 上就地展开 ``$ref``，
-    ``requestBody`` 与 ``responses`` 中的引用保持原样。
+    随后调用 :func:`src.openapi.model_generator._expand_path_refs`
+    在 ``paths[*]`` 操作级 ``parameters`` 上就地展开 ``$ref``，并将
+    展开后的 ``requestBody`` 抽离到 ``request_body_map``（key 为
+    ``(path, method_upper)`` 元组，value 为展开后 requestBody 字典）。
+    ``responses`` 中的引用保持原样。
 
     :param spec_path: OpenAPI 规范文件路径。
     :return: 注入对应版本模型类的解析器。
@@ -304,7 +301,7 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
     if cycle_path is not None:
         msg = f"Cycle detected in parameter $ref chain: {cycle_path}"
         raise OpenAPISchemaError(msg)
-    raw_spec = _expand_parameter_refs(raw_spec)
+    raw_spec, request_body_map = _expand_path_refs(raw_spec)
     version = _declared_version(raw_spec)
     if version.startswith("3.0."):
         return OpenAPIParser[OpenAPI30, Reference30, Parameter30, RequestBody30, Response30](
@@ -315,6 +312,7 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
             Response=Response30,
             spec_version="3.0",
             raw_spec=raw_spec,
+            request_body_map=request_body_map,
         )
     if version.startswith("3.1."):
         return OpenAPIParser[OpenAPI31, Reference31, Parameter31, RequestBody31, Response31](
@@ -325,6 +323,7 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
             Response=Response31,
             spec_version="3.1",
             raw_spec=raw_spec,
+            request_body_map=request_body_map,
         )
     msg = f"Unsupported OpenAPI version: {version}. Only 3.0.x and 3.1.x are supported."
     raise ValueError(msg)

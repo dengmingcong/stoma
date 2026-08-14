@@ -277,9 +277,9 @@ paths:
     def test_parameter_external_ref_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证指向外部文件的 ``$ref``（如 ``common.yaml#/schemas/X``）被 CLI 捕获并报告。
 
-        ``_expand_parameter_refs`` 委托 :mod:`jsonref` 解析，jsonref 抛
+        ``_expand_path_refs`` 委托 :mod:`jsonref` 解析，jsonref 抛
         :class:`jsonref.JsonRefError` 时被包装为 :class:`OpenAPISchemaError`，
-        CLI 退出码非 0 并把 "Failed to resolve parameter $ref" 打到输出。
+        CLI 退出码非 0 并把 "Failed to resolve parameter or requestBody $ref" 打到输出。
         """
         spec = """\
 openapi: 3.1.0
@@ -308,7 +308,7 @@ paths:
         )
 
         assert result.exit_code != 0
-        assert "Failed to resolve parameter $ref" in result.output
+        assert "Failed to resolve parameter or requestBody $ref" in result.output
 
     def test_parameter_cycle_not_referenced_still_raises(
         self, cli_runner: CliRunner, tmp_path: Path

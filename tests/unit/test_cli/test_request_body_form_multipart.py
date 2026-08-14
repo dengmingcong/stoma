@@ -321,7 +321,7 @@ components:
         assert "upload_raw: UploadFile" in content
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
-        assert "from stoma import APIRouter, APIRoute, Header, Body, UploadFile" in content
+        assert "from stoma import APIRouter, APIRoute, Header, UploadFile" in content
         assert _content_type_line("application/octet-stream") in content
         compile(content, "upload_raw.py", "exec")
 
@@ -351,7 +351,7 @@ components:
         assert "upload_image: UploadFile" in content
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
-        assert "from stoma import APIRouter, APIRoute, Header, Body, UploadFile" in content
+        assert "from stoma import APIRouter, APIRoute, Header, UploadFile" in content
         assert _content_type_line("image/png") in content
         compile(content, "upload_image.py", "exec")
 

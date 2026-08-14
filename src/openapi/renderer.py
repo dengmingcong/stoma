@@ -32,22 +32,37 @@ OpenAPI 3.0 和 3.1 的 ``Reference`` 在 openapi-pydantic 里是互相独立的
 阶段（用 openapi-pydantic 构造 Pydantic 模型，``$ref`` 字段会被填充为
 版本对应的 Reference 实例）。renderer 直接读 ``Reference.ref`` 字符串
 计算模型名。
+
+请求体渲染管道
+==============
+
+请求体在 parser 阶段（:func:`src.openapi.model_generator._expand_path_refs`）
+已经通过 jsonref 把 ``$ref`` 一次性展开，展开结果存到
+``endpoint.expanded_raw_request_body``（dict 形态）。renderer 通过
+:meth:`_extract_request_body_info` 7 步流程判断 body 形态，并构造
+:class:`BaseRequestBodyFields` 子类实例。NONE 路径返回 ``None``，由
+:meth:`render` 用 ``isinstance`` 拍平为模板变量。
 """
 
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, TypeGuard
 
-import jsonref
 from jinja2 import Environment, FileSystemLoader, Template
 from pydantic.alias_generators import to_snake
 
-from src.client import RequestBodyKind
 from src.openapi._naming import _is_snake_case, _to_field_name, _to_pascal_case
-from src.openapi.models import Endpoint
+from src.openapi.models import (
+    BaseRequestBodyFields,
+    BinaryRequestBodyFields,
+    Endpoint,
+    JSONRequestBodyFields,
+    MultipartFormRequestBodyFields,
+    ScalarRequestBodyFields,
+    UrlencodedFormRequestBodyFields,
+)
 from src.openapi.models_types import SpecVersion
 from src.openapi.parser import OpenAPISchemaError
 from src.openapi.reference_types import Reference30, Reference31
@@ -65,51 +80,6 @@ class _ReferenceLike(Protocol):
     """
 
     ref: str
-
-
-@dataclass
-class RequestBodyFields:
-    """请求体字段渲染信息的容器。
-
-    按 :class:`src.client.RequestBodyKind` 派发后，各分支填充不同字段：
-
-    - ``RAW``：``imported_models`` 填充 model 名字符串（``application/json``
-      model body 路径），或 ``scalar_body_field`` 单字段字符串（标量
-      JSON 路径）。template 渲染 ``body: <model>`` 或
-      ``<field>: Annotated[<type>, Body()]``。
-    - ``URLENCODED``：``form_fields`` 填充
-      ``"<name>: Annotated[<type>, Form()]"`` 列表。
-    - ``MULTIPART``：``form_fields`` / ``file_fields`` 分别填充。
-    - ``BINARY``：单字段放进 ``scalar_body_field``，构造为
-      ``"<name>: UploadFile"``，``upload_as_multipart=False``。
-    - ``NONE``：全部字段保持默认值（template 跳过所有分支）。
-
-    :var scalar_body_field: 单字段声明字符串（RAW scalar / BINARY）。
-    :vartype scalar_body_field: str | None
-    :var form_fields: form 字段声明字符串列表（URLENCODED / MULTIPART）。
-    :vartype form_fields: list[str]
-    :var file_fields: file 字段声明字符串列表（MULTIPART）。
-    :vartype file_fields: list[str]
-    :var upload_as_multipart: 是否以 ``multipart/form-data`` 传输（MULTIPART
-        为 ``True``，BINARY 为 ``False``）。
-    :vartype upload_as_multipart: bool
-    :var imported_models: 待导入的模型名列表（RAW model 路径填充）。
-    :vartype imported_models: list[str]
-    :var body_kind: 请求体类型枚举（方便 template 做路由判断）。
-    :vartype body_kind: RequestBodyKind
-    :var content_type: 自动派生的 Content-Type header 字符串（无显式
-        ``Content-Type`` 头时填充，用于保证 wire 上 Content-Type 与
-        spec 一致）。
-    :vartype content_type: str | None
-    """
-
-    scalar_body_field: str | None = None
-    form_fields: list[str] = field(default_factory=list)
-    file_fields: list[str] = field(default_factory=list)
-    upload_as_multipart: bool = True
-    imported_models: list[str] = field(default_factory=list)
-    body_kind: RequestBodyKind = RequestBodyKind.NONE
-    content_type: str | None = None
 
 
 class EndpointRenderer[ReferenceT: _ReferenceLike]:
@@ -177,23 +147,28 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         class_name = _to_pascal_case(operation_id)
         file_name = f"{to_snake(operation_id)}.py"
         response_type = self._extract_response_info(endpoint.responses, endpoint)
-        body_fields_template = self._extract_request_body_info(endpoint.request_body, endpoint)
+        body_fields_template = self._extract_request_body_info(
+            endpoint.request_body, endpoint
+        )
         header_fields, param_fields, uses_field_import = self._extract_params(endpoint.parameters)
 
         # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
-        # imported_models 来自 response_type + body_fields_template.imported_models。
+        # model 名字来自 JSON body 路径（import_model），response 路径也独立收集。
+        body_import_model = self._body_import_model(body_fields_template)
         models_for_import: list[str] = list(response_type)
-        models_for_import.extend(body_fields_template.imported_models)
+        if body_import_model:
+            models_for_import.append(body_import_model)
         imported_models = list(dict.fromkeys(models_for_import))
 
-        # request_body_type 保留字符串形式供 template 旧路径使用（JSON_MODEL → body: <Type>）。
-        request_body_type = body_fields_template.imported_models[0] if body_fields_template.imported_models else ""
+        # 把 BaseRequestBodyFields 子类拍平为 template 变量。
+        # NONE 路径返回 None 时模板所有 body 块跳过。
+        body_template_vars = self._flatten_body_fields(body_fields_template)
 
-        # 当 _extract_request_body_info 自动派生 Content-Type（body_fields_template.content_type）且
+        # 当 _extract_request_body_info 自动派生 Content-Type（body_template_vars.content_type）且
         # 用户未显式声明同名 header field 时，注入一个 Annotated[str, Header()] 字段占位，
         # 避免与运行时派生的 Content-Type 冲突。
         content_type_header = self._build_content_type_header(
-            header_fields, body_fields_template.content_type
+            header_fields, body_template_vars["content_type"]
         )
         if content_type_header is not None:
             header_fields.append(content_type_header)
@@ -208,17 +183,104 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             summary=endpoint.summary,
             description=endpoint.description,
             response_type=response_type,
-            request_body_type=request_body_type,
-            scalar_body_field=body_fields_template.scalar_body_field,
-            form_fields=body_fields_template.form_fields,
-            file_fields=body_fields_template.file_fields,
-            upload_as_multipart=body_fields_template.upload_as_multipart,
+            **body_template_vars,
             header_fields=header_fields,
             param_fields=param_fields,
             imported_models=imported_models,
             uses_field_import=uses_field_import,
         )
         return file_name, rendered_code
+
+    @staticmethod
+    def _body_import_model(
+        body_fields: BaseRequestBodyFields | None,
+    ) -> str | None:
+        """从 body_fields 抽取 import_model 字符串（仅 JSON 路径填充）。
+
+        非 JSON 子类（urlencoded / multipart / binary / scalar）无
+        ``import_model`` 概念，返回 ``None`` 让 template 跳过 import。
+
+        :param body_fields: body 渲染字段（NONE 路径为 None）。
+        :return: model 名（PascalCase）或 ``None``。
+        """
+        if isinstance(body_fields, JSONRequestBodyFields):
+            return body_fields.import_model
+        return None
+
+    @staticmethod
+    def _flatten_body_fields(
+        body_fields: BaseRequestBodyFields | None,
+    ) -> dict[str, Any]:
+        """把 BaseRequestBodyFields 子类拍平为 template 变量字典。
+
+        NONE 路径返回空字典（所有 body 块条件不成立，自动跳过）。
+
+        :param body_fields: body 渲染字段（NONE 路径为 None）。
+        :return: 模板可直接 ``**vars`` 展开的字典（key 名对齐
+            ``endpoint.py.jinja2`` 的变量名）。
+        """
+        if body_fields is None:
+            return {
+                "import_model": None,
+                "scalar_field": None,
+                "form_text_fields": [],
+                "form_file_fields": [],
+                "binary_file_field": None,
+                "upload_as_multipart": True,
+                "content_type": None,
+            }
+        if isinstance(body_fields, JSONRequestBodyFields):
+            return {
+                "import_model": body_fields.import_model,
+                "scalar_field": None,
+                "form_text_fields": [],
+                "form_file_fields": [],
+                "binary_file_field": None,
+                "upload_as_multipart": True,
+                "content_type": body_fields.content_type,
+            }
+        if isinstance(body_fields, UrlencodedFormRequestBodyFields):
+            return {
+                "import_model": None,
+                "scalar_field": None,
+                "form_text_fields": body_fields.form_text_fields,
+                "form_file_fields": [],
+                "binary_file_field": None,
+                "upload_as_multipart": True,
+                "content_type": body_fields.content_type,
+            }
+        if isinstance(body_fields, MultipartFormRequestBodyFields):
+            return {
+                "import_model": None,
+                "scalar_field": None,
+                "form_text_fields": body_fields.form_text_fields,
+                "form_file_fields": body_fields.form_file_fields,
+                "binary_file_field": None,
+                "upload_as_multipart": True,
+                "content_type": body_fields.content_type,
+            }
+        if isinstance(body_fields, BinaryRequestBodyFields):
+            return {
+                "import_model": None,
+                "scalar_field": None,
+                "form_text_fields": [],
+                "form_file_fields": [],
+                "binary_file_field": body_fields.binary_file_field,
+                "upload_as_multipart": False,
+                "content_type": body_fields.content_type,
+            }
+        if isinstance(body_fields, ScalarRequestBodyFields):
+            return {
+                "import_model": None,
+                "scalar_field": body_fields.scalar_field,
+                "form_text_fields": [],
+                "form_file_fields": [],
+                "binary_file_field": None,
+                "upload_as_multipart": True,
+                "content_type": body_fields.content_type,
+            }
+        msg = f"Unsupported body_fields type: {type(body_fields).__name__}"
+        raise TypeError(msg)
 
     def _extract_params(
         self,
@@ -244,7 +306,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             schema = param.param_schema
 
             # 参数级 ``$ref`` 已在 :func:`src.openapi.parser.make_openapi_parser`
-            # 上游通过 ``_expand_parameter_refs`` 展开为内联 schema，因此
+            # 上游通过 ``_expand_path_refs`` 展开为内联 schema，因此
             # ``schema`` 此时只会是普通 Schema（不会触发 ``_is_reference``）。
             schema_dict = schema.model_dump(mode="json") if schema else {}
             json_type = schema_dict.get("type", "Any")
@@ -273,49 +335,47 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         self,
         request_body: Any,
         endpoint: Endpoint[Any, Any, Any],
-    ) -> RequestBodyFields:
-        """按 runtime 的 :class:`RequestBodyKind` 分类请求体。
+    ) -> BaseRequestBodyFields | None:
+        """按 spec 的 media type 分类请求体，返回对应 :class:`BaseRequestBodyFields` 子类实例。
 
-        流程（与 spec 的 media type 一一对应）：
+        7 步流程（顺序严格）：
 
-        1. ``requestBody`` / ``content`` 为空 → :attr:`RequestBodyKind.NONE`。
-        2. ``content`` 含多个 media type key → 抛出 :class:`OpenAPISchemaError`
-           （stoma 不支持多 content type，runtime ``_serialize_body_params``
-           只派发单一编码路径）。
-        3. media type 是 ``application/json`` → :attr:`RequestBodyKind.RAW`，
-           用 ``jsonref.replace_refs`` 展开 schema 后按 JSON body 渲染
-           （$ref 解析后 ``_is_reference`` 才能正确收窄）。
-        4. media type 是 ``multipart/form-data`` → :attr:`RequestBodyKind.MULTIPART_FORM`，
-           遍历 ``properties``：``format == binary`` → ``<name>: UploadFile``，
-           其他 primitive → ``<name>: Annotated[T, Form()]``。
-        5. media type 是 ``application/x-www-form-urlencoded`` →
-           :attr:`RequestBodyKind.URLENCODED_FORM`，遍历 ``properties``：
-           primitive → ``Annotated[T, Form()]``，array → ``Annotated[list[T], Form()]``；
-           发现 ``format == binary`` 属性 → ``warnings.warn(...)`` 提示
-           FastAPI Form 字段不会接收 binary 内容。
-        6. ``schema.type == "string" AND schema.format == "binary"``（不限
-           media type，例如 ``image/png`` / ``application/octet-stream``）→
-           :attr:`RequestBodyKind.BINARY` + ``upload_as_multipart=False``，
-           渲染为 ``<name>: UploadFile``。
-        7. 其他非 JSON media type（如 ``text/plain``）→ :attr:`RequestBodyKind.RAW`
-           fallback，按模型名或 ``<field>: Body()`` 渲染。
+        1. ``requestBody`` / ``content`` 为空 → 返回 ``None``。
+        2. ``content`` 含多个 media type key → 抛 :class:`OpenAPISchemaError`。
+        3. media type 是 ``application/json`` → :class:`JSONRequestBodyFields`
+           （``$ref`` / inline object）或 :class:`ScalarRequestBodyFields`
+           （primitive schema）。
+        4. media type 是 ``multipart/form-data`` → 顶层 schema 含
+           ``oneOf`` / ``anyOf`` / ``allOf`` key 则报错；否则
+           :class:`MultipartFormRequestBodyFields`。
+        5. media type 是 ``application/x-www-form-urlencoded`` → 顶层 schema 含
+           ``oneOf`` / ``anyOf`` / ``allOf`` key 则报错；遍历 properties 时
+           ``format=binary`` 字段 ``warnings.warn``；返回
+           :class:`UrlencodedFormRequestBodyFields`。
+        6. ``schema.type == "string" AND schema.format == "binary"``
+           （不限 media type，含 ``image/png`` / ``application/octet-stream``）
+           → :class:`BinaryRequestBodyFields`。
+        7. 兜底 RAW（其他非 JSON / 非 form 文本类型）：
+           primitive schema → :class:`ScalarRequestBodyFields`；
+           否则报错。
 
-        .. note::
-           命中具体 media type（含 JSON / multipart / urlencoded / BINARY）
-           时填充 ``RequestBodyFields.content_type``，由
-           :meth:`render` 检测 endpoint 是否已有显式 ``Content-Type`` header
-           字段，没有时自动追加，确保运行时发送的 Content-Type 与 spec 一致。
+        JSON 路径的 schema 形态通过 ``endpoint.request_body.content["application/json"].
+        media_type_schema`` 原 openapi-pydantic 实例判断；非 JSON 路径的 schema
+        从 ``endpoint.expanded_raw_request_body`` 读 dict 形态（parser 上游
+        :func:`src.openapi.model_generator._expand_path_refs` 已展开）。
 
         :param request_body: :class:`RequestBody` 对象（来自 openapi-pydantic）。
         :param endpoint: 当前 :class:`Endpoint` IR 对象。
-        :return: :class:`RequestBodyFields` 结构。
+        :return: :class:`BaseRequestBodyFields` 子类实例；NONE 路径返回 ``None``。
+        :raise OpenAPISchemaError: 多 media type、schema 含 oneOf/anyOf/allOf key、
+            或 schema 形态不支持。
         """
         if request_body is None:
-            return RequestBodyFields(body_kind=RequestBodyKind.NONE)
+            return None
 
         content = getattr(request_body, "content", None)
         if not isinstance(content, dict) or not content:
-            return RequestBodyFields(body_kind=RequestBodyKind.NONE)
+            return None
 
         if len(content) != 1:
             msg = f"Multiple media types in requestBody not supported: {list(content.keys())}"
@@ -324,142 +384,143 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         media_type, media_type_obj = next(iter(content.items()))
         schema = getattr(media_type_obj, "media_type_schema", None)
 
+        # 步骤 3：application/json
         if media_type == "application/json":
-            return self._build_json_body(schema, media_type, endpoint)
-        if media_type == "multipart/form-data":
-            return self._build_form_body(schema, media_type, is_multipart=True)
-        if media_type == "application/x-www-form-urlencoded":
-            return self._build_form_body(schema, media_type, is_multipart=False)
+            return self._build_json_body(schema, endpoint)
 
+        # 步骤 4：multipart/form-data
+        if media_type == "multipart/form-data":
+            schema_dict = _get_expanded_schema_dict(endpoint, media_type)
+            _reject_oneof_anyof_allof(schema_dict, media_type)
+            return self._build_multipart_body(schema_dict, media_type)
+
+        # 步骤 5：application/x-www-form-urlencoded
+        if media_type == "application/x-www-form-urlencoded":
+            schema_dict = _get_expanded_schema_dict(endpoint, media_type)
+            _reject_oneof_anyof_allof(schema_dict, media_type)
+            return self._build_urlencoded_body(schema_dict, media_type)
+
+        # 步骤 6：string + format=binary（不限 media type）
         if schema is not None:
             schema_dict = schema.model_dump(mode="json")
             if schema_dict.get("type") == "string" and (
                 schema_dict.get("schema_format", "") or schema_dict.get("format", "")
             ) == "binary":
-                field_name = _to_field_name(endpoint.operation_id)
-                return RequestBodyFields(
-                    scalar_body_field=f"{field_name}: UploadFile",
-                    upload_as_multipart=False,
-                    body_kind=RequestBodyKind.BINARY,
-                    content_type=media_type,
-                )
+                return self._build_binary_body(schema_dict, media_type, endpoint)
 
-        return self._build_raw_body(schema, media_type, endpoint)
+        # 步骤 7：兜底 RAW
+        schema_dict = _get_expanded_schema_dict(endpoint, media_type)
+        return self._build_scalar_body(schema_dict, media_type, endpoint)
 
     def _build_json_body(
         self,
         schema: Any,
-        media_type: str,
         endpoint: Endpoint[Any, Any, Any],
-    ) -> RequestBodyFields:
-        """构造 application/json 请求体渲染信息。
+    ) -> JSONRequestBodyFields | ScalarRequestBodyFields:
+        """构造 ``application/json`` 请求体渲染信息。
 
-        media_type 已被前置 ``_extract_request_body_info`` 判定为
-        ``application/json``；此处只负责 schema 形态分流：
+        schema 形态分流：
 
-        - ``$ref`` 指向 ``components.schemas.*`` → 取末段 PascalCase 化为 model 名。
-        - 内联 object schema（dmcg 已生成对应 ``<OpId>Request`` 模型）→ 引用之。
-        - primitive schema → ``<field>: Annotated[<type>, Body()]`` 标量 body。
-          字段名按 :func:`_to_field_name` 从 operationId 派生（snake_case 化），
-          对齐老 parser 行为。
+        - ``$ref`` 指向 ``components.schemas.*`` → 取末段 PascalCase 化为 model 名，
+          返回 :class:`JSONRequestBodyFields`。
+        - 内联 object schema（dmcg 已生成对应 ``<OpId>Request`` 模型）→ 引用之，
+          返回 :class:`JSONRequestBodyFields`。
+        - primitive schema → 返回 :class:`ScalarRequestBodyFields`，字段名按
+          :func:`_to_field_name` 从 operationId 派生（snake_case 化）。
 
-        jsonref 展开只影响 ``_is_reference`` 的 ``TypeGuard`` 收窄——
-        model 已经在 model_generator 阶段生成完毕，import 也已固定。
-        这里用 ``jsonref.replace_refs`` 把 ``$ref`` 替换为内联 schema，
-        再走 ``_is_reference`` 检测。
-
-        :param schema: application/json 的 media_type_schema 节点。
-        :param media_type: 媒体类型字符串（``"application/json"``）。
+        :param schema: ``application/json`` 的 media_type_schema 节点
+            （openapi-pydantic ``Schema`` 实例，可能为 ``None``）。
         :param endpoint: 当前 :class:`Endpoint` IR 对象。
-        :return: :class:`RequestBodyFields`。
+        :return: :class:`JSONRequestBodyFields` 或 :class:`ScalarRequestBodyFields`。
         """
         if schema is None:
-            return RequestBodyFields(
-                body_kind=RequestBodyKind.RAW,
-                content_type=media_type,
-            )
-
-        # model_generator 阶段已固定 import 集；此处 jsonref 展开只影响
-        # ``_is_reference`` 的 TypeGuard 收窄，让 $ref 形态的 schema 走对分支。
-        try:
-            resolved = jsonref.replace_refs(schema.model_dump(mode="json"), proxies=False, lazy_load=False)
-        except Exception:
-            resolved = None
-
-        if isinstance(resolved, dict) and "$ref" in resolved:
-            ref_path = str(resolved["$ref"])
-            model_name = _to_pascal_case(ref_path.rsplit("/", 1)[-1])
-            return RequestBodyFields(
-                imported_models=[model_name],
-                body_kind=RequestBodyKind.RAW,
-                content_type=media_type,
-            )
+            return JSONRequestBodyFields(content_type="application/json")
 
         if self._is_reference(schema):
-            model_name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
-            return RequestBodyFields(
-                imported_models=[model_name],
-                body_kind=RequestBodyKind.RAW,
-                content_type=media_type,
+            ref_path = schema.ref.rsplit("/", 1)[-1]
+            model_name = _to_pascal_case(ref_path)
+            return JSONRequestBodyFields(
+                import_model=model_name,
+                content_type="application/json",
             )
 
-        schema_dict = schema.model_dump(mode="json")
-        schema_type = schema_dict.get("type", "")
+        schema_type = getattr(schema, "type", None)
         if schema_type in {"string", "integer", "number", "boolean"}:
             field_name = _to_field_name(endpoint.operation_id)
             py_type = _PYTHON_TYPE_MAP.get(schema_type, "str")
-            return RequestBodyFields(
-                scalar_body_field=f"{field_name}: Annotated[{py_type}, Body()]",
-                body_kind=RequestBodyKind.RAW,
-                content_type=media_type,
+            return ScalarRequestBodyFields(
+                scalar_field=f"{field_name}: Annotated[{py_type}, Body()]",
+                content_type="application/json",
             )
 
+        # inline object schema → dmcg 已生成 ``<OpId>Request`` 模型。
         model_name = f"{_to_pascal_case(endpoint.operation_id)}Request"
-        return RequestBodyFields(
-            imported_models=[model_name],
-            body_kind=RequestBodyKind.RAW,
+        return JSONRequestBodyFields(
+            import_model=model_name,
+            content_type="application/json",
+        )
+
+    @staticmethod
+    def _build_scalar_body(
+        schema_dict: dict[str, Any],
+        media_type: str,
+        endpoint: Endpoint[Any, Any, Any],
+    ) -> ScalarRequestBodyFields:
+        """兜底 RAW 路径：primitive schema → 单字段 body。
+
+        非 JSON / 非 form / 非 binary 的 media type（``text/plain`` /
+        ``application/xml`` 等）且 schema 是 primitive type 时返回
+        :class:`ScalarRequestBodyFields`。
+
+        :param schema_dict: 展开后的 schema 字典（来自
+            ``endpoint.expanded_raw_request_body``，可能为空 dict）。
+        :param media_type: 媒体类型字符串。
+        :param endpoint: 当前 :class:`Endpoint` IR 对象。
+        :return: :class:`ScalarRequestBodyFields`。
+        :raise OpenAPISchemaError: schema 不是 primitive type（不支持）。
+        """
+        schema_type = schema_dict.get("type", "")
+        if schema_type not in {"string", "integer", "number", "boolean"}:
+            msg = (
+                f"Unsupported RAW body schema type for {endpoint.operation_id!r}: {schema_type!r}. "
+                "Only primitive types (string/integer/number/boolean) are supported in non-JSON media types."
+            )
+            raise OpenAPISchemaError(msg)
+        field_name = _to_field_name(endpoint.operation_id)
+        py_type = _PYTHON_TYPE_MAP.get(schema_type, "str")
+        return ScalarRequestBodyFields(
+            scalar_field=f"{field_name}: Annotated[{py_type}, Body()]",
             content_type=media_type,
         )
 
-    def _build_form_body(
+    def _build_urlencoded_body(
         self,
-        schema: Any,
+        schema_dict: dict[str, Any],
         media_type: str,
-        *,
-        is_multipart: bool,
-    ) -> RequestBodyFields:
-        """构造 form-urlencoded 或 multipart/form-data 请求体渲染信息。
+    ) -> UrlencodedFormRequestBodyFields:
+        """构造 ``application/x-www-form-urlencoded`` 请求体渲染信息。
 
-        - multipart: ``format == "binary"`` 字段渲染为 ``<name>: UploadFile``
-          （进入 ``file_fields``），其他 primitive 走 ``Annotated[T, Form()]``。
-        - urlencoded: 全部 primitive 走 ``Annotated[T, Form()]``；发现
-          ``format == "binary"`` 时 ``warnings.warn(...)``（不抛错，FastAPI
-          Form 字段不支持 binary 内容，但不能让 codegen 失败）。
+        遍历 ``properties``：
 
-        字段名：``_to_field_name`` 处理 hyphen / 关键字 / 数字开头；
-        渲染时若不是合法 snake_case，自动加 ``Field(serialization_alias=...)``
-        保留原名——参考 :func:`_build_form_field_line` 的 snake_case 分支判定。
+        - ``format == "binary"`` 时 ``warnings.warn(...)``（FastAPI Form 字段
+          不接受 binary 内容），仍按普通 Form 字段渲染；
+        - 其他 primitive 走 ``Annotated[T, Form()]``；
+        - array 走 :func:`_resolve_array_type` 派生 ``list[T]``；
+        - 非 snake_case 字段名自动追加 ``Field(serialization_alias=...)``
+          保留原名（:func:`_build_form_field_line` 已处理）。
 
-        :param schema: 对应 media type 的 media_type_schema 节点。
+        :param schema_dict: 展开后的 schema 字典（来自
+            ``endpoint.expanded_raw_request_body``）。
         :param media_type: 媒体类型字符串。
-        :param is_multipart: True 表示 multipart/form-data，False 表示 urlencoded。
-        :return: :class:`RequestBodyFields`。
+        :return: :class:`UrlencodedFormRequestBodyFields`。
         """
-        if schema is None:
-            return RequestBodyFields(
-                body_kind=RequestBodyKind.MULTIPART_FORM if is_multipart else RequestBodyKind.URLENCODED_FORM,
-                content_type=media_type,
-            )
-        schema_dict = schema.model_dump(mode="json")
-        form_fields: list[str] = []
-        file_fields: list[str] = []
+        form_text_fields: list[str] = []
         for prop_name, prop_schema in schema_dict.get("properties", {}).items():
+            if not isinstance(prop_schema, dict):
+                continue
             prop_format = prop_schema.get("schema_format", "") or prop_schema.get("format", "")
             prop_type = prop_schema.get("type", "str")
-            if is_multipart and prop_format == "binary":
-                file_fields.append(_build_upload_file_field_line(prop_name))
-                continue
-            if not is_multipart and prop_format == "binary":
+            if prop_format == "binary":
                 warnings.warn(
                     (
                         f"urlencoded form field {prop_name!r} has format=binary; "
@@ -473,67 +534,76 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 py_type = _resolve_array_type(prop_schema)
             else:
                 py_type = _PYTHON_TYPE_MAP.get(prop_type, "str")
-            form_fields.append(_build_form_field_line(prop_name, py_type))
+            form_text_fields.append(_build_form_field_line(prop_name, py_type))
 
-        if is_multipart:
-            # multipart 的 Content-Type 故意不自动生成：Playwright 会在发送时
-            # 自动加 ``boundary=<...>`` 段，显式 ``multipart/form-data``（无 boundary）
-            # 会被 Playwright 原样发送，导致服务端无法解析 multipart body → 400。
-            return RequestBodyFields(
-                form_fields=form_fields,
-                file_fields=file_fields,
-                upload_as_multipart=bool(file_fields) or bool(form_fields),
-                body_kind=RequestBodyKind.MULTIPART_FORM,
-                content_type=None,
-            )
-        return RequestBodyFields(
-            form_fields=form_fields,
-            body_kind=RequestBodyKind.URLENCODED_FORM,
+        return UrlencodedFormRequestBodyFields(
+            form_text_fields=form_text_fields,
             content_type=media_type,
         )
 
-    def _build_raw_body(
+    def _build_multipart_body(
         self,
-        schema: Any,
+        schema_dict: dict[str, Any],
+        media_type: str,
+    ) -> MultipartFormRequestBodyFields:
+        """构造 ``multipart/form-data`` 请求体渲染信息。
+
+        遍历 ``properties``：
+
+        - ``format == "binary"`` → ``<name>: UploadFile`` 进入 ``form_file_fields``；
+        - 其他 primitive → ``<name>: Annotated[T, Form()]`` 进入 ``form_text_fields``。
+
+        Content-Type 故意不自动派生（Playwright 自动加 boundary 段，
+        显式 ``multipart/form-data`` 无 boundary 会导致服务端 400）。
+
+        :param schema_dict: 展开后的 schema 字典（来自
+            ``endpoint.expanded_raw_request_body``）。
+        :param media_type: 媒体类型字符串。
+        :return: :class:`MultipartFormRequestBodyFields`，``content_type=None``。
+        """
+        form_text_fields: list[str] = []
+        form_file_fields: list[str] = []
+        for prop_name, prop_schema in schema_dict.get("properties", {}).items():
+            if not isinstance(prop_schema, dict):
+                continue
+            prop_format = prop_schema.get("schema_format", "") or prop_schema.get("format", "")
+            prop_type = prop_schema.get("type", "str")
+            if prop_format == "binary":
+                form_file_fields.append(_build_upload_file_field_line(prop_name))
+                continue
+            if prop_type == "array":
+                py_type = _resolve_array_type(prop_schema)
+            else:
+                py_type = _PYTHON_TYPE_MAP.get(prop_type, "str")
+            form_text_fields.append(_build_form_field_line(prop_name, py_type))
+
+        return MultipartFormRequestBodyFields(
+            form_text_fields=form_text_fields,
+            form_file_fields=form_file_fields,
+            content_type=None,
+        )
+
+    def _build_binary_body(
+        self,
+        schema_dict: dict[str, Any],
         media_type: str,
         endpoint: Endpoint[Any, Any, Any],
-    ) -> RequestBodyFields:
-        """非 JSON 非 form 的 fallback（text/plain / application/xml 等）。
+    ) -> BinaryRequestBodyFields:
+        """构造 binary 单文件 raw body 渲染信息。
 
-        与 JSON body 路径共用 schema 形态分流（$ref / inline / primitive），
-        区别仅是 content_type 不同。
+        ``string + format=binary`` 的 schema 派生单一 ``<name>: UploadFile``
+        字段，字段名按 :func:`_to_field_name` 从 operationId 派生。
+        对应 ``upload_as_multipart=False``（由 :class:`BinaryRequestBodyFields`
+        类型本身表达，:meth:`_flatten_body_fields` 拍平时固定为 ``False``）。
 
-        :param schema: media_type_schema 节点。
-        :param media_type: 媒体类型字符串。
+        :param schema_dict: 展开后的 schema 字典。
+        :param media_type: 媒体类型字符串（用于 Content-Type header 派生）。
         :param endpoint: 当前 :class:`Endpoint` IR 对象。
-        :return: :class:`RequestBodyFields`。
+        :return: :class:`BinaryRequestBodyFields`。
         """
-        if schema is None:
-            return RequestBodyFields(
-                body_kind=RequestBodyKind.RAW,
-                content_type=media_type,
-            )
-        if self._is_reference(schema):
-            model_name = _to_pascal_case(schema.ref.rsplit("/", 1)[-1])
-            return RequestBodyFields(
-                imported_models=[model_name],
-                body_kind=RequestBodyKind.RAW,
-                content_type=media_type,
-            )
-        schema_dict = schema.model_dump(mode="json")
-        schema_type = schema_dict.get("type", "")
-        if schema_type in {"string", "integer", "number", "boolean"}:
-            field_name = _to_field_name(endpoint.operation_id)
-            py_type = _PYTHON_TYPE_MAP.get(schema_type, "str")
-            return RequestBodyFields(
-                scalar_body_field=f"{field_name}: Annotated[{py_type}, Body()]",
-                body_kind=RequestBodyKind.RAW,
-                content_type=media_type,
-            )
-        model_name = f"{_to_pascal_case(endpoint.operation_id)}Request"
-        return RequestBodyFields(
-            imported_models=[model_name],
-            body_kind=RequestBodyKind.RAW,
+        field_name = _to_field_name(endpoint.operation_id)
+        return BinaryRequestBodyFields(
+            binary_file_field=f"{field_name}: UploadFile",
             content_type=media_type,
         )
 
@@ -613,6 +683,55 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 ordered_names.append(f"{operation_id_pascal}Response{inline_counter - 1}")
 
         return list(dict.fromkeys(ordered_names))
+
+
+def _reject_oneof_anyof_allof(schema_dict: dict[str, Any], media_type: str) -> None:
+    """非 JSON 表单路径检测顶层 ``oneOf`` / ``anyOf`` / ``allOf`` key。
+
+    multipart / urlencoded form 路径不支持复合 schema（顶层是复合 key 时
+    renderer 无法静态推断 fields），命中即抛 :class:`OpenAPISchemaError`。
+    JSON 路径不受影响（oneOf/anyOf/allOf 通过 ``$ref`` 解析走 dmcg 合并路径）。
+
+    :param schema_dict: 展开后的 schema 字典。
+    :param media_type: 媒体类型字符串（用于错误信息）。
+    :raise OpenAPISchemaError: schema 含顶层 oneOf/anyOf/allOf key。
+    """
+    for composite_key in ("oneOf", "anyOf", "allOf"):
+        if composite_key in schema_dict:
+            msg = (
+                f"{media_type} schema with top-level {composite_key!r} is not supported; "
+                "use application/json with $ref + inline merge instead."
+            )
+            raise OpenAPISchemaError(msg)
+
+
+def _get_expanded_schema_dict(
+    endpoint: Endpoint[Any, Any, Any],
+    media_type: str,
+) -> dict[str, Any]:
+    """从 ``endpoint.expanded_raw_request_body`` 取指定 ``media_type`` 的 schema 字典。
+
+    ``expanded_raw_request_body`` 是 parser 上游通过
+    :func:`src.openapi.model_generator._expand_path_refs` 展开后的 requestBody dict，
+    结构为 ``{"content": {"<media_type>": {"schema": {…}}}}``。
+
+    :param endpoint: 当前 :class:`Endpoint` IR 对象。
+    :param media_type: 目标 media type。
+    :return: schema 字典，缺失或非 dict 时返回空 dict（兜底）。
+    """
+    expanded = endpoint.expanded_raw_request_body
+    if not isinstance(expanded, dict):
+        return {}
+    content = expanded.get("content", {})
+    if not isinstance(content, dict):
+        return {}
+    media_type_obj = content.get(media_type, {})
+    if not isinstance(media_type_obj, dict):
+        return {}
+    schema = media_type_obj.get("schema", {})
+    if not isinstance(schema, dict):
+        return {}
+    return schema
 
 
 def make_endpoint_renderer(spec_version: SpecVersion) -> EndpointRenderer[Any]:

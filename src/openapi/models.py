@@ -51,15 +51,49 @@
 调用方如需 3.0 / 3.1 具体类，请直接从 :mod:`src.openapi.reference_types`
 导入 ``Parameter30``、``Parameter31``、``Reference30``、``Reference31``
 等；版本由 ``Endpoint.spec_version`` 字段携带。
+
+请求体渲染字段类型层次
+=====================
+
+:func:`_extract_request_body_info` 返回 ``BaseRequestBodyFields`` 的某个
+子类实例，对应一种请求体渲染形态：
+
+- :class:`JSONRequestBodyFields` — ``application/json`` + object schema
+  （含 ``$ref`` 或 inline）。
+- :class:`UrlencodedFormRequestBodyFields` —
+  ``application/x-www-form-urlencoded``，form 标量字段列表。
+- :class:`MultipartFormRequestBodyFields` — ``multipart/form-data``，
+  form 标量 + 文件字段列表。
+- :class:`BinaryRequestBodyFields` — ``string + format=binary`` 单文件
+  raw body，不以 multipart 传输。
+- :class:`ScalarRequestBodyFields` — primitive schema（任意 content type）
+  单字段 body。
+
+NONE 路径返回 ``None``（不再返回 ``BaseRequestBodyFields()`` 实例），
+由 :meth:`EndpointRenderer.render` 用 ``isinstance`` 拍平为模板变量，
+子类多态自然反映"哪种 body 形态激活"的语义。
 """
 
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.openapi.models_types import SpecVersion
+
+__all__ = [
+    "BodyKind",
+    "RequestBodyField",
+    "Endpoint",
+    "BaseRequestBodyFields",
+    "JSONRequestBodyFields",
+    "UrlencodedFormRequestBodyFields",
+    "MultipartFormRequestBodyFields",
+    "BinaryRequestBodyFields",
+    "ScalarRequestBodyFields",
+]
 
 
 class BodyKind(Enum):
@@ -94,6 +128,90 @@ class RequestBodyField(BaseModel):
     name: str
     type: str
     marker: str
+
+
+class BaseRequestBodyFields(BaseModel):
+    """请求体渲染字段基类。
+
+    5 种 body 形态对应 5 个子类，renderer 通过 ``isinstance`` 派发。
+    NONE 路径不返回本类实例，直接返回 ``None``。
+
+    :var content_type: 媒体类型字符串。``multipart/form-data`` 等场景
+        Playwright 会自动派生 boundary，由 ``content_type=None`` 表达
+        "renderer 不主动注入 Content-Type header"；其余形态（非 multipart）
+        由 renderer 显式赋值。
+    :vartype content_type: str | None
+    """
+
+    content_type: str | None = None
+
+
+class JSONRequestBodyFields(BaseRequestBodyFields):
+    """``application/json`` + object schema（``$ref`` 或 inline）。
+
+    渲染为 ``from .models import <Model>`` + ``body: <Model>``。
+    inline 形态由 dmcg 在前置阶段生成对应 ``{OpId}Request`` 模型。
+
+    :var import_model: 单一 model 名（``$ref`` 末段 PascalCase，或 inline 的 ``{op_id}Request``）。
+    :vartype import_model: str | None
+    """
+
+    import_model: str | None = None
+
+
+class UrlencodedFormRequestBodyFields(BaseRequestBodyFields):
+    """``application/x-www-form-urlencoded`` → form 标量字段列表。
+
+    渲染为 ``from stoma import Form`` + 循环
+    ``<name>: Annotated[<type>, Form()]`` 字段声明。
+
+    :var form_text_fields: form 标量字段声明字符串列表。
+    :vartype form_text_fields: list[str]
+    """
+
+    form_text_fields: list[str] = Field(default_factory=list)
+
+
+class MultipartFormRequestBodyFields(BaseRequestBodyFields):
+    """``multipart/form-data`` → form 标量 + 文件字段列表。
+
+    渲染时故意不自动派生 Content-Type（Playwright 自动加 boundary，
+    显式 ``multipart/form-data`` 无 boundary 会导致服务端 400）。
+
+    :var form_text_fields: form 标量字段列表。
+    :vartype form_text_fields: list[str]
+    :var form_file_fields: file 字段列表（裸 ``UploadFile``，无 ``Form()`` marker）。
+    :vartype form_file_fields: list[str]
+    """
+
+    form_text_fields: list[str] = Field(default_factory=list)
+    form_file_fields: list[str] = Field(default_factory=list)
+
+
+class BinaryRequestBodyFields(BaseRequestBodyFields):
+    """``string + format=binary`` → 单文件 raw body。
+
+    ``upload_as_multipart=False`` 由类型本身表达，不需要额外字段。
+    渲染为 ``<name>: UploadFile`` + decorator ``upload_as_multipart=False``。
+
+    :var binary_file_field: 单一文件字段声明字符串（如 ``<name>: UploadFile``）。
+    :vartype binary_file_field: str | None
+    """
+
+    binary_file_field: str | None = None
+
+
+class ScalarRequestBodyFields(BaseRequestBodyFields):
+    """primitive schema（任意 content type）→ 单字段 body。
+
+    渲染为 ``<name>: Annotated[<type>, Body()]``，wire 是裸值
+    （``Body()`` 默认 ``embed=False``）。
+
+    :var scalar_field: 单字段声明字符串（如 ``<name>: Annotated[T, Body()]``）。
+    :vartype scalar_field: str | None
+    """
+
+    scalar_field: str | None = None
 
 
 class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseModel](
@@ -134,6 +252,11 @@ class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseMo
     :var upload_as_multipart: 是否有文件上传字段需要以 ``multipart/form-data`` 传输。
         当 ``body_kind`` 为 ``MULTIPART`` 且含 ``format: binary`` 字段时为 ``True``。
     :vartype upload_as_multipart: bool
+    :var expanded_raw_request_body: 经 jsonref 展开后的 ``requestBody`` dict
+        （由 :func:`src.openapi.model_generator._expand_path_refs` 抽离出来），
+        供 renderer 在判别 body 形态后直接读取 schema 内容。无 requestBody
+        或非 requestBody 引用展开场景时为 ``None``。
+    :vartype expanded_raw_request_body: dict[str, Any] | None
     """
 
     operation_id: str
@@ -148,3 +271,4 @@ class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseMo
     body_kind: BodyKind = BodyKind.NONE
     body_fields: list[RequestBodyField] = []
     upload_as_multipart: bool = False
+    expanded_raw_request_body: dict[str, Any] | None = None

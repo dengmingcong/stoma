@@ -9,7 +9,7 @@ import pytest
 
 from src.openapi.model_generator import (
     _detect_parameter_cycle,
-    _expand_parameter_refs,
+    _expand_path_refs,
     generate_models,
 )
 
@@ -84,14 +84,16 @@ class TestGenerateModels:
                 raise AssertionError(msg)
 
 
-class TestExpandParameterRefs:
-    """测试 :func:`_expand_parameter_refs` 选择性参数 ``$ref`` 展开。"""
+class TestExpandPathRefs:
+    """测试 :func:`_expand_path_refs` 选择性参数 ``$ref`` 展开。"""
 
-    def test_expand_parameter_refs_preserves_body_refs(self) -> None:
-        """``requestBody`` 与 ``responses`` 中的 ``$ref`` 字符串保持原样。
+    def test_expand_path_refs_preserves_body_refs(self) -> None:
+        """``responses`` 中的 ``$ref`` 字符串保持原样（``requestBody`` 已被抽离）。
 
-        ``_expand_parameter_refs`` 仅展开 ``parameters`` 中的 ``$ref``，
-        其余键（如 ``requestBody``、``responses``）应原封不动。
+        ``_expand_path_refs`` 仅展开 ``parameters`` 与 ``requestBody`` 中的 ``$ref``；
+        展开后的 ``requestBody`` 抽离到返回的 ``request_body_map``，原始 spec
+        中的 ``requestBody`` 保持 ``$ref`` 字符串原样；``responses``、``summary``
+        等字段在合成 spec 中被丢弃，原样 spec 中保持不变。
         """
         spec: dict[str, Any] = {
             "paths": {
@@ -124,7 +126,7 @@ class TestExpandParameterRefs:
             },
         }
 
-        result = _expand_parameter_refs(spec)
+        result, _request_body_map = _expand_path_refs(spec)
 
         expanded_param = result["paths"]["/items"]["get"]["parameters"][0]
         assert expanded_param == {
@@ -140,7 +142,7 @@ class TestExpandParameterRefs:
         }
         assert result["paths"]["/items"]["get"]["summary"] == "list summary"
 
-    def test_expand_parameter_refs_resolves_parameter_chain(self) -> None:
+    def test_expand_path_refs_resolves_parameter_chain(self) -> None:
         """``parameters[*].$ref`` 指向 ``#/components/parameters/X`` 时被展开。"""
         spec: dict[str, Any] = {
             "paths": {"/items": {"get": {"parameters": [{"$ref": "#/components/parameters/PageParam"}]}}},
@@ -155,13 +157,13 @@ class TestExpandParameterRefs:
             },
         }
 
-        result = _expand_parameter_refs(spec)
+        result, _request_body_map = _expand_path_refs(spec)
 
         assert result["paths"]["/items"]["get"]["parameters"] == [
             {"name": "page", "in": "query", "schema": {"type": "integer"}}
         ]
 
-    def test_expand_parameter_refs_catches_external_ref_error(self) -> None:
+    def test_expand_path_refs_catches_external_ref_error(self) -> None:
         """组件参数 ``schema.$ref`` 指向外部文件时抛出 :class:`OpenAPISchemaError`。"""
         from src.openapi.parser import OpenAPISchemaError
 
@@ -178,10 +180,10 @@ class TestExpandParameterRefs:
             },
         }
 
-        with pytest.raises(OpenAPISchemaError, match=r"Failed to resolve parameter \$ref"):
-            _expand_parameter_refs(spec)
+        with pytest.raises(OpenAPISchemaError, match=r"Failed to resolve parameter or requestBody \$ref"):
+            _expand_path_refs(spec)
 
-    def test_expand_parameter_refs_resolves_path_item_level_ref(self) -> None:
+    def test_expand_path_refs_resolves_path_item_level_ref(self) -> None:
         """path item 级 ``parameters`` 中的 ``$ref`` 也应被展开。
 
         OpenAPI 允许 ``parameters`` 直接挂在 ``paths[/x]`` 上（对所有 method 生效），
@@ -212,7 +214,7 @@ class TestExpandParameterRefs:
             },
         }
 
-        result = _expand_parameter_refs(spec)
+        result, _request_body_map = _expand_path_refs(spec)
 
         expanded = result["paths"]["/items"]["parameters"][0]
         assert "$ref" not in expanded
