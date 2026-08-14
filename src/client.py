@@ -21,7 +21,7 @@ URL/Query 处理说明：
 
 import mimetypes
 from dataclasses import asdict, dataclass, is_dataclass
-from enum import Enum
+from enum import Enum, auto
 from typing import Any, NamedTuple
 
 from playwright.sync_api import APIRequestContext, APIResponse, FilePayload, FormData
@@ -50,12 +50,18 @@ class RawPayload(NamedTuple):
 
 
 class RequestBodyKind(Enum):
-    """请求体类型枚举。"""
+    """请求体类型枚举。
 
-    RAW = "application/json"
-    URLENCODED = "application/x-www-form-urlencoded"
-    MULTIPART = "multipart/form-data"
-    BINARY = "application/octet-stream"
+    :var MULTIPART_FORM: 相当于 Postman 'form-data' body，使用 multipart/form-data 编码。
+    :var URLENCODED_FORM: 相当于 Postman 'x-www-form-urlencoded' body，使用 application/x-www-form-urlencoded 编码。
+    :var RAW: 相当于 Postman 'raw' body，使用 application/json 或其他纯文本类型编码。
+    :var BINARY: 相当于 Postman 'binary' body，发送单个文件，Content-Type 由文件 mimeType 决定。
+    """
+
+    MULTIPART_FORM = auto()
+    URLENCODED_FORM = auto()
+    RAW = auto()
+    BINARY = auto()
 
 
 @dataclass
@@ -348,10 +354,10 @@ class Client:
                     form_data.append(model_field.alias, upload_file.path)
 
         if has_files:
-            return RequestBody(kind=RequestBodyKind.MULTIPART, form_data=form_data)
+            return RequestBody(kind=RequestBodyKind.MULTIPART_FORM, form_data=form_data)
         # FormData 没有 ``__bool__`` / ``__len__``，空实例仍为真，必须用 ``_fields`` 判断非空。
         if form_data._fields:
-            return RequestBody(kind=RequestBodyKind.URLENCODED, form_data=form_data)
+            return RequestBody(kind=RequestBodyKind.URLENCODED_FORM, form_data=form_data)
         raw_value = self._build_raw_body(api_route, dependant)
         media_type = None
         if raw_value is not None and len(dependant.pure_body_params) == 1:
@@ -453,9 +459,9 @@ class Client:
         :raise HTTPError: 网络层失败时抛出，消息包含 method/path 便于排错。
         """
         payload: dict[str, Any] = {}
-        if body.kind is RequestBodyKind.MULTIPART:
+        if body.kind is RequestBodyKind.MULTIPART_FORM:
             payload = {"multipart": body.form_data}
-        elif body.kind is RequestBodyKind.URLENCODED:
+        elif body.kind is RequestBodyKind.URLENCODED_FORM:
             payload = {"form": body.form_data}
         elif body.kind is RequestBodyKind.BINARY:
             if body.binary_file is not None:

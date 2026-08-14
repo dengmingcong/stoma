@@ -333,7 +333,7 @@ def test_form_scalar_passes_value() -> None:
 
     endpoint = LoginForm(username="alice")
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.kind is RequestBodyKind.URLENCODED_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("username", "alice")]
 
@@ -347,7 +347,7 @@ def test_form_int() -> None:
 
     endpoint = AgeForm(age=42)
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.kind is RequestBodyKind.URLENCODED_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("age", 42)]
 
@@ -361,7 +361,7 @@ def test_form_scalar_list_append_multiple() -> None:
 
     endpoint = TagsForm(tags=["a", "b"])
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.kind is RequestBodyKind.URLENCODED_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("tags", "a"), ("tags", "b")]
 
@@ -375,7 +375,7 @@ def test_form_scalar_list_field() -> None:
 
     endpoint = ScalarListForm(tags=["a", "b"])
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.URLENCODED
+    assert body.kind is RequestBodyKind.URLENCODED_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("tags", "a"), ("tags", "b")]
 
@@ -432,7 +432,7 @@ def test_uploadfile_single(tmp_path: pathlib.Path) -> None:
 
     endpoint = UploadSingle(file=UploadFile(path=file_path))
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.MULTIPART
+    assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("file", file_path)]
 
@@ -451,7 +451,7 @@ def test_uploadfile_list(tmp_path: pathlib.Path) -> None:
 
     endpoint = UploadList(files=[UploadFile(path=file1), UploadFile(path=file2)])
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.MULTIPART
+    assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("files", file1), ("files", file2)]
 
@@ -465,7 +465,7 @@ def test_uploadfile_optional_none() -> None:
 
     endpoint = UploadOptNone(file=None)
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.MULTIPART
+    assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == []
 
@@ -479,7 +479,7 @@ def test_uploadfile_optional_missing() -> None:
 
     endpoint = UploadOptMissing()  # 缺省值 None
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.MULTIPART
+    assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == []
 
@@ -496,7 +496,7 @@ def test_uploadfile_optional_with_value(tmp_path: pathlib.Path) -> None:
 
     endpoint = UploadOptValue(file=UploadFile(path=file_path))
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.MULTIPART
+    assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("file", file_path)]
 
@@ -510,7 +510,7 @@ def test_uploadfile_list_optional_none() -> None:
 
     endpoint = UploadFilesOptNone(files=None)
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.MULTIPART
+    assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == []
 
@@ -524,7 +524,7 @@ def test_uploadfile_list_optional_empty() -> None:
 
     endpoint = UploadFilesOptEmpty(files=[])
     body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
-    assert body.kind is RequestBodyKind.MULTIPART
+    assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == []
 
@@ -544,6 +544,7 @@ class TestUploadAsMultipartFlag:
 
     def test_upload_as_multipart_false_zero_files_raises(self) -> None:
         """无 UploadFile 字段 + flag False → raise。"""
+
         class R(APIRoute[dict]):
             pass
 
@@ -552,6 +553,7 @@ class TestUploadAsMultipartFlag:
 
     def test_upload_as_multipart_false_two_files_raises(self) -> None:
         """2 个 UploadFile + flag False → raise。"""
+
         class R(APIRoute[dict]):
             file1: UploadFile
             file2: UploadFile
@@ -561,6 +563,7 @@ class TestUploadAsMultipartFlag:
 
     def test_upload_as_multipart_false_list_uploadfile_raises(self) -> None:
         """list[UploadFile] + flag False → raise（list 包装不允许）。"""
+
         class R(APIRoute[dict]):
             files: list[UploadFile]
 
@@ -569,6 +572,7 @@ class TestUploadAsMultipartFlag:
 
     def test_upload_as_multipart_false_with_form_raises(self) -> None:
         """1 UploadFile + 1 Form + flag False → raise。"""
+
         class R(APIRoute[dict]):
             file: UploadFile
             data: Annotated[str, Form()]
@@ -583,6 +587,7 @@ class TestUploadAsMultipartFlag:
         所以错误消息可能是 "Body 与 Form/UploadFile..." 而非 "不允许 Body() 字段"。
         两种消息都接受。
         """
+
         class R(APIRoute[dict]):
             file: UploadFile
             data: Annotated[dict, Body()]
@@ -614,6 +619,7 @@ class TestUploadAsMultipartFlag:
 
     def test_upload_as_multipart_false_happy_path(self) -> None:
         """1 裸 UploadFile + flag False → 通过校验 + Dependant 正确。"""
+
         class R(APIRoute[dict]):
             file: UploadFile
 
@@ -624,6 +630,7 @@ class TestUploadAsMultipartFlag:
 
     def test_upload_as_multipart_default_true_passes(self) -> None:
         """默认值（不传 upload_as_multipart=True）允许裸 UploadFile。"""
+
         class R(APIRoute[dict]):
             file: UploadFile
 
@@ -638,6 +645,7 @@ class TestRawPayloadAndMediaType:
     def test_raw_payload_namedtuple(self) -> None:
         """RawPayload 字段可访问。"""
         from src.client import RawPayload
+
         rp = RawPayload(value={"a": 1}, media_type="application/xml")
         assert rp.value == {"a": 1}
         assert rp.media_type == "application/xml"
@@ -645,6 +653,7 @@ class TestRawPayloadAndMediaType:
     def test_raw_payload_media_type_optional(self) -> None:
         """RawPayload.media_type 默认 None。"""
         from src.client import RawPayload
+
         rp = RawPayload(value=5)
         assert rp.value == 5
         assert rp.media_type is None
