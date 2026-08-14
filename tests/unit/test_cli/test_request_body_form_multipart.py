@@ -4,9 +4,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from src.cli import app
+
+# 字段声明过长，提取为模块级常量便于复用并满足 line-length 限制。
+_CONTENT_TYPE_LINE_TEMPLATE: str = (
+    "content_type: Annotated[str, Header(), "
+    'Field(serialization_alias="Content-Type")] = "{media_type}"'
+)
+
+
+def _content_type_line(media_type: str) -> str:
+    """生成 auto Content-Type 字段声明的完整字符串。"""
+    return _CONTENT_TYPE_LINE_TEMPLATE.format(media_type=media_type)
 
 
 def _build_spec(
@@ -64,7 +76,9 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "login_user.py").read_text(encoding="utf-8")
         assert "username: Annotated[str, Form()]" in content
         assert "password: Annotated[str, Form()]" in content
-        assert "from stoma import APIRouter, APIRoute, Form" in content
+        # auto Content-Type header 触发 Header + Field import
+        assert "from stoma import APIRouter, APIRoute, Header, Form" in content
+        assert _content_type_line("application/x-www-form-urlencoded") in content
         compile(content, "login_user.py", "exec")
 
     def test_form_urlencoded_array(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -96,7 +110,9 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "add_tags.py").read_text(encoding="utf-8")
         # 数组字段从 items.type 派生 list[T];与 runtime Annotated[list[str], Form()] 一致
         assert "tags: Annotated[list[str], Form()]" in content
-        assert "from stoma import APIRouter, APIRoute, Form" in content
+        # auto Content-Type header 触发 Header + Field import
+        assert "from stoma import APIRouter, APIRoute, Header, Form" in content
+        assert _content_type_line("application/x-www-form-urlencoded") in content
         compile(content, "add_tags.py", "exec")
 
     def test_form_urlencoded_array_with_int_items(
@@ -130,7 +146,9 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "add_scores.py").read_text(encoding="utf-8")
         # items.type=integer → list[int]
         assert "scores: Annotated[list[int], Form()]" in content
-        assert "from stoma import APIRouter, APIRoute, Form" in content
+        # auto Content-Type header 触发 Header + Field import
+        assert "from stoma import APIRouter, APIRoute, Header, Form" in content
+        assert _content_type_line("application/x-www-form-urlencoded") in content
         compile(content, "add_scores.py", "exec")
 
     def test_multipart_single_file(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -160,6 +178,8 @@ class TestMakeRequestBodyFormMultipart:
         assert result.exit_code == 0, result.output
         content = (out_dir / "upload_avatar.py").read_text(encoding="utf-8")
         assert "avatar: UploadFile" in content
+        # multipart 不自动生成 Content-Type：Playwright 自动加 boundary
+        assert "content_type" not in content
         assert "from stoma import APIRouter, APIRoute, UploadFile" in content
         # multipart 文件场景不应导入 Form
         assert "Form" not in content
@@ -197,6 +217,8 @@ class TestMakeRequestBodyFormMultipart:
         assert "avatar: UploadFile" in content
         assert "Form" in content
         assert "UploadFile" in content
+        # multipart 不自动生成 Content-Type：Playwright 自动加 boundary
+        assert "content_type" not in content
         compile(content, "upload_with_form.py", "exec")
 
     def test_scalar_json_integer(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -231,7 +253,9 @@ components:
         assert result.exit_code == 0, result.output
         content = (out_dir / "set_importance.py").read_text(encoding="utf-8")
         assert "importance: Annotated[int, Body()]" in content
-        assert "from stoma import APIRouter, APIRoute, Body" in content
+        # auto Content-Type header 触发 Header + Field import
+        assert "from stoma import APIRouter, APIRoute, Header, Body" in content
+        assert _content_type_line("application/json") in content
         compile(content, "set_importance.py", "exec")
 
     def test_scalar_json_string(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -266,7 +290,9 @@ components:
         assert result.exit_code == 0, result.output
         content = (out_dir / "post_scalar.py").read_text(encoding="utf-8")
         assert "scalar: Annotated[str, Body()]" in content
-        assert "from stoma import APIRouter, APIRoute, Body" in content
+        # auto Content-Type header 触发 Header + Field import
+        assert "from stoma import APIRouter, APIRoute, Header, Body" in content
+        assert _content_type_line("application/json") in content
         compile(content, "post_scalar.py", "exec")
 
     def test_binary_octet_stream(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -294,7 +320,9 @@ components:
         content = (out_dir / "upload_raw.py").read_text(encoding="utf-8")
         assert "upload_raw: UploadFile" in content
         assert "upload_as_multipart=False" in content
-        assert "from stoma import APIRouter, APIRoute, Body, UploadFile" in content
+        # auto Content-Type header 触发 Header + Field import
+        assert "from stoma import APIRouter, APIRoute, Header, Body, UploadFile" in content
+        assert _content_type_line("application/octet-stream") in content
         compile(content, "upload_raw.py", "exec")
 
     def test_binary_image_png(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -322,5 +350,145 @@ components:
         content = (out_dir / "upload_image.py").read_text(encoding="utf-8")
         assert "upload_image: UploadFile" in content
         assert "upload_as_multipart=False" in content
-        assert "from stoma import APIRouter, APIRoute, Body, UploadFile" in content
+        # auto Content-Type header 触发 Header + Field import
+        assert "from stoma import APIRouter, APIRoute, Header, Body, UploadFile" in content
+        assert _content_type_line("image/png") in content
         compile(content, "upload_image.py", "exec")
+
+    def test_form_urlencoded_non_snake_case_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 urlencoded form 字段名非 snake_case 时自动加 ``Field(serialization_alias=...)`` 保留原名。"""
+        spec = _build_spec(
+            "/submit",
+            "post",
+            "submitForm",
+            """\
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                user-name:
+                  type: string
+                X-API-Key:
+                  type: string
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "submit_form.py").read_text(encoding="utf-8")
+        # 非 snake_case 字段自动加 serialization_alias 保留原名
+        assert "user_name: Annotated[str, Form(), Field(serialization_alias='user-name')]" in content
+        assert "x_api_key: Annotated[str, Form(), Field(serialization_alias='X-API-Key')]" in content
+        compile(content, "submit_form.py", "exec")
+
+    def test_multipart_form_non_snake_case_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 multipart form 标量字段非 snake_case 时同样加 ``Field(serialization_alias=...)``。"""
+        spec = _build_spec(
+            "/upload-attrs",
+            "post",
+            "uploadWithAttrs",
+            """\
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                user-name:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "upload_with_attrs.py").read_text(encoding="utf-8")
+        # multipart 标量字段非 snake_case 时加 alias
+        assert "user_name: Annotated[str, Form(), Field(serialization_alias='user-name')]" in content
+        # file 字段保持裸 UploadFile（无 alias）
+        assert "file: UploadFile" in content
+        compile(content, "upload_with_attrs.py", "exec")
+
+    def test_urlencoded_form_binary_field_emits_warning(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """验证 urlencoded form 含 ``format=binary`` 字段时 emit ``UserWarning``（不抛错）。"""
+        spec = _build_spec(
+            "/mixed-bad",
+            "post",
+            "submitMixed",
+            """\
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                avatar:
+                  type: string
+                  format: binary
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        with pytest.warns(UserWarning, match="format=binary"):
+            result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        # CLI 仍正常退出，form 字段被渲染
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "submit_mixed.py").read_text(encoding="utf-8")
+        assert "username: Annotated[str, Form()]" in content
+        # urlencoded binary 字段退化为 form 标量（不再引发额外 side-effect）
+        assert "avatar: Annotated[str, Form()]" in content
+        compile(content, "submit_mixed.py", "exec")
+
+    def test_multiple_media_types_raises_schema_error(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """验证 requestBody 含多个 media type 时抛出 ``OpenAPISchemaError``（stoma 不支持）。"""
+        spec = _build_spec(
+            "/ambiguous",
+            "post",
+            "ambiguousBody",
+            """\
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+""",
+        )
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+        # CLI 退出码非零（codegen 报错）
+        assert result.exit_code != 0
+        # 错误信息提示多 media type（来自 result.exception 或 output）
+        error_repr = repr(result.exception) if result.exception else result.output
+        assert "Multiple media types" in error_repr

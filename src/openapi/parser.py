@@ -16,16 +16,14 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from src.openapi._naming import _to_field_name
 from src.openapi.model_generator import _detect_parameter_cycle, _expand_parameter_refs
-from src.openapi.models import BodyKind, Endpoint, RequestBodyField
+from src.openapi.models import Endpoint
 from src.openapi.models_types import SpecVersion
 from src.openapi.reference_types import (
     OpenAPI30,
@@ -39,29 +37,6 @@ from src.openapi.reference_types import (
     Response30,
     Response31,
 )
-
-
-@dataclass
-class BodyDetection:
-    """请求体探测结果。
-
-    :var kind: 请求体类型枚举。
-    :vartype kind: BodyKind
-    :var schema_dict: schema 的 JSON 序列化字典，供 renderer 读取 format/type/properties。
-        BINARY 类型 schema_dict 为空字典。
-    :vartype schema_dict: dict[str, Any]
-    """
-
-    kind: BodyKind
-    schema_dict: dict[str, Any]
-
-
-PYTHON_TYPE_MAP: dict[str, str] = {
-    "string": "str",
-    "integer": "int",
-    "number": "float",
-    "boolean": "bool",
-}
 
 
 class OpenAPISchemaError(Exception):
@@ -232,44 +207,6 @@ class OpenAPIParser[
             return None
         return media_type_schema.model_dump(mode="json")
 
-    @staticmethod
-    def _detect_scalar_json_body(content: dict[str, Any]) -> BodyDetection | None:
-        schema_dict = OpenAPIParser._get_schema_dict(content, "application/json")
-        if schema_dict is None:
-            return None
-        schema_type = schema_dict.get("type", "")
-        if schema_type not in {"string", "integer", "number", "boolean"}:
-            return None
-        return BodyDetection(kind=BodyKind.SCALAR_JSON, schema_dict=schema_dict)
-
-    @staticmethod
-    def _detect_form_body(content: dict[str, Any]) -> BodyDetection | None:
-        schema_dict = OpenAPIParser._get_schema_dict(content, "application/x-www-form-urlencoded")
-        if schema_dict is None or "properties" not in schema_dict:
-            return None
-        return BodyDetection(kind=BodyKind.FORM_URLENCODED, schema_dict=schema_dict)
-
-    @staticmethod
-    def _detect_multipart_body(content: dict[str, Any]) -> BodyDetection | None:
-        schema_dict = OpenAPIParser._get_schema_dict(content, "multipart/form-data")
-        if schema_dict is None or "properties" not in schema_dict:
-            return None
-        return BodyDetection(kind=BodyKind.MULTIPART, schema_dict=schema_dict)
-
-    @staticmethod
-    def _detect_binary_body(content: dict[str, Any]) -> BodyDetection | None:
-        binary_media_types = {
-            "application/octet-stream",
-            "application/pdf",
-        }
-        binary_prefixes = ("image/", "audio/", "video/", "font/")
-        for media_type in content:
-            if media_type in binary_media_types:
-                return BodyDetection(kind=BodyKind.BINARY, schema_dict={})
-            if media_type.startswith(binary_prefixes):
-                return BodyDetection(kind=BodyKind.BINARY, schema_dict={})
-        return None
-
     def validate_operation_ids(self) -> None:
         """校验所有操作均有非空 ``operationId``。"""
         if self._spec is None:
@@ -329,10 +266,6 @@ class OpenAPIParser[
                 operation_params = cast(
                     Sequence[ParameterT], getattr(operation, "parameters", None) or ()
                 )
-                body_kind, body_fields, upload_as_multipart = self._detect_and_build_body(
-                    request_body,
-                    operation_id if isinstance(operation_id, str) else "",
-                )
                 endpoint = Endpoint[ParameterT, RequestBodyT, ResponseT](
                     operation_id=operation_id if isinstance(operation_id, str) else "",
                     method=method.upper(),
@@ -343,149 +276,11 @@ class OpenAPIParser[
                     request_body=request_body,
                     responses=responses,
                     spec_version=self.spec_version,
-                    body_kind=body_kind,
-                    body_fields=body_fields,
-                    upload_as_multipart=upload_as_multipart,
                 )
                 endpoints.append(endpoint)
 
         self._has_json_payloads = has_json_payloads
         return endpoints
-
-    def _detect_and_build_body(
-        self,
-        request_body: RequestBodyT | None,
-        operation_id: str,
-    ) -> tuple[BodyKind, list[RequestBodyField], bool]:
-        """按优先级探测请求体类型并构造 body_fields + upload_as_multipart。
-
-        请求体为 ``None`` 或 ``content`` 不是 dict 时返回 ``(NONE, [], False)``；
-        命中 detector 后调用 :meth:`_build_body_fields` 按 kind 派发。
-
-        :param request_body: 当前操作的 requestBody 节点（可为 ``None``）。
-        :param operation_id: 已校验的 operationId 字符串（SCALAR_JSON 字段名派生用）。
-        :return: ``(body_kind, body_fields, upload_as_multipart)`` 三元组。
-        """
-        if request_body is None:
-            return BodyKind.NONE, [], False
-        content = getattr(request_body, "content", None)
-        if not isinstance(content, dict):
-            return BodyKind.NONE, [], False
-        body_kind, detection = self._detect_body_kind(content)
-        body_fields, upload_as_multipart = self._build_body_fields(body_kind, detection, operation_id)
-        return body_kind, body_fields, upload_as_multipart
-
-    @staticmethod
-    def _detect_body_kind(content: dict[str, Any]) -> tuple[BodyKind, BodyDetection | None]:
-        """按 MULTIPART > FORM > BINARY > SCALAR_JSON 优先级探测请求体类型。
-
-        第一个匹配的 detector 返回其 kind 与 detection；
-        全部未命中时返回 ``(BodyKind.NONE, None)``。
-
-        :param content: OpenAPI ``MediaType`` 字典（``request_body.content``）。
-        :return: ``(body_kind, detection)``，NONE 时 detection 为 None。
-        """
-        for detector in (
-            OpenAPIParser._detect_multipart_body,
-            OpenAPIParser._detect_form_body,
-            OpenAPIParser._detect_binary_body,
-            OpenAPIParser._detect_scalar_json_body,
-        ):
-            detection = detector(content)
-            if detection is not None:
-                return detection.kind, detection
-        return BodyKind.NONE, None
-
-    @staticmethod
-    def _build_body_fields(
-        body_kind: BodyKind,
-        detection: BodyDetection | None,
-        operation_id: str,
-    ) -> tuple[list[RequestBodyField], bool]:
-        """根据 body_kind 构造 body_fields 与 upload_as_multipart。
-
-        NONE 或 detection 为 None 时返回 ``([], False)``。MULTIPART 同时把
-        ``upload_as_multipart`` 置 ``True``。数组属性（``type: array``）走
-        :meth:`_resolve_array_type` 派生 ``list[T]``，primitive 属性走
-        :data:`PYTHON_TYPE_MAP`。字段名统一用 :func:`src.openapi._naming._to_field_name`
-        处理 hyphen / 关键字 / 数字开头等边界。
-
-        :param body_kind: 已确定的请求体类型。
-        :param detection: 对应的探测结果（schema_dict 来源）；NONE 时忽略。
-        :param operation_id: SCALAR_JSON 字段名派生用 operationId 字符串。
-        :return: ``(body_fields, upload_as_multipart)`` 二元组。
-        """
-        if body_kind == BodyKind.NONE or detection is None:
-            return [], False
-        schema_dict = detection.schema_dict
-        body_fields: list[RequestBodyField] = []
-        upload_as_multipart = False
-        if body_kind == BodyKind.MULTIPART:
-            upload_as_multipart = True
-            for prop_name, prop_schema in schema_dict.get("properties", {}).items():
-                prop_format = prop_schema.get("schema_format", "") or prop_schema.get("format", "")
-                if prop_format == "binary":
-                    body_fields.append(
-                        RequestBodyField(
-                            name=_to_field_name(prop_name),
-                            type="UploadFile",
-                            marker="uploadfile",
-                        )
-                    )
-                    continue
-                prop_type = prop_schema.get("type", "str")
-                if prop_type == "array":
-                    py_type = OpenAPIParser._resolve_array_type(prop_schema)
-                else:
-                    py_type = PYTHON_TYPE_MAP.get(prop_type, "str")
-                body_fields.append(
-                    RequestBodyField(
-                        name=_to_field_name(prop_name),
-                        type=py_type,
-                        marker="form",
-                    )
-                )
-        elif body_kind == BodyKind.FORM_URLENCODED:
-            for prop_name, prop_schema in schema_dict.get("properties", {}).items():
-                prop_type = prop_schema.get("type", "str")
-                if prop_type == "array":
-                    py_type = OpenAPIParser._resolve_array_type(prop_schema)
-                else:
-                    py_type = PYTHON_TYPE_MAP.get(prop_type, "str")
-                body_fields.append(
-                    RequestBodyField(
-                        name=_to_field_name(prop_name),
-                        type=py_type,
-                        marker="form",
-                    )
-                )
-        elif body_kind == BodyKind.SCALAR_JSON:
-            schema_type = schema_dict.get("type", "str")
-            py_type = PYTHON_TYPE_MAP.get(schema_type, "str")
-            body_fields.append(
-                RequestBodyField(
-                    name=_to_field_name(operation_id),
-                    type=py_type,
-                    marker="body",
-                )
-            )
-        return body_fields, upload_as_multipart
-
-    @staticmethod
-    def _resolve_array_type(prop_schema: dict[str, Any]) -> str:
-        """对 ``type: array`` 的 property 派生 ``list[T]`` 字符串。
-
-        从 ``prop_schema["items"]["type"]`` 取元素类型映射到 Python 类型名；
-        ``items`` 不存在或 type 不在 :data:`PYTHON_TYPE_MAP` 时 fallback 到
-        ``'str'``，对齐老路径 ``PYTHON_TYPE_MAP.get(prop_type, "str")`` 的行为。
-
-        :param prop_schema: property 的 schema 字典（含 ``type`` / ``items``）。
-        :return: ``"list[<element>]"`` 形式的 Python 类型字符串。
-        """
-        items = prop_schema.get("items", {})
-        items_type = items.get("type", "") if isinstance(items, dict) else ""
-        element_type = PYTHON_TYPE_MAP.get(items_type, "str")
-        return f"list[{element_type}]"
 
 
 def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, Any, Any]:

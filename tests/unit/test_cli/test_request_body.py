@@ -271,7 +271,8 @@ components:
         # body 形态由 spec 决定。
         assert "body: CreateUserEmbedRequest" in content
         assert "from .models import CreateUserEmbedRequest" in content
-        assert "from stoma import APIRouter, APIRoute, Body" in content
+        # auto Content-Type header 触发 Header + Field import
+        assert "from stoma import APIRouter, APIRoute, Header, Body" in content
 
     def test_request_body_with_non_pascalcase_ref(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``$ref`` 末段（``components.schemas`` 的 key）非 PascalCase 时被 PascalCase 化。
