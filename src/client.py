@@ -27,8 +27,8 @@ from typing import Any, NamedTuple
 from playwright.sync_api import APIRequestContext, APIResponse, FilePayload, FormData
 from pydantic import BaseModel
 
+from dependencies.annotation import field_annotation_is_complex
 from src.dependencies import Dependant, ModelField
-from src.dependencies.utils import field_annotation_is_complex
 from src.exceptions import HTTPError, ParseError, ValidationError
 from src.params import Body, UploadFile
 from src.response import Response

@@ -13,7 +13,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
-from src.dependencies.utils import field_annotation_is_complex
+from dependencies.annotation import field_annotation_is_complex
 from src import Header
 from src.routing import APIRoute, APIRouter
 
@@ -421,7 +421,7 @@ class TestComplexTypeHelpers:
 
     def test_is_complex_base_model(self) -> None:
         """测试 BaseModel 子类被识别为复杂类型。"""
-        from src.dependencies.utils import field_annotation_is_complex
+        from dependencies.annotation import field_annotation_is_complex
 
         class MyModel(BaseModel):
             field: str
@@ -431,7 +431,7 @@ class TestComplexTypeHelpers:
 
     def test_is_complex_sequence(self) -> None:
         """测试序列类型被识别为复杂类型。"""
-        from src.dependencies.utils import field_annotation_is_complex
+        from dependencies.annotation import field_annotation_is_complex
 
         assert field_annotation_is_complex(list[str]) is True
         assert field_annotation_is_complex(dict[str, int]) is True
@@ -449,7 +449,7 @@ class TestComplexTypeHelpers:
 
     def test_is_complex_scalar(self) -> None:
         """测试标量类型不被识别为复杂类型。"""
-        from src.dependencies.utils import field_annotation_is_complex
+        from dependencies.annotation import field_annotation_is_complex
 
         assert field_annotation_is_complex(int) is False
         assert field_annotation_is_complex(str) is False
@@ -459,7 +459,7 @@ class TestComplexTypeHelpers:
 
     def test_is_complex_union_with_base_model(self) -> None:
         """测试 BaseModel | None 被识别为复杂类型。"""
-        from src.dependencies.utils import field_annotation_is_complex
+        from dependencies.annotation import field_annotation_is_complex
 
         assert field_annotation_is_complex(UserData | None) is True
         assert field_annotation_is_complex(int | UserData) is True  # One is complex

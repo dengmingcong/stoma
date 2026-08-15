@@ -16,13 +16,13 @@ from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
-from src.dependencies import Dependant, ModelField
-from src.dependencies.utils import (
+from dependencies.annotation import (
     _is_uploadfile_or_list_annotation,
     field_annotation_is_complex,
     validate_binary_body_annotation,
     validate_form_field_annotation,
 )
+from src.dependencies import Dependant, ModelField
 from src.params import Form, Param, ParamTypes
 
 

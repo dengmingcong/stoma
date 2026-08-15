@@ -4,14 +4,13 @@
 ``upload_as_multipart=False`` 模式下构造 ``FilePayload`` 的行为。
 """
 
-from typing import Annotated, Any, Optional, Union
+from typing import Any, Optional, Union
 
 import pytest
-from pydantic import Field
 
+from dependencies.annotation import validate_binary_body_annotation
 from src import UploadFile
 from src.client import Client, RequestBodyKind
-from src.dependencies.utils import validate_binary_body_annotation
 from src.routing import APIRoute, APIRouter
 
 
