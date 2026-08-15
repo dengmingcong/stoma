@@ -149,9 +149,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         class_name = _to_pascal_case(operation_id)
         file_name = f"{to_snake(operation_id)}.py"
         response_type = self._extract_response_info(endpoint.responses, endpoint)
-        body_fields_template = self._extract_request_body_info(
-            endpoint.request_body, endpoint
-        )
+        body_fields_template = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields, uses_field_import = self._extract_params(endpoint.parameters)
 
         # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
@@ -169,9 +167,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         # 当 _extract_request_body_info 自动派生 Content-Type（body_template_vars.content_type）且
         # 用户未显式声明同名 header field 时，注入一个 Annotated[str, Header()] 字段占位，
         # 避免与运行时派生的 Content-Type 冲突。
-        content_type_header = self._build_content_type_header(
-            header_fields, body_template_vars["content_type"]
-        )
+        content_type_header = self._build_content_type_header(header_fields, body_template_vars["content_type"])
         if content_type_header is not None:
             header_fields.append(content_type_header)
             uses_field_import = uses_field_import or not _is_snake_case("Content-Type")
@@ -367,6 +363,10 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
     ) -> BaseRequestBodyFields | None:
         """按 spec 的 media type 分类请求体，返回对应 :class:`BaseRequestBodyFields` 子类实例。
 
+        TODO: 后续支持 ``oneOf`` / ``anyOf`` / ``allOf`` 顶层组合子 schema（目前仅 JSON 路径支持）。
+        对于 multipart / urlencoded form，后续 Form() 通过支持 BaseModel 来实现，Union 多个 BaseModel 实现 oneOf/anyOf，
+        allOf 通过继承 BaseModel 实现。
+
         7 步流程（顺序严格）：
 
         1. ``requestBody`` / ``content`` 为空 → 返回 ``None``。
@@ -410,9 +410,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             raise OpenAPISchemaError(msg)
 
         media_type, _ = next(iter(content.items()))
-        expanded_schema_dict: dict[str, Any] | None = self._get_expanded_schema_dict(
-            request_body, media_type
-        )
+        expanded_schema_dict: dict[str, Any] | None = self._get_expanded_schema_dict(request_body, media_type)
 
         # 步骤 3：application/json（dmcg 处理顶层 oneOf/anyOf/allOf，无需组合子检查）
         if media_type == "application/json":
@@ -700,10 +698,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         if _is_snake_case(name):
             scalar = f"{field_name}: UploadFile"
         else:
-            scalar = (
-                f"{field_name}: Annotated[UploadFile, "
-                f"Field(serialization_alias={name!r})]"
-            )
+            scalar = f"{field_name}: Annotated[UploadFile, Field(serialization_alias={name!r})]"
         return BinaryRequestBodyFields(
             binary_file_field=scalar,
             content_type=media_type,
@@ -744,10 +739,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         if _is_snake_case(name):
             scalar_field = f"{field_name}: Annotated[{py_type}, Body()]"
         else:
-            scalar_field = (
-                f"{field_name}: Annotated[{py_type}, Body(), "
-                f"Field(serialization_alias={name!r})]"
-            )
+            scalar_field = f"{field_name}: Annotated[{py_type}, Body(), Field(serialization_alias={name!r})]"
         return ScalarRequestBodyFields(
             scalar_field=scalar_field,
             content_type=media_type,
@@ -774,10 +766,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             return None
         if any('alias="Content-Type"' in line for line in header_fields):
             return None
-        return (
-            f'content_type: Annotated[str, Header(), '
-            f'Field(serialization_alias="Content-Type")] = "{content_type}"'
-        )
+        return f'content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "{content_type}"'
 
     def _extract_response_info(
         self,
@@ -922,10 +911,7 @@ def _build_upload_file_field_line(name: str) -> str:
     field_name = _to_field_name(name)
     if _is_snake_case(name):
         return f"{field_name}: UploadFile"
-    return (
-        f"{field_name}: Annotated[UploadFile, "
-        f"Field(serialization_alias={name!r})]"
-    )
+    return f"{field_name}: Annotated[UploadFile, Field(serialization_alias={name!r})]"
 
 
 def _build_param_field_line(
