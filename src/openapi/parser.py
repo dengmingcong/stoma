@@ -25,6 +25,7 @@ from typing import Any, cast
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from src.exceptions import OpenAPISchemaError
 from src.openapi.model_generator import _detect_parameter_cycle, _expand_path_refs
 from src.openapi.models import Endpoint
 from src.openapi.models_types import SpecVersion
@@ -40,12 +41,6 @@ from src.openapi.reference_types import (
     Response30,
     Response31,
 )
-
-
-class OpenAPISchemaError(Exception):
-    """OpenAPI schema 校验失败。"""
-
-    pass
 
 
 def _read_raw_spec(spec_path: Path) -> dict[str, Any]:
@@ -232,32 +227,21 @@ class OpenAPIParser[
             path_params = cast(Sequence[ParameterT], getattr(path_item, "parameters", None) or ())
             for method, operation in self._operations(path_item).items():
                 request_body_node = getattr(operation, "requestBody", None)
-                request_body = (
-                    cast(RequestBodyT | None, request_body_node)
-                    if request_body_node is not None
-                    else None
-                )
+                request_body = cast(RequestBodyT | None, request_body_node) if request_body_node is not None else None
                 if request_body is not None and self._has_json_schema(request_body):
                     has_json_payloads = True
 
                 response_nodes = getattr(operation, "responses", None)
                 responses: dict[str, ResponseT] | None = (
-                    cast(dict[str, ResponseT], response_nodes)
-                    if isinstance(response_nodes, dict)
-                    else None
+                    cast(dict[str, ResponseT], response_nodes) if isinstance(response_nodes, dict) else None
                 )
-                if responses and any(
-                    self._has_json_schema(response)
-                    for response in responses.values()
-                ):
+                if responses and any(self._has_json_schema(response) for response in responses.values()):
                     has_json_payloads = True
 
                 operation_id = getattr(operation, "operationId", None)
                 summary = getattr(operation, "summary", None)
                 description = getattr(operation, "description", None)
-                operation_params = cast(
-                    Sequence[ParameterT], getattr(operation, "parameters", None) or ()
-                )
+                operation_params = cast(Sequence[ParameterT], getattr(operation, "parameters", None) or ())
                 endpoint = Endpoint[ParameterT, RequestBodyT, ResponseT](
                     operation_id=operation_id if isinstance(operation_id, str) else "",
                     method=method.upper(),
@@ -268,9 +252,7 @@ class OpenAPIParser[
                     request_body=request_body,
                     responses=responses,
                     spec_version=self.spec_version,
-                    expanded_raw_request_body=self._request_body_map.get(
-                        (str(path), method.upper())
-                    ),
+                    expanded_raw_request_body=self._request_body_map.get((str(path), method.upper())),
                 )
                 endpoints.append(endpoint)
 

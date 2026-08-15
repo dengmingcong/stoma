@@ -12,7 +12,7 @@ stoma 的 ``make`` 命令在预处理 spec 后调用本模块生成 ``models.py`
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import jsonref
 from datamodel_code_generator import (
@@ -23,12 +23,7 @@ from datamodel_code_generator import (
 )
 from datamodel_code_generator.enums import DataModelType
 
-# ``OpenAPISchemaError`` 定义在 :mod:`src.openapi.parser`，而
-# :func:`parser.make_openapi_parser` 后续会反过来调用本模块
-# 的 :func:`_expand_path_refs`，因此运行时 ``import`` 必须延迟到
-# 函数内部，模块顶层只用 ``TYPE_CHECKING`` 给静态检查器提供类型。
-if TYPE_CHECKING:  # pragma: no cover
-    from src.openapi.parser import OpenAPISchemaError  # noqa: F401
+from src.exceptions import OpenAPISchemaError
 
 # 循环检测只沿 ``#/components/parameters/`` 开头的内部 ``$ref`` 展开；
 # 指向 schema 或外部文件的 ``$ref`` 不属于参数链，遇到即停止。
@@ -209,8 +204,6 @@ def _expand_path_refs(
     except jsonref.JsonRefError as exc:
         # 外部 ref（如 ``common.yaml#/...``）或解析失败——包装为业务异常，
         # 保留原始异常链便于调试（``from exc``）。
-        from src.openapi.parser import OpenAPISchemaError
-
         msg = f"Failed to resolve parameter or requestBody $ref: {exc}"
         raise OpenAPISchemaError(msg) from exc
 

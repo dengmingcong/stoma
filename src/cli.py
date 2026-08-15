@@ -10,8 +10,9 @@ from typing import Annotated
 
 import typer
 
+from src.exceptions import OpenAPISchemaError
 from src.openapi.model_generator import generate_models
-from src.openapi.parser import OpenAPISchemaError, make_openapi_parser
+from src.openapi.parser import make_openapi_parser
 from src.openapi.renderer import make_endpoint_renderer, render_to_file
 
 app = typer.Typer(

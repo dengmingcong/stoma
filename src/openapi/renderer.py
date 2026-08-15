@@ -65,6 +65,7 @@ from pydantic import BaseModel
 from pydantic.alias_generators import to_snake
 
 from openapi.naming import is_snake_case, to_field_name, to_pascal_case
+from src.exceptions import OpenAPISchemaError
 from src.openapi.models import (
     BinaryRequestBodyFields,
     Endpoint,
@@ -75,7 +76,6 @@ from src.openapi.models import (
     UrlencodedFormRequestBodyFields,
 )
 from src.openapi.models_types import SpecVersion
-from src.openapi.parser import OpenAPISchemaError
 from src.openapi.reference_types import Reference30, Reference31
 
 

@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 
+from src.exceptions import OpenAPISchemaError
 from src.openapi.model_generator import (
     _detect_parameter_cycle,
     _expand_path_refs,
     generate_models,
 )
-
-if TYPE_CHECKING:  # pragma: no cover
-    from src.openapi.parser import OpenAPISchemaError  # noqa: F401
 
 
 def _minimal_spec() -> dict[str, Any]:
@@ -165,8 +163,6 @@ class TestExpandPathRefs:
 
     def test_expand_path_refs_catches_external_ref_error(self) -> None:
         """组件参数 ``schema.$ref`` 指向外部文件时抛出 :class:`OpenAPISchemaError`。"""
-        from src.openapi.parser import OpenAPISchemaError
-
         spec: dict[str, Any] = {
             "paths": {"/x": {"get": {"parameters": [{"$ref": "#/components/parameters/X"}]}}},
             "components": {

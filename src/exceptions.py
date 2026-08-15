@@ -122,3 +122,9 @@ class ParseError(StomaError):
         super().__init__(message)
         self.message = message
         self.response_text = response_text
+
+
+class OpenAPISchemaError(StomaError):
+    """OpenAPI schema 校验失败。"""
+
+    pass
