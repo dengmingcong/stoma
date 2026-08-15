@@ -76,104 +76,115 @@ NONE 路径返回 ``None``（不再返回 ``BaseRequestBodyFields()`` 实例）�
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from src.openapi.models_types import SpecVersion
 
 __all__ = [
     "Endpoint",
-    "BaseRequestBodyFields",
     "JSONRequestBodyFields",
     "UrlencodedFormRequestBodyFields",
     "MultipartFormRequestBodyFields",
     "BinaryRequestBodyFields",
     "ScalarRequestBodyFields",
+    "RequestBodyFields",
 ]
 
 
-class BaseRequestBodyFields(BaseModel):
-    """请求体渲染字段基类。
-
-    5 种 body 形态对应 5 个子类，renderer 通过 ``isinstance`` 派发。
-    NONE 路径不返回本类实例，直接返回 ``None``。
-
-    :var content_type: 媒体类型字符串。``multipart/form-data`` 等场景
-        Playwright 会自动派生 boundary，由 ``content_type=None`` 表达
-        "renderer 不主动注入 Content-Type header"；其余形态（非 multipart）
-        由 renderer 显式赋值。
-    :vartype content_type: str | None
-    """
-
-    content_type: str | None = None
+# 5 种 body 形态对应的 dataclass 子类联合，供 renderer 类型签名简化。
+type RequestBodyFields = (
+    JSONRequestBodyFields
+    | UrlencodedFormRequestBodyFields
+    | MultipartFormRequestBodyFields
+    | BinaryRequestBodyFields
+    | ScalarRequestBodyFields
+)
 
 
-class JSONRequestBodyFields(BaseRequestBodyFields):
+@dataclass
+class JSONRequestBodyFields:
     """``application/json`` + object schema（``$ref`` 或 inline）。
 
     渲染为 ``from .models import <Model>`` + ``body: <Model>``。
     inline 形态由 dmcg 在前置阶段生成对应 ``{OpId}Request`` 模型。
 
+    Content-Type 由 Playwright 根据 body 格式自动派生（JSON），renderer 不注入。
+
     :var import_model: 单一 model 名（``$ref`` 末段 PascalCase，或 inline 的 ``{op_id}Request``）。
-    :vartype import_model: str | None
     """
 
     import_model: str | None = None
 
 
-class UrlencodedFormRequestBodyFields(BaseRequestBodyFields):
+@dataclass
+class UrlencodedFormRequestBodyFields:
     """``application/x-www-form-urlencoded`` → form 标量字段列表。
 
     渲染为 ``from stoma import Form`` + 循环
     ``<name>: Annotated[<type>, Form()]`` 字段声明。
 
+    Content-Type 由 Playwright 根据 ``form`` 参数自动派生（urlencoded），
+    renderer 不注入。
+
     :var form_text_fields: form 标量字段声明字符串列表。
-    :vartype form_text_fields: list[str]
     """
 
-    form_text_fields: list[str] = Field(default_factory=list)
+    form_text_fields: list[str] = field(default_factory=list)
 
 
-class MultipartFormRequestBodyFields(BaseRequestBodyFields):
+@dataclass
+class MultipartFormRequestBodyFields:
     """``multipart/form-data`` → form 标量 + 文件字段列表。
 
-    渲染时故意不自动派生 Content-Type（Playwright 自动加 boundary，
-    显式 ``multipart/form-data`` 无 boundary 会导致服务端 400）。
+    Content-Type（含 boundary）由 Playwright 根据 ``multipart`` 参数自动派生，
+    renderer 不注入——若用户显式提供 ``content_type`` Header field，stoma 不干预，
+    由 Playwright 自行处理。
 
     :var form_text_fields: form 标量字段列表。
-    :vartype form_text_fields: list[str]
     :var form_file_fields: file 字段列表（裸 ``UploadFile``，无 ``Form()`` marker）。
-    :vartype form_file_fields: list[str]
     """
 
-    form_text_fields: list[str] = Field(default_factory=list)
-    form_file_fields: list[str] = Field(default_factory=list)
+    form_text_fields: list[str] = field(default_factory=list)
+    form_file_fields: list[str] = field(default_factory=list)
 
 
-class BinaryRequestBodyFields(BaseRequestBodyFields):
+@dataclass
+class BinaryRequestBodyFields:
     """``string + format=binary`` → 单文件 raw body。
 
     ``upload_as_multipart=False`` 由类型本身表达，不需要额外字段。
-    渲染为 ``<name>: UploadFile`` + decorator ``upload_as_multipart=False``。
+    渲染为 ``body: UploadFile`` + decorator ``upload_as_multipart=False``。
 
-    :var binary_file_field: 单一文件字段声明字符串（如 ``<name>: UploadFile``）。
-    :vartype binary_file_field: str | None
+    Binary body 没有隐含的 Content-Type（Playwright 无法从裸字节推断），renderer 必须
+    显式生成 ``content_type: Header() = <media_type>`` header field。
+
+    :var media_type: 媒体类型字符串（如 ``"application/octet-stream"`` / ``"image/png"``），
+        供 renderer 生成 Content-Type header field。
+    :var binary_file_field: 单一文件字段声明字符串（如 ``body: UploadFile``）。
     """
 
+    media_type: str | None = None
     binary_file_field: str | None = None
 
 
-class ScalarRequestBodyFields(BaseRequestBodyFields):
+@dataclass
+class ScalarRequestBodyFields:
     """primitive schema（任意 content type）→ 单字段 body。
 
-    渲染为 ``<name>: Annotated[<type>, Body()]``，wire 是裸值
+    渲染为 ``body: Annotated[<type>, Body()]``，wire 是裸值
     （``Body()`` 默认 ``embed=False``）。
 
-    :var scalar_field: 单字段声明字符串（如 ``<name>: Annotated[T, Body()]``）。
-    :vartype scalar_field: str | None
+    Scalar body 没有隐含的 Content-Type（Playwright 无法从裸值推断），renderer 必须
+    显式生成 ``content_type: Header() = <media_type>`` header field。
+
+    :var media_type: 媒体类型字符串，供 renderer 生成 Content-Type header field。
+    :var scalar_field: 单字段声明字符串（如 ``body: Annotated[int, Body()]``）。
     """
 
+    media_type: str | None = None
     scalar_field: str | None = None
 
 
