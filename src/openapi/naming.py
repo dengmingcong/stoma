@@ -16,7 +16,7 @@ import re
 from pydantic.alias_generators import to_snake
 
 
-def _is_snake_case(name: str) -> bool:
+def is_snake_case(name: str) -> bool:
     """检测 name 是否已经是合法的 snake_case（且不是 Python 关键字）。
 
     :param name: 待检测字符串。
@@ -29,7 +29,7 @@ def _is_snake_case(name: str) -> bool:
     return bool(re.fullmatch(r"[a-z][a-z0-9_]*", name))
 
 
-def _to_field_name(name: str) -> str:
+def to_field_name(name: str) -> str:
     """将 OpenAPI 参数名转为合法的 snake_case 字段名。
 
     处理 hyphen / 数字开头 / Python 关键字等边界 case：替换非字母数字下划线
@@ -49,7 +49,7 @@ def _to_field_name(name: str) -> str:
     return to_snake(cleaned)
 
 
-def _to_pascal_case(operation_id: str) -> str:
+def to_pascal_case(operation_id: str) -> str:
     """将 operationId 转换为 PascalCase 类名。
 
     把 hyphen / underscore 拆词，再按 CamelCase 边界（``[a-z0-9]`` 后跟

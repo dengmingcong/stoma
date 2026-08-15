@@ -64,7 +64,7 @@ from jinja2 import Environment, FileSystemLoader, Template
 from pydantic import BaseModel
 from pydantic.alias_generators import to_snake
 
-from src.openapi._naming import _is_snake_case, _to_field_name, _to_pascal_case
+from openapi.naming import is_snake_case, to_field_name, to_pascal_case
 from src.openapi.models import (
     BinaryRequestBodyFields,
     Endpoint,
@@ -155,7 +155,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             ``.py`` 后缀。
         """
         operation_id = endpoint.operation_id
-        class_name = _to_pascal_case(operation_id)
+        class_name = to_pascal_case(operation_id)
         file_name = f"{to_snake(operation_id)}.py"
         response_type = self._extract_response_info(endpoint.responses, endpoint)
         body_fields_template = self._extract_request_body_info(endpoint.request_body, endpoint)
@@ -182,7 +182,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         content_type_header = self._build_content_type_header(header_fields, body_template_vars["media_type"])
         if content_type_header is not None:
             header_fields.append(content_type_header)
-            uses_field_import = uses_field_import or not _is_snake_case("Content-Type")
+            uses_field_import = uses_field_import or not is_snake_case("Content-Type")
 
         # body 字段（非 snake_case 时含 ``Field(serialization_alias=)``）也会触发 Field import。
         # 检查 4 类 body 字段字符串中是否含 ``Field(``，避免 multipart 纯文件场景漏 import。
@@ -360,7 +360,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 raise OpenAPISchemaError(msg)
             param_type = _map_json_schema_type(str(json_type))
 
-            if not _is_snake_case(name):
+            if not is_snake_case(name):
                 uses_field_import = True
 
             field_line = _build_param_field_line(name, param_type, required, location)
@@ -597,10 +597,10 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
         if self._is_reference(schema_model):
             ref_path = str(schema_model.ref).rsplit("/", 1)[-1]
-            return JSONRequestBodyFields(import_model=_to_pascal_case(ref_path))
+            return JSONRequestBodyFields(import_model=to_pascal_case(ref_path))
 
         # inline object schema → dmcg 已生成 ``<OpId>Request`` 模型。
-        model_name = f"{_to_pascal_case(endpoint.operation_id)}Request"
+        model_name = f"{to_pascal_case(endpoint.operation_id)}Request"
         return JSONRequestBodyFields(import_model=model_name)
 
     def _build_urlencoded_body(
@@ -794,7 +794,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         if not responses:
             return []
 
-        operation_id_pascal = _to_pascal_case(endpoint.operation_id)
+        operation_id_pascal = to_pascal_case(endpoint.operation_id)
         inline_counter = 0
         ordered_names: list[str] = []
 
@@ -805,7 +805,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 continue
             schema = getattr(json_content, "media_type_schema", None)
             if self._is_reference(schema):
-                ordered_names.append(_to_pascal_case(schema.ref.rsplit("/", 1)[-1]))
+                ordered_names.append(to_pascal_case(schema.ref.rsplit("/", 1)[-1]))
                 continue
             inline_counter += 1
             if inline_counter == 1:
@@ -886,8 +886,8 @@ def _build_form_field_line(name: str, py_type: str) -> str:
     :param py_type: Python 类型字符串。
     :return: 字段声明字符串。
     """
-    field_name = _to_field_name(name)
-    if not _is_snake_case(name):
+    field_name = to_field_name(name)
+    if not is_snake_case(name):
         return f"{field_name}: Annotated[{py_type}, Form(), Field(serialization_alias={name!r})]"
     return f"{field_name}: Annotated[{py_type}, Form()]"
 
@@ -904,8 +904,8 @@ def _build_upload_file_field_line(name: str) -> str:
     :param name: 原始 OpenAPI property 名称。
     :return: 字段声明字符串（snake_case 时裸 UploadFile，非 snake_case 时带 alias）。
     """
-    field_name = _to_field_name(name)
-    if _is_snake_case(name):
+    field_name = to_field_name(name)
+    if is_snake_case(name):
         return f"{field_name}: UploadFile"
     return f"{field_name}: Annotated[UploadFile, Field(serialization_alias={name!r})]"
 
@@ -945,8 +945,8 @@ def _build_param_field_line(
     :return: 字段声明字符串。
     """
     is_header = location == "header"
-    is_snake = _is_snake_case(name)
-    field_name = name if is_snake else _to_field_name(name)
+    is_snake = is_snake_case(name)
+    field_name = name if is_snake else to_field_name(name)
 
     base_type = param_type if required else f"{param_type} | None"
 
