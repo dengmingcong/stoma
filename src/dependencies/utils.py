@@ -1,4 +1,4 @@
-"""参数依赖分析工具函数。"""
+"""参数类型注解分析工具函数。"""
 
 from collections.abc import Mapping
 from dataclasses import is_dataclass
@@ -47,11 +47,11 @@ def field_annotation_is_complex(annotation: Any) -> bool:
     """
     origin = get_origin(annotation)
 
-    if origin is Union or origin is UnionType:
-        return any(field_annotation_is_complex(arg) for arg in get_args(annotation))
-
     if origin is Annotated:
         return field_annotation_is_complex(get_args(annotation)[0])
+
+    if origin is Union or origin is UnionType:
+        return any(field_annotation_is_complex(arg) for arg in get_args(annotation))
 
     return (
         _annotation_is_complex(annotation)
@@ -64,32 +64,34 @@ def field_annotation_is_complex(annotation: Any) -> bool:
 def _is_uploadfile_or_list_annotation(annotation: Any) -> bool:
     """判断注解是否可识别为上传文件字段。
 
-    支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法）：
+    支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法，以及 ``Annotated`` 包裹）：
 
     - ``UploadFile``
     - ``list[UploadFile]``
     - ``UploadFile | None`` / ``Optional[UploadFile]``
     - ``list[UploadFile] | None`` / ``Optional[list[UploadFile]]``
     - 任意层 ``Union[UploadFile | None, list[UploadFile] | None]``（只要全部成员都是文件字段类型，则返回 True）
+    - 以上任意形式被 ``Annotated[...]`` 包裹（递归剥掉后按上述规则校验）
 
     明确不支持的形式（语义含糊，留给后续由用户在 ``Param`` 标记或运行时显式声明）：
 
     - ``Union[UploadFile, str]`` 等混入非文件类型 → 返回 False
     - 非 ``UploadFile`` / 非 ``list[UploadFile]`` 的任意类型 → 返回 False
 
-    实现要点：递归解包 ``Union`` / ``Optional``，跳过 ``None`` 成员，
-    要求每个非 ``None`` 成员都是 ``UploadFile`` 或 ``list[UploadFile]``。
+    实现要点：先递归剥掉 ``Annotated`` 包装，之后递归解包 ``Union`` / ``Optional``，
+    跳过 ``None`` 成员，要求每个非 ``None`` 成员都是 ``UploadFile`` 或 ``list[UploadFile]``。
 
-    :param annotation: 待检查的类型注解。
+    :param annotation: 待检查的类型注解，可能包含 ``Annotated`` 包装。
     :return: 如果是合法的上传文件字段类型则返回 True。
     """
     origin = get_origin(annotation)
+
+    if origin is Annotated:
+        return _is_uploadfile_or_list_annotation(get_args(annotation)[0])
+
     if origin is Union or origin is UnionType:
         # ``Optional`` 上下文：跳过 ``None`` 成员后，剩余成员全部必须是文件字段类型。
-        return all(
-            arg is type(None) or _is_uploadfile_or_list_annotation(arg)
-            for arg in get_args(annotation)
-        )
+        return all(arg is type(None) or _is_uploadfile_or_list_annotation(arg) for arg in get_args(annotation))
 
     if annotation is UploadFile:
         return True
@@ -109,22 +111,27 @@ def validate_binary_body_annotation(annotation: Any, *, field_name: str) -> None
     - ``UploadFile``
     - ``UploadFile | None`` / ``Optional[UploadFile]``
 
+    同样接受以上类型被 ``Annotated[...]`` 包裹的形式（例如 ``Annotated[UploadFile, ...]``、
+    ``Annotated[UploadFile | None, ...]``），会递归剥掉 ``Annotated`` 后再校验。
+
     不接受（由其他校验处理）：
 
     - ``list[UploadFile]`` —— binary-body 只支持单文件
     - ``Annotated[UploadFile, Form()]`` —— 已被 multipart 路径接管
     - 任意层 ``Union[UploadFile, str]`` —— 多语义冲突
 
-    Pydantic v2 在 ``APIRoute._get_dependant`` 中获取的 ``field_info.annotation``
-    已被 strip 掉 ``Annotated`` 包装，所以本函数不需要处理 Annotated。
-
-    :param annotation: 待检查的类型注解。
+    :param annotation: 待检查的类型注解，可能包含 ``Annotated`` 包装。
     :param field_name: 字段名，用于错误信息中定位。
     :raise ValueError: 当注解不是合法的 binary-body UploadFile 字段类型。
     """
     if annotation is UploadFile:
         return
+
     origin = get_origin(annotation)
+
+    if origin is Annotated:
+        return validate_binary_body_annotation(get_args(annotation)[0], field_name=field_name)
+
     if origin is Union or origin is UnionType:
         args = get_args(annotation)
         non_none_args = [arg for arg in args if arg is not type(None)]
@@ -151,19 +158,18 @@ def validate_form_field_annotation(annotation: Any) -> None:
     校验通过后无需保留任何运行时状态 —— ``src.client`` 直接基于
     ``field_info.annotation`` 自行判断 dispatch 路径，不再依赖 ``Form.kind`` 缓存。
 
-    Pydantic 行为实测：在 ``APIRoute._get_dependant`` 中通过
-    ``field_info.annotation`` 获取的注解是 Pydantic 处理后的实际类型，
-    不再包含 ``Annotated`` 包装（即 ``Annotated[str, Form()]`` 的
-    ``field_info.annotation`` 等于 ``str``）。因此本函数不再递归解 ``Annotated``，
-    只需处理 ``Union`` / ``Optional`` / ``list`` 三种剩余包装。
+    Pydantic v2 在 ``APIRoute._get_dependant`` 中获取的 ``field_info.annotation``
+    通常已是 Pydantic 处理后的实际类型（已剥离 ``Annotated`` 包装），但本函数仍对
+    ``Annotated`` 包装做防御性剥除，以兼容任何未被 Pydantic 预处理过的调用方。
 
-    支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法）：
+    支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法，以及 ``Annotated`` 包裹）：
 
     - 标量类型：``str`` / ``int`` / ``float`` / ``bool``
     - 标量列表：``list[str]`` / ``list[int]`` / ``list[float]`` / ``list[bool]``
     - 可选标量：``str | None`` / ``Optional[str]``
     - 可选标量列表：``list[str] | None`` / ``Optional[list[str]]``
     - 任意层 ``Union[X | None, ...]``（所有非 None 成员都必须是标量或 list[标量]）
+    - 以上任意形式被 ``Annotated[...]`` 包裹（递归剥掉后按上述规则校验）
 
     明确抛错的形式（语义不属于 Form 标量）：
 
@@ -176,13 +182,17 @@ def validate_form_field_annotation(annotation: Any) -> None:
     - 非标量列表：``list[BaseModel]`` / ``list[dict]``
     - bare ``list``（缺少 list 元素类型，无法推断 scalar/list）
 
-    实现要点：递归解包 ``Union`` / ``Optional``，跳过 ``None`` 成员，
-    对单一非 None 标量 / ``list[标量]`` 静默通过，对其他形式抛 ``ValueError``。
+    实现要点：先递归剥掉 ``Annotated`` 包装，之后递归解包 ``Union`` / ``Optional``，
+    跳过 ``None`` 成员，对单一非 None 标量 / ``list[标量]`` 静默通过，
+    对其他形式抛 ``ValueError``。
 
-    :param annotation: 待校验的字段注解（已由 Pydantic 解开 ``Annotated``）。
+    :param annotation: 待校验的字段注解，可能包含 ``Annotated`` 包装。
     :raise ValueError: 当字段注解不是 Form 合法标量或 list[标量] 形式。
     """
     origin = get_origin(annotation)
+
+    if origin is Annotated:
+        return validate_form_field_annotation(get_args(annotation)[0])
 
     if origin is Union or origin is UnionType:
         args = get_args(annotation)
