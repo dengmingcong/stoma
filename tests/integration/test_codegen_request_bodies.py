@@ -156,7 +156,7 @@ def test_codegen_scalar_importance_e2e(
     client: Client,
     tmp_path: Path,
 ) -> None:
-    """验证 scalar JSON body 端到端：ScalarImportance(scalar_importance=42)。
+    """验证 scalar JSON body 端到端：ScalarImportance(body=42)。
 
     Wire 发送裸值 42（不是 {"importance": 42}）。
     mock_app /importance 用 request.json() 解析，得 int 42；
@@ -169,7 +169,7 @@ def test_codegen_scalar_importance_e2e(
 
     module = _load_module(tmp_path, "scalar_importance")
     endpoint_cls = getattr(module, _MODULE_CLASSES["scalar_importance"])
-    endpoint = endpoint_cls(scalar_importance=42)
+    endpoint = endpoint_cls(body=42)
 
     response = client.send(endpoint)
     # mock_app 对裸 int body 有 bug（期望 dict），返回 500
@@ -187,7 +187,7 @@ def test_codegen_binary_raw_e2e(
     client: Client,
     tmp_path: Path,
 ) -> None:
-    """验证 binary raw body 端到端：BinaryRaw(binary_raw=UploadFile)。"""
+    """验证 binary raw body 端到端：BinaryRaw(body=UploadFile)。"""
     pdf_file = tmp_path / "doc.pdf"
     pdf_file.write_bytes(b"%PDF-1.4 fake pdf content")
 
@@ -196,7 +196,7 @@ def test_codegen_binary_raw_e2e(
 
     module = _load_module(tmp_path, "binary_raw")
     endpoint_cls = getattr(module, _MODULE_CLASSES["binary_raw"])
-    endpoint = endpoint_cls(binary_raw=UploadFile(path=pdf_file))
+    endpoint = endpoint_cls(body=UploadFile(path=pdf_file))
 
     response = client.send(endpoint)
     assert response.raw.status == 200

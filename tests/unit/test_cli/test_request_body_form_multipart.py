@@ -48,7 +48,10 @@ class TestMakeRequestBodyFormMultipart:
     """测试 form-urlencoded / multipart / scalar JSON / binary 请求体的生成结果。"""
 
     def test_form_urlencoded_scalar(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 application/x-www-form-urlencoded 单标量字段生成 Annotated[str, Form()]。"""
+        """验证 application/x-www-form-urlencoded 单标量字段生成 Annotated[str, Form()]。
+
+        Content-Type 由 Playwright 根据 ``form`` 参数自动派生，renderer 不注入。
+        """
         spec = _build_spec(
             "/login",
             "post",
@@ -76,9 +79,9 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "login_user.py").read_text(encoding="utf-8")
         assert "username: Annotated[str, Form()]" in content
         assert "password: Annotated[str, Form()]" in content
-        # auto Content-Type header 触发 Header + Field import
-        assert "from stoma import APIRouter, APIRoute, Header, Form" in content
-        assert _content_type_line("application/x-www-form-urlencoded") in content
+        assert "from stoma import APIRouter, APIRoute, Form" in content
+        # 无 auto Content-Type，Playwright 自己设置
+        assert "content_type" not in content
         compile(content, "login_user.py", "exec")
 
     def test_form_urlencoded_array(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -110,9 +113,8 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "add_tags.py").read_text(encoding="utf-8")
         # 数组字段从 items.type 派生 list[T];与 runtime Annotated[list[str], Form()] 一致
         assert "tags: Annotated[list[str], Form()]" in content
-        # auto Content-Type header 触发 Header + Field import
-        assert "from stoma import APIRouter, APIRoute, Header, Form" in content
-        assert _content_type_line("application/x-www-form-urlencoded") in content
+        assert "from stoma import APIRouter, APIRoute, Form" in content
+        assert "content_type" not in content
         compile(content, "add_tags.py", "exec")
 
     def test_form_urlencoded_array_with_int_items(
@@ -146,13 +148,15 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "add_scores.py").read_text(encoding="utf-8")
         # items.type=integer → list[int]
         assert "scores: Annotated[list[int], Form()]" in content
-        # auto Content-Type header 触发 Header + Field import
-        assert "from stoma import APIRouter, APIRoute, Header, Form" in content
-        assert _content_type_line("application/x-www-form-urlencoded") in content
+        assert "from stoma import APIRouter, APIRoute, Form" in content
+        assert "content_type" not in content
         compile(content, "add_scores.py", "exec")
 
     def test_multipart_single_file(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 multipart/form-data 含 format: binary 单文件字段生成 UploadFile（无 Form import）。"""
+        """验证 multipart/form-data 含 format: binary 单文件字段生成 UploadFile（无 Form import）。
+
+        Content-Type（含 boundary）由 Playwright 自动设置，renderer 不注入。
+        """
         spec = _build_spec(
             "/upload",
             "post",
@@ -178,15 +182,18 @@ class TestMakeRequestBodyFormMultipart:
         assert result.exit_code == 0, result.output
         content = (out_dir / "upload_avatar.py").read_text(encoding="utf-8")
         assert "avatar: UploadFile" in content
-        # multipart 不自动生成 Content-Type：Playwright 自动加 boundary
-        assert "content_type" not in content
         assert "from stoma import APIRouter, APIRoute, UploadFile" in content
+        # 无 auto Content-Type，Playwright 自己设置
+        assert "content_type" not in content
         # multipart 文件场景不应导入 Form
         assert "Form" not in content
         compile(content, "upload_avatar.py", "exec")
 
     def test_multipart_form_file_mix(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 multipart/form-data 混合标量 + binary 字段同时生成 Form 和 UploadFile。"""
+        """验证 multipart/form-data 混合标量 + binary 字段同时生成 Form 和 UploadFile。
+
+        Content-Type（含 boundary）由 Playwright 自动设置，renderer 不注入。
+        """
         spec = _build_spec(
             "/upload-mix",
             "post",
@@ -215,19 +222,15 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "upload_with_form.py").read_text(encoding="utf-8")
         assert "username: Annotated[str, Form()]" in content
         assert "avatar: UploadFile" in content
-        assert "Form" in content
-        assert "UploadFile" in content
-        # multipart 不自动生成 Content-Type：Playwright 自动加 boundary
+        assert "from stoma import APIRouter, APIRoute, Form, UploadFile" in content
         assert "content_type" not in content
         compile(content, "upload_with_form.py", "exec")
 
     def test_scalar_json_integer(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 application/json 含 integer scalar schema 生成 Annotated[int, Body()]。
+        """验证 application/json 含 integer scalar schema 生成 ``body: Annotated[int, Body()]``。
 
-        operation_id 为 ``setImportance``（非 snake_case）时追加
-        ``Field(serialization_alias='setImportance')`` 保留原 name（与 form /
-        multipart file 字段一致——Body 场景下虽然 wire 是裸值，但 alias
-        保证类型语义自洽）。
+        字段名固定为 ``body``（不受 operation_id 是否 snake_case 影响），避免
+        非 snake_case 时追加 ``Field(serialization_alias=...)`` 的副作用。
         """
         spec = _build_spec(
             "/importance",
@@ -258,7 +261,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "set_importance.py").read_text(encoding="utf-8")
-        assert "set_importance: Annotated[int, Body(), Field(serialization_alias='setImportance')]" in content
+        assert "body: Annotated[int, Body()]" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
         assert "from stoma import APIRouter, APIRoute, Header, Body" in content
@@ -266,10 +269,9 @@ components:
         compile(content, "set_importance.py", "exec")
 
     def test_scalar_json_string(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 application/json 含 string scalar schema 生成 Annotated[str, Body()]。
+        """验证 application/json 含 string scalar schema 生成 ``body: Annotated[str, Body()]``。
 
-        operation_id 为 ``postScalar``（非 snake_case）时同样追加
-        ``Field(serialization_alias='postScalar')``。
+        字段名固定为 ``body``（不受 operation_id 是否 snake_case 影响）。
         """
         spec = _build_spec(
             "/scalar",
@@ -300,7 +302,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "post_scalar.py").read_text(encoding="utf-8")
-        assert "post_scalar: Annotated[str, Body(), Field(serialization_alias='postScalar')]" in content
+        assert "body: Annotated[str, Body()]" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
         assert "from stoma import APIRouter, APIRoute, Header, Body" in content
@@ -308,10 +310,9 @@ components:
         compile(content, "post_scalar.py", "exec")
 
     def test_binary_octet_stream(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 application/octet-stream 生成 UploadFile + upload_as_multipart=False。
+        """验证 application/octet-stream 生成 ``body: UploadFile`` + ``upload_as_multipart=False``。
 
-        operation_id 为 ``uploadRaw``（非 snake_case）时追加
-        ``Field(serialization_alias='uploadRaw')``。
+        字段名固定为 ``body``（不受 operation_id 是否 snake_case 影响）。
         """
         spec = _build_spec(
             "/raw",
@@ -334,7 +335,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "upload_raw.py").read_text(encoding="utf-8")
-        assert "upload_raw: Annotated[UploadFile, Field(serialization_alias='uploadRaw')]" in content
+        assert "body: UploadFile" in content
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
@@ -343,9 +344,9 @@ components:
         compile(content, "upload_raw.py", "exec")
 
     def test_binary_image_png(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 image/png 生成 UploadFile + upload_as_multipart=False。
+        """验证 image/png 生成 ``body: UploadFile`` + ``upload_as_multipart=False``。
 
-        operation_id 为 ``uploadImage``（非 snake_case）时同样追加 alias。
+        字段名固定为 ``body``。
         """
         spec = _build_spec(
             "/image",
@@ -368,7 +369,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "upload_image.py").read_text(encoding="utf-8")
-        assert "upload_image: Annotated[UploadFile, Field(serialization_alias='uploadImage')]" in content
+        assert "body: UploadFile" in content
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
@@ -547,13 +548,15 @@ components:
         assert "avatar_file: Annotated[UploadFile, Field(serialization_alias='avatar-file')]" in content
         assert "from pydantic import Field" in content
         assert "from stoma import APIRouter, APIRoute, UploadFile" in content
+        assert "content_type" not in content
         compile(content, "upload_non_snake.py", "exec")
 
     def test_binary_non_snake_case_operation_id(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 binary body operation_id 非 snake_case（如 ``uploadFile``）时追加 alias。
+        """验证 binary body 字段名固定为 ``body``，不受 operation_id snake_case 影响。
 
-        对应第三轮 follow-up ⑥：``_build_binary_body`` 从 operation_id 派生 field name，
-        非 snake_case 时加 ``Field(serialization_alias=<origin>)``。
+        原行为：按 operation_id 派生 field name，非 snake_case 时追加
+        ``Field(serialization_alias=<origin>)``。新行为：固定 ``body: UploadFile``，
+        无 alias。
         """
         spec = _build_spec(
             "/file",
@@ -576,8 +579,9 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "upload_file.py").read_text(encoding="utf-8")
-        assert "upload_file: Annotated[UploadFile, Field(serialization_alias='uploadFile')]" in content
+        assert "body: UploadFile" in content
         assert "upload_as_multipart=False" in content
+        # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
         assert "from stoma import APIRouter, APIRoute, Header, UploadFile" in content
         compile(content, "upload_file.py", "exec")
