@@ -174,17 +174,16 @@ class BinaryRequestBodyFields:
 class ScalarRequestBodyFields:
     """primitive schema（任意 content type）→ 单字段 body。
 
-    渲染为 ``body: Annotated[<type>, Body()]``，wire 是裸值
-    （``Body()`` 默认 ``embed=False``）。
+    渲染为 ``body: Annotated[<type>, Body(media_type=<media_type>)]``，
+    wire 是裸值（``Body()`` 默认 ``embed=False``）。
 
     Scalar body 没有隐含的 Content-Type（Playwright 无法从裸值推断），renderer 必须
-    显式生成 ``content_type: Header() = <media_type>`` header field。
+    把 media_type 嵌入 ``Body(media_type=...)``，由 client 通过 ``param_info.media_type``
+    派生 Content-Type header（不走 Header field 路径）。
 
-    :var media_type: 媒体类型字符串，供 renderer 生成 Content-Type header field。
-    :var scalar_field: 单字段声明字符串（如 ``body: Annotated[int, Body()]``）。
+    :var scalar_field: 单字段声明字符串（如 ``body: Annotated[int, Body(media_type="application/json")]``）。
     """
 
-    media_type: str | None = None
     scalar_field: str | None = None
 
 

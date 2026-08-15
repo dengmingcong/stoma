@@ -227,10 +227,11 @@ class TestMakeRequestBodyFormMultipart:
         compile(content, "upload_with_form.py", "exec")
 
     def test_scalar_json_integer(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 application/json 含 integer scalar schema 生成 ``body: Annotated[int, Body()]``。
+        """验证 application/json 含 integer scalar schema 生成 ``body: Annotated[int, Body(media_type='application/json')]``。
 
         字段名固定为 ``body``（不受 operation_id 是否 snake_case 影响），避免
         非 snake_case 时追加 ``Field(serialization_alias=...)`` 的副作用。
+        Content-Type 由 ``Body(media_type=...)`` 提供，renderer 不生成 Header field。
         """
         spec = _build_spec(
             "/importance",
@@ -261,17 +262,18 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "set_importance.py").read_text(encoding="utf-8")
-        assert "body: Annotated[int, Body()]" in content
-        # auto Content-Type header 触发 Header + Field import
-        assert "from pydantic import Field" in content
-        assert "from stoma import APIRouter, APIRoute, Header, Body" in content
-        assert _content_type_line("application/json") in content
+        # scalar body 字段名固定 body，media_type 嵌入 Body(media_type=...)
+        assert "body: Annotated[int, Body(media_type='application/json')]" in content
+        assert "from stoma import APIRouter, APIRoute, Body" in content
+        # scalar 走 Body(media_type=...) 路径，不生成 Content-Type Header field
+        assert "content_type" not in content
         compile(content, "set_importance.py", "exec")
 
     def test_scalar_json_string(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 application/json 含 string scalar schema 生成 ``body: Annotated[str, Body()]``。
+        """验证 application/json 含 string scalar schema 生成 ``body: Annotated[str, Body(media_type='application/json')]``。
 
         字段名固定为 ``body``（不受 operation_id 是否 snake_case 影响）。
+        Content-Type 由 ``Body(media_type=...)`` 提供，renderer 不生成 Header field。
         """
         spec = _build_spec(
             "/scalar",
@@ -302,11 +304,10 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "post_scalar.py").read_text(encoding="utf-8")
-        assert "body: Annotated[str, Body()]" in content
-        # auto Content-Type header 触发 Header + Field import
-        assert "from pydantic import Field" in content
-        assert "from stoma import APIRouter, APIRoute, Header, Body" in content
-        assert _content_type_line("application/json") in content
+        assert "body: Annotated[str, Body(media_type='application/json')]" in content
+        assert "from stoma import APIRouter, APIRoute, Body" in content
+        # scalar 走 Body(media_type=...) 路径，不生成 Content-Type Header field
+        assert "content_type" not in content
         compile(content, "post_scalar.py", "exec")
 
     def test_binary_octet_stream(self, cli_runner: CliRunner, tmp_path: Path) -> None:

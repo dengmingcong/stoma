@@ -173,10 +173,12 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         # NONE 路径返回 None 时模板所有 body 块跳过。
         body_template_vars = self._flatten_body_fields(body_fields_template)
 
-        # 仅 binary / scalar body 需要 renderer 派生 Content-Type header field
-        # （Playwright 无法从裸字节 / 裸值推断）。其他类型 Content-Type 由 Playwright
-        # 根据 body 形态自动设置，renderer 不干预；用户在 APIRoute 中显式提供的
-        # Content-Type header field 仍由 :meth:`_serialize_header_params` 透传给 Playwright。
+        # 仅 binary body 需要 renderer 派生 Content-Type header field
+        # （Playwright 无法从裸字节推断）。scalar body 通过 ``Body(media_type=...)``
+        # 路径传递 Content-Type，由 client 通过 ``param_info.media_type`` 派生。
+        # 其他类型 Content-Type 由 Playwright 根据 body 形态自动设置，renderer 不干预；
+        # 用户在 APIRoute 中显式提供的 Content-Type header field 仍由
+        # :meth:`_serialize_header_params` 透传给 Playwright。
         content_type_header = self._build_content_type_header(header_fields, body_template_vars["media_type"])
         if content_type_header is not None:
             header_fields.append(content_type_header)
@@ -293,7 +295,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 "form_file_fields": [],
                 "binary_file_field": None,
                 "upload_as_multipart": True,
-                "media_type": body_fields.media_type,
+                "media_type": None,
             }
         msg = f"Unsupported body_fields type: {type(body_fields).__name__}"
         raise TypeError(msg)
@@ -717,13 +719,17 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         字段名固定为 ``body``（避免按 operationId 派生导致非 snake_case 时需要
         ``Field(serialization_alias=...)`` 副作用）。
 
+        ``media_type`` 嵌入 ``Body(media_type=...)``，由 client 通过
+        ``param_info.media_type`` 派生 Content-Type header——不走 Header field 路径，
+        因为 scalar body 用 ``Body()`` 路径而非 ``Header()`` 路径传递 Content-Type。
+
         :param expanded_schema_dict: 展开后的 schema 字典，可能为 ``None``。
-        :param media_type: 媒体类型字符串（用于 Content-Type header 派生）。
+        :param media_type: 媒体类型字符串，嵌入 ``Body(media_type=...)``。
         :return: :class:`ScalarRequestBodyFields`。
         :raise OpenAPISchemaError: schema 不是 primitive 类型（兜底 RAW 场景下）。
         """
         if expanded_schema_dict is None:
-            return ScalarRequestBodyFields(media_type=media_type)
+            return ScalarRequestBodyFields()
         schema_type = expanded_schema_dict.get("type", "str")
         if schema_type not in {"string", "integer", "number", "boolean"}:
             msg = (
@@ -732,11 +738,8 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             )
             raise OpenAPISchemaError(msg)
         py_type = _PYTHON_TYPE_MAP.get(schema_type, "str")
-        scalar_field = f"body: Annotated[{py_type}, Body()]"
-        return ScalarRequestBodyFields(
-            scalar_field=scalar_field,
-            media_type=media_type,
-        )
+        scalar_field = f"body: Annotated[{py_type}, Body(media_type={media_type!r})]"
+        return ScalarRequestBodyFields(scalar_field=scalar_field)
 
     @staticmethod
     def _build_content_type_header(
