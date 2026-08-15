@@ -360,9 +360,9 @@ class Client:
         # FormData 没有 ``__bool__`` / ``__len__``，空实例仍为真，必须用 ``_fields`` 判断非空。
         if form_data._fields:
             return RequestBody(kind=RequestBodyKind.URLENCODED_FORM, form_data=form_data)
-        raw_value = self._build_raw_body(api_route, dependant)
+        raw_body = self._build_raw_body(api_route, dependant)
         media_type = None
-        if raw_value is not None and len(dependant.pure_body_params) == 1:
+        if raw_body is not None and len(dependant.pure_body_params) == 1:
             field = dependant.pure_body_params[0]
             param_info = field.param_info
             if (
@@ -374,7 +374,7 @@ class Client:
                 media_type = param_info.media_type
         return RequestBody(
             kind=RequestBodyKind.RAW,
-            raw_data=RawPayload(value=raw_value, media_type=media_type),
+            raw_data=RawPayload(value=raw_body, media_type=media_type),
         )
 
     def _build_raw_body(
@@ -382,7 +382,7 @@ class Client:
         api_route: APIRoute,
         dependant: Dependant,
     ) -> dict[str, Any]:
-        """根据 FastAPI Body Multiple Parameters 规则序列化 raw 请求体。
+        """构建类似于 Postman Body 为 `raw` 的请求体。
 
         规则（参考 https://fastapi.tiangolo.com/tutorial/body-multiple-params/）：
 
