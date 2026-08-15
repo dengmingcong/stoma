@@ -17,8 +17,8 @@ from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from dependencies.annotation import (
-    _is_uploadfile_or_list_annotation,
     field_annotation_is_complex,
+    is_uploadfile_or_list_annotation,
     validate_binary_body_annotation,
     validate_form_field_annotation,
 )
@@ -143,7 +143,7 @@ class APIRoute[T](BaseModel):
                 #   复杂类型（BaseModel/Mapping/序列/dataclass） → pure_body_params
                 #   标量类型（int/str/bool/float 等） → query_params
                 field_type = field_info.annotation
-                if _is_uploadfile_or_list_annotation(field_type):
+                if is_uploadfile_or_list_annotation(field_type):
                     file_body_params.append(model_field)
                 elif field_annotation_is_complex(field_type):
                     pure_body_params.append(model_field)

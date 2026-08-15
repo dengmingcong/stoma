@@ -61,7 +61,7 @@ def field_annotation_is_complex(annotation: Any) -> bool:
     )
 
 
-def _is_uploadfile_or_list_annotation(annotation: Any) -> bool:
+def is_uploadfile_or_list_annotation(annotation: Any) -> bool:
     """判断注解是否可识别为上传文件字段。
 
     支持以下形式（兼容 PEP 604 与 ``typing.Optional`` 写法，以及 ``Annotated`` 包裹）：
@@ -87,11 +87,11 @@ def _is_uploadfile_or_list_annotation(annotation: Any) -> bool:
     origin = get_origin(annotation)
 
     if origin is Annotated:
-        return _is_uploadfile_or_list_annotation(get_args(annotation)[0])
+        return is_uploadfile_or_list_annotation(get_args(annotation)[0])
 
     if origin is Union or origin is UnionType:
         # ``Optional`` 上下文：跳过 ``None`` 成员后，剩余成员全部必须是文件字段类型。
-        return all(arg is type(None) or _is_uploadfile_or_list_annotation(arg) for arg in get_args(annotation))
+        return all(arg is type(None) or is_uploadfile_or_list_annotation(arg) for arg in get_args(annotation))
 
     if annotation is UploadFile:
         return True
