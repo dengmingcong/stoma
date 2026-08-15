@@ -8,6 +8,7 @@ from typing import Annotated, Any, Union, get_args, get_origin
 from pydantic import BaseModel
 
 from src import UploadFile
+from src.constants import PLAYWRIGHT_FORM_SCALAR_TYPES
 
 
 def _lenient_issubclass(cls: Any, class_or_tuple: type | tuple[type, ...]) -> bool:
@@ -145,12 +146,6 @@ def validate_binary_body_annotation(annotation: Any, *, field_name: str) -> None
     raise ValueError(msg)
 
 
-# Playwright ``FormDataValue`` 支持的标量类型集合。
-# bytes 不在其中（见 ``src.client._fill_form_field`` 的运行时检查），
-# 因此 Form 不再接受 ``bytes`` / ``list[bytes]`` 字段。
-_PLAYWRIGHT_FORM_SCALAR_TYPES: tuple[type, ...] = (str, int, float, bool)
-
-
 def validate_form_field_annotation(annotation: Any) -> None:
     """校验 Form 字段注解是否合法，非法时抛 ``ValueError``。
 
@@ -220,7 +215,7 @@ def validate_form_field_annotation(annotation: Any) -> None:
 
     if origin is list:
         args = get_args(annotation)
-        if len(args) == 1 and args[0] in _PLAYWRIGHT_FORM_SCALAR_TYPES:
+        if len(args) == 1 and args[0] in PLAYWRIGHT_FORM_SCALAR_TYPES:
             return
         if len(args) == 1 and args[0] is bytes:
             msg = (
@@ -255,7 +250,7 @@ def validate_form_field_annotation(annotation: Any) -> None:
         )
         raise ValueError(msg)
 
-    if annotation in _PLAYWRIGHT_FORM_SCALAR_TYPES:
+    if annotation in PLAYWRIGHT_FORM_SCALAR_TYPES:
         return
 
     msg = (
