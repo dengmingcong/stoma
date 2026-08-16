@@ -1,19 +1,4 @@
-"""通用且版本感知的 OpenAPI 规范解析器。
-
-工厂按原始规范中的版本号注入 OpenAPI 3.0 或 3.1 的 Pydantic 模型类，
-解析流程本身由同一个泛型类复用。类型参数统一使用 ``T`` 后缀并约束到
-:class:`pydantic.BaseModel`；构造参数和实例属性则使用无后缀的 PascalCase
-名称，以区分静态类型参数与运行时模型类。openapi-pydantic 暴露的
-``Union[Parameter, Reference]`` 等类型与本模块泛型之间通过 ``cast`` 在
-边界处对齐（运行时已由 jsonref 上游保证引用已展开）。
-
-参数与 ``requestBody`` 的 ``$ref`` 解析由工厂在上游通过
-:func:`expand_path_refs` 完成（基于 ``jsonref``），
-本模块只负责接收已展开的 spec 并做 Pydantic 校验 + IR 构建，不再自行
-解析引用。``requestBody`` 的展开结果以 ``(path, method_upper)`` 键存入
-解析器实例的 ``request_body_map``，由 :meth:`get_endpoints` 按需填充到
-``Endpoint.expanded_raw_request_body``。
-"""
+"""通用且版本感知的 OpenAPI 规范解析器。"""
 
 from __future__ import annotations
 
