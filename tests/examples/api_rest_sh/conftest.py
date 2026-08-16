@@ -8,11 +8,17 @@
 autouse fixture 来得及。pytest import 顺序保证 conftest.py 先于 test_*.py import。
 
 Fixtures：
+- ``_shared_playwright``：session 级，所有 e2e fixtures 共享的 Playwright 实例。
+  避免多个 ``sync_playwright().start()`` 在同一 pytest session 内冲突。
 - ``e2e_client_playwright`` / ``e2e_client``：session 级，无 auth headers
 - ``auth_bearer_client``：session 级，Bearer token 鉴权的 Client。
 - ``auth_apikey_header_client``：session 级，API Key header 鉴权的 Client。
 - ``auth_basic_client``：session 级，Basic 鉴权的 Client。
 - ``auth_apikey_query_client``：session 级，API Key query 鉴权的 Client。
+
+每个 ``*_client_playwright`` fixture 创建独立的 APIRequestContext，
+共享同一个 Playwright 实例。session 结束时统一 teardown（context.dispose() +
+playwright.stop()）。
 
 本文件不启动 mock server，不连 localhost，所有请求发往真实 api.rest.sh。
 """
@@ -44,17 +50,33 @@ __all__ = [
 
 
 @pytest.fixture(scope="session")
-def e2e_client_playwright() -> Generator[APIRequestContext, None, None]:
-    """启动 Playwright 并创建指向 api.rest.sh 的 request context。"""
-    playwright: Playwright = sync_playwright().start()
-    context: APIRequestContext = playwright.request.new_context(
+def _shared_playwright() -> Generator[Playwright, None, None]:
+    """所有 e2e fixtures 共享的 Playwright session 实例。
+
+    每次 sync_playwright().start() 创建独立 asyncio loop，但 pytest
+    session 共享同一事件循环；多个 Playwright 实例会冲突。因此
+    用单个 session fixture + 每个 client fixture 创建独立的
+    APIRequestContext。
+    """
+    playwright_instance: Playwright = sync_playwright().start()
+    try:
+        yield playwright_instance
+    finally:
+        playwright_instance.stop()
+
+
+@pytest.fixture(scope="session")
+def e2e_client_playwright(
+    _shared_playwright: Playwright,
+) -> Generator[APIRequestContext, None, None]:
+    """匿名客户端：no auth headers."""
+    context: APIRequestContext = _shared_playwright.request.new_context(
         base_url="https://api.rest.sh",
     )
     try:
         yield context
     finally:
         context.dispose()
-        playwright.stop()
 
 
 @pytest.fixture(scope="session")
@@ -70,10 +92,11 @@ def e2e_client(
 
 
 @pytest.fixture(scope="session")
-def auth_bearer_client_playwright() -> Generator[APIRequestContext, None, None]:
+def auth_bearer_client_playwright(
+    _shared_playwright: Playwright,
+) -> Generator[APIRequestContext, None, None]:
     """带 Bearer token 的 APIRequestContext（Authorization: Bearer docs-token）。"""
-    playwright: Playwright = sync_playwright().start()
-    context: APIRequestContext = playwright.request.new_context(
+    context: APIRequestContext = _shared_playwright.request.new_context(
         base_url="https://api.rest.sh",
         extra_http_headers={"Authorization": "Bearer docs-token"},
     )
@@ -81,7 +104,6 @@ def auth_bearer_client_playwright() -> Generator[APIRequestContext, None, None]:
         yield context
     finally:
         context.dispose()
-        playwright.stop()
 
 
 @pytest.fixture(scope="session")
@@ -95,10 +117,11 @@ def auth_bearer_client(auth_bearer_client_playwright: APIRequestContext) -> Gene
 
 
 @pytest.fixture(scope="session")
-def auth_apikey_header_client_playwright() -> Generator[APIRequestContext, None, None]:
+def auth_apikey_header_client_playwright(
+    _shared_playwright: Playwright,
+) -> Generator[APIRequestContext, None, None]:
     """带 API Key header 的 APIRequestContext（X-API-Key: docs-key）。"""
-    playwright: Playwright = sync_playwright().start()
-    context: APIRequestContext = playwright.request.new_context(
+    context: APIRequestContext = _shared_playwright.request.new_context(
         base_url="https://api.rest.sh",
         extra_http_headers={"X-API-Key": "docs-key"},
     )
@@ -106,7 +129,6 @@ def auth_apikey_header_client_playwright() -> Generator[APIRequestContext, None,
         yield context
     finally:
         context.dispose()
-        playwright.stop()
 
 
 @pytest.fixture(scope="session")
@@ -122,11 +144,12 @@ def auth_apikey_header_client(
 
 
 @pytest.fixture(scope="session")
-def auth_basic_client_playwright() -> Generator[APIRequestContext, None, None]:
+def auth_basic_client_playwright(
+    _shared_playwright: Playwright,
+) -> Generator[APIRequestContext, None, None]:
     """带 Basic 鉴权的 APIRequestContext（Authorization: Basic base64(docs:docs)）。"""
     basic_token: str = base64.b64encode(b"docs:docs").decode("ascii")
-    playwright: Playwright = sync_playwright().start()
-    context: APIRequestContext = playwright.request.new_context(
+    context: APIRequestContext = _shared_playwright.request.new_context(
         base_url="https://api.rest.sh",
         extra_http_headers={"Authorization": f"Basic {basic_token}"},
     )
@@ -134,7 +157,6 @@ def auth_basic_client_playwright() -> Generator[APIRequestContext, None, None]:
         yield context
     finally:
         context.dispose()
-        playwright.stop()
 
 
 @pytest.fixture(scope="session")
@@ -148,14 +170,26 @@ def auth_basic_client(auth_basic_client_playwright: APIRequestContext) -> Genera
 
 
 @pytest.fixture(scope="session")
-def auth_apikey_query_client() -> Generator[Client, None, None]:
+def auth_apikey_query_client_playwright(
+    _shared_playwright: Playwright,
+) -> Generator[APIRequestContext, None, None]:
+    """API Key query 鉴权的 base context（query 参数在 endpoint 实例上传入）。"""
+    context: APIRequestContext = _shared_playwright.request.new_context(
+        base_url="https://api.rest.sh",
+    )
+    try:
+        yield context
+    finally:
+        context.dispose()
+
+
+@pytest.fixture(scope="session")
+def auth_apikey_query_client(
+    auth_apikey_query_client_playwright: APIRequestContext,
+) -> Generator[Client, None, None]:
     """供 API Key query 鉴权 e2e 测试使用的 Client（query 参数在 endpoint 实例上传入）。"""
-    playwright: Playwright = sync_playwright().start()
-    context: APIRequestContext = playwright.request.new_context(base_url="https://api.rest.sh")
-    client = Client(context=context)
+    client = Client(context=auth_apikey_query_client_playwright)
     try:
         yield client
     finally:
         client.dispose()
-        context.dispose()
-        playwright.stop()
