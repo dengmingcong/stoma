@@ -10,8 +10,8 @@ from playwright.sync_api import FormData
 from pydantic.fields import FieldInfo
 
 from src import Form
-from src.client import _fill_form_field
 from src.dependencies import ModelField
+from src.dependencies.request import _fill_form_data
 
 # ============================================================
 # _fill_scalar_form_field
@@ -26,7 +26,7 @@ class TestFillScalarFormField:
         field_info = FieldInfo(annotation=annotation)
         model_field = ModelField(name="field", field_info=field_info, param_info=Form())
         form_data = FormData()
-        _fill_form_field(form_data, model_field, value)
+        _fill_form_data(form_data, model_field, value)
         return form_data
 
     def test_scalar_str_set(self) -> None:

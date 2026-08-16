@@ -10,7 +10,7 @@ import pytest
 
 from dependencies.annotation import validate_binary_body_annotation
 from src import UploadFile
-from src.client import Client, RequestBodyKind
+from src.dependencies.request import RequestBodyKind, _serialize_body_params
 from src.routing import APIRoute, APIRouter
 
 
@@ -50,8 +50,7 @@ class TestValidateBinaryBodyAnnotation:
 
 
 class TestBinaryBodySerialization:
-    """``Client._serialize_body_params`` 在 ``upload_as_multipart=False`` 下产出 ``FilePayload``。"""
-
+    """``_serialize_body_params`` 在 ``upload_as_multipart=False`` 下产出 ``FilePayload``。"""
     def _route(self) -> Any:
         """构造最小 ``APIRoute`` + ``APIRouter`` 用于 raw-body 序列化。"""
         router = APIRouter()
@@ -67,7 +66,7 @@ class TestBinaryBodySerialization:
         path = tmp_path / "note.txt"
         path.write_bytes(b"hi")
         R = self._route()
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             R(file=UploadFile(path=path)),
             R._get_dependant(method="POST", path="/upload-raw", upload_as_multipart=False),
         )
@@ -83,7 +82,7 @@ class TestBinaryBodySerialization:
         path = tmp_path / "data.unknownext"
         path.write_bytes(b"raw bytes")
         R = self._route()
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             R(file=UploadFile(path=path)),
             R._get_dependant(method="POST", path="/upload-raw", upload_as_multipart=False),
         )
@@ -100,7 +99,7 @@ class TestBinaryBodySerialization:
         class R(APIRoute[dict[str, Any]]):
             file: UploadFile | None = None
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             R(),
             R._get_dependant(method="POST", path="/upload-raw-opt", upload_as_multipart=False),
         )

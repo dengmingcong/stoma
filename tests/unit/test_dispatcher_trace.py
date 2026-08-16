@@ -7,7 +7,8 @@
 
 from unittest.mock import MagicMock
 
-from src.client import Client, RawPayload, RequestBody, RequestBodyKind
+from src.client import Client
+from src.dependencies.request import RawPayload, Request, RequestBody, RequestBodyKind
 
 
 def test_execute_request_sends_trace_method() -> None:
@@ -17,7 +18,15 @@ def test_execute_request_sends_trace_method() -> None:
 
     client = Client(context=mock_context)
 
-    client._execute_request("TRACE", "/x", {}, {}, RequestBody(kind=RequestBodyKind.RAW, raw_data=RawPayload({}, None)))
+    client._execute_request(
+        Request(
+            method="TRACE",
+            path="/x",
+            params={},
+            headers={},
+            body=RequestBody(kind=RequestBodyKind.RAW, raw_data=RawPayload({}, None)),
+        )
+    )
 
     mock_fetch.assert_called_once()
     call_kwargs = mock_fetch.call_args.kwargs

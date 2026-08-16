@@ -7,8 +7,8 @@ from typing import Annotated, Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
-from src import UploadFile
 from src.constants import PLAYWRIGHT_FORM_SCALAR_TYPES
+from src.params import UploadFile
 
 
 def _lenient_issubclass(cls: Any, class_or_tuple: type | tuple[type, ...]) -> bool:

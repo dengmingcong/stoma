@@ -10,7 +10,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from src import Form
-from src.client import Client, RequestBody, RequestBodyKind
+from src.client import Client
+from src.dependencies.request import Request, RequestBody, RequestBodyKind
 
 
 def _make_client() -> tuple[Client, MagicMock]:
@@ -33,11 +34,13 @@ class TestExecuteRequestBinaryHeaders:
         """BINARY + 空 caller headers → ``Content-Type`` 来自 binary_file.mimeType。"""
         client, fetch = _make_client()
         client._execute_request(
-            "POST",
-            "/x",
-            {},
-            {},
-            RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
+            Request(
+                method="POST",
+                path="/x",
+                params={},
+                headers={},
+                body=RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
+            )
         )
         kwargs = fetch.call_args.kwargs
         assert kwargs["data"] == b"x"
@@ -47,11 +50,13 @@ class TestExecuteRequestBinaryHeaders:
         """BINARY + caller ``Content-Type`` 覆盖自动 mime。"""
         client, fetch = _make_client()
         client._execute_request(
-            "POST",
-            "/x",
-            {},
-            {"Content-Type": "application/x-custom"},
-RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
+            Request(
+                method="POST",
+                path="/x",
+                params={},
+                headers={"Content-Type": "application/x-custom"},
+                body=RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
+            )
         )
         kwargs = fetch.call_args.kwargs
         assert kwargs["headers"] == {"Content-Type": "application/x-custom"}
@@ -60,11 +65,13 @@ RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
         """BINARY + caller 非冲突 header → 两个都存在（derived + caller）。"""
         client, fetch = _make_client()
         client._execute_request(
-            "POST",
-            "/x",
-            {},
-            {"X-Trace": "1"},
-            RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
+            Request(
+                method="POST",
+                path="/x",
+                params={},
+                headers={"X-Trace": "1"},
+                body=RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
+            )
         )
         kwargs = fetch.call_args.kwargs
         assert kwargs["headers"] == {"Content-Type": "text/plain", "X-Trace": "1"}
@@ -73,11 +80,13 @@ RequestBody(kind=RequestBodyKind.BINARY, binary_file=self.BINARY_PAYLOAD),
         """BINARY + ``binary_file=None`` → 不发 data，不派生 Content-Type。"""
         client, fetch = _make_client()
         client._execute_request(
-            "POST",
-            "/x",
-            {},
-            {},
-            RequestBody(kind=RequestBodyKind.BINARY, binary_file=None),
+            Request(
+                method="POST",
+                path="/x",
+                params={},
+                headers={},
+                body=RequestBody(kind=RequestBodyKind.BINARY, binary_file=None),
+            )
         )
         kwargs = fetch.call_args.kwargs
         assert "data" not in kwargs
@@ -91,11 +100,13 @@ class TestExecuteRequestJsonEmpty:
         """RAW + ``raw_data=None`` + 空 caller headers → ``data=None``, headers 缺失或空。"""
         client, fetch = _make_client()
         client._execute_request(
-            "POST",
-            "/x",
-            {},
-            {},
-            RequestBody(kind=RequestBodyKind.RAW, raw_data=None),
+            Request(
+                method="POST",
+                path="/x",
+                params={},
+                headers={},
+                body=RequestBody(kind=RequestBodyKind.RAW, raw_data=None),
+            )
         )
         kwargs = fetch.call_args.kwargs
         assert kwargs["data"] is None

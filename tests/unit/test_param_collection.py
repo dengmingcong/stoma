@@ -19,7 +19,8 @@ from playwright.sync_api import FormData
 from pydantic import BaseModel, Field
 
 from src import Body, Form, Header, Path, Query, UploadFile
-from src.client import Client, RequestBodyKind
+from src.client import Client
+from src.dependencies.request import RequestBodyKind, _serialize_body_params
 from src.routing import APIRoute, APIRouter
 
 # 创建测试用的路由器
@@ -234,7 +235,7 @@ def test_multiple_body_params() -> None:
         data2: Annotated[dict[str, int], Body()]
 
     endpoint = PostData(data1={"a": 1}, data2={"b": 2})
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
+    body_data = _serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # 多个 body 参数 → 每个独立命名
     assert body_data == {"data1": {"a": 1}, "data2": {"b": 2}}
@@ -251,7 +252,7 @@ def test_single_pydantic_body_flat() -> None:
         data: UserCreateRequest
 
     endpoint = CreateUser(data=UserCreateRequest(name="Alice", email="alice@example.com", age=30))
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
+    body_data = _serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # 单 Pydantic 模型自动识别 → 平展
     assert body_data == {"name": "Alice", "email": "alice@example.com", "age": 30}
@@ -265,7 +266,7 @@ def test_single_pydantic_body_embed_true() -> None:
         data: Annotated[UserCreateRequest, Body(embed=True)]
 
     endpoint = CreateUserEmbed(data=UserCreateRequest(name="Bob", email="bob@example.com"))
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
+    body_data = _serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # Body(embed=True) → 嵌入到 data 键下
     assert body_data == {"data": {"name": "Bob", "email": "bob@example.com"}}
@@ -279,7 +280,7 @@ def test_single_scalar_body_embedded() -> None:
         importance: Annotated[int, Body(embed=True)]
 
     endpoint = SetImportance(importance=5)
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
+    body_data = _serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # 标量必须嵌入（无法平展）
     assert body_data == {"importance": 5}
@@ -297,7 +298,7 @@ def test_multiple_body_pydantic_and_scalar() -> None:
         item=UserCreateRequest(name="Charlie", email="charlie@example.com"),
         importance=10,
     )
-    body_data = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
+    body_data = _serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
     assert body_data is not None
     # 多个 body → 每个独立命名
     assert body_data == {
@@ -332,7 +333,7 @@ def test_form_scalar_passes_value() -> None:
         username: Annotated[str, Form()]
 
     endpoint = LoginForm(username="alice")
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("username", "alice")]
@@ -346,7 +347,7 @@ def test_form_int() -> None:
         age: Annotated[int, Form()]
 
     endpoint = AgeForm(age=42)
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("age", 42)]
@@ -360,7 +361,7 @@ def test_form_scalar_list_append_multiple() -> None:
         tags: Annotated[list[str], Form()]
 
     endpoint = TagsForm(tags=["a", "b"])
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("tags", "a"), ("tags", "b")]
@@ -374,7 +375,7 @@ def test_form_scalar_list_field() -> None:
         tags: Annotated[list[str], Form()]
 
     endpoint = ScalarListForm(tags=["a", "b"])
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.URLENCODED_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("tags", "a"), ("tags", "b")]
@@ -431,7 +432,7 @@ def test_uploadfile_single(tmp_path: pathlib.Path) -> None:
         file: UploadFile
 
     endpoint = UploadSingle(file=UploadFile(path=file_path))
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("file", file_path)]
@@ -450,7 +451,7 @@ def test_uploadfile_list(tmp_path: pathlib.Path) -> None:
         files: list[UploadFile]
 
     endpoint = UploadList(files=[UploadFile(path=file1), UploadFile(path=file2)])
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("files", file1), ("files", file2)]
@@ -464,7 +465,7 @@ def test_uploadfile_optional_none() -> None:
         file: UploadFile | None = None
 
     endpoint = UploadOptNone(file=None)
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == []
@@ -478,7 +479,7 @@ def test_uploadfile_optional_missing() -> None:
         file: UploadFile | None = None
 
     endpoint = UploadOptMissing()  # 缺省值 None
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == []
@@ -495,7 +496,7 @@ def test_uploadfile_optional_with_value(tmp_path: pathlib.Path) -> None:
         file: UploadFile | None = None
 
     endpoint = UploadOptValue(file=UploadFile(path=file_path))
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == [("file", file_path)]
@@ -509,7 +510,7 @@ def test_uploadfile_list_optional_none() -> None:
         files: list[UploadFile] | None = None
 
     endpoint = UploadFilesOptNone(files=None)
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == []
@@ -523,7 +524,7 @@ def test_uploadfile_list_optional_empty() -> None:
         files: list[UploadFile] | None = None
 
     endpoint = UploadFilesOptEmpty(files=[])
-    body = Client(context=None)._serialize_body_params(endpoint, endpoint._get_dependant())
+    body = _serialize_body_params(endpoint, endpoint._get_dependant())
     assert body.kind is RequestBodyKind.MULTIPART_FORM
     assert isinstance(body.form_data, FormData)
     assert body.form_data._fields == []
@@ -644,7 +645,7 @@ class TestRawPayloadAndMediaType:
 
     def test_raw_payload_namedtuple(self) -> None:
         """RawPayload 字段可访问。"""
-        from src.client import RawPayload
+        from src.dependencies.request import RawPayload
 
         rp = RawPayload(value={"a": 1}, media_type="application/xml")
         assert rp.value == {"a": 1}
@@ -652,7 +653,7 @@ class TestRawPayloadAndMediaType:
 
     def test_raw_payload_media_type_optional(self) -> None:
         """RawPayload.media_type 默认 None。"""
-        from src.client import RawPayload
+        from src.dependencies.request import RawPayload
 
         rp = RawPayload(value=5)
         assert rp.value == 5
@@ -666,7 +667,7 @@ class TestRawPayloadAndMediaType:
         class ScalarMedia(APIRoute[dict[str, Any]]):
             value: Annotated[int, Body(media_type="text/plain")]
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             ScalarMedia(value=5),
             ScalarMedia._get_dependant(),
         )
@@ -683,7 +684,7 @@ class TestRawPayloadAndMediaType:
         class ScalarDefault(APIRoute[dict[str, Any]]):
             value: Annotated[int, Body()]
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             ScalarDefault(value=42),
             ScalarDefault._get_dependant(),
         )
@@ -701,7 +702,7 @@ class TestRawPayloadAndMediaType:
             name: Annotated[str, Body()]
             age: Annotated[int, Body(media_type="text/plain")]
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             MultiMedia(name="alice", age=30),
             MultiMedia._get_dependant(),
         )
@@ -717,7 +718,7 @@ class TestRawPayloadAndMediaType:
         class EmbedMedia(APIRoute[dict[str, Any]]):
             value: Annotated[int, Body(embed=True, media_type="text/plain")]
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             EmbedMedia(value=7),
             EmbedMedia._get_dependant(),
         )
@@ -733,7 +734,7 @@ class TestRawPayloadAndMediaType:
         class BM(APIRoute[dict[str, Any]]):
             data: Annotated[UserCreateRequest, Body(media_type="application/xml")]
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             BM(data=UserCreateRequest(name="x", email="y@z.com")),
             BM._get_dependant(),
         )
@@ -749,7 +750,7 @@ class TestRawPayloadAndMediaType:
         class ListMedia(APIRoute[dict[str, Any]]):
             values: Annotated[list[int], Body(media_type="text/plain")]
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             ListMedia(values=[1, 2, 3]),
             ListMedia._get_dependant(),
         )
@@ -765,7 +766,7 @@ class TestRawPayloadAndMediaType:
         class ScalarBare(APIRoute[dict[str, Any]]):
             importance: Annotated[int, Body()]
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             ScalarBare(importance=99),
             ScalarBare._get_dependant(),
         )
@@ -780,7 +781,7 @@ class TestRawPayloadAndMediaType:
         class ScalarNoEmbed(APIRoute[dict[str, Any]]):
             importance: Annotated[int, Body(embed=False)]
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             ScalarNoEmbed(importance=10),
             ScalarNoEmbed._get_dependant(),
         )
@@ -794,7 +795,7 @@ class TestRawPayloadAndMediaType:
         class BMDefault(APIRoute[dict[str, Any]]):
             data: UserCreateRequest
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             BMDefault(data=UserCreateRequest(name="alice", email="a@b.com")),
             BMDefault._get_dependant(),
         )
@@ -826,7 +827,7 @@ class TestRawPayloadAndMediaType:
             a: Annotated[str, Body(embed=True)]
             b: Annotated[int, Body(embed=True)]
 
-        body = Client(context=None)._serialize_body_params(
+        body = _serialize_body_params(
             MultiEmbed(a="x", b=1),
             MultiEmbed._get_dependant(),
         )
@@ -841,7 +842,7 @@ class TestRawPayloadAndMediaType:
 
     def test_request_body_field_names(self) -> None:
         """RequestBody 字段名：raw_data / binary_file 存在；json_body / binary_body 不存在。"""
-        from src.client import RequestBody
+        from src.dependencies.request import RequestBody
 
         assert "raw_data" in RequestBody.__dataclass_fields__
         assert "binary_file" in RequestBody.__dataclass_fields__
@@ -852,21 +853,24 @@ class TestRawPayloadAndMediaType:
         """_execute_request 对 RAW + dict body → data=dict。"""
         from unittest.mock import MagicMock
 
-        from src.client import Client, RawPayload, RequestBody
+        from src.client import Client
+        from src.dependencies.request import RawPayload, Request, RequestBody
 
         mock_fetch = MagicMock()
         mock_context = MagicMock(fetch=mock_fetch)
         client = Client(context=mock_context)
 
         client._execute_request(
-            "POST",
-            "/x",
-            {},
-            {},
-            RequestBody(
-                kind=RequestBodyKind.RAW,
-                raw_data=RawPayload(value={"k": 1}, media_type=None),
-            ),
+            Request(
+                method="POST",
+                path="/x",
+                params={},
+                headers={},
+                body=RequestBody(
+                    kind=RequestBodyKind.RAW,
+                    raw_data=RawPayload(value={"k": 1}, media_type=None),
+                ),
+            )
         )
         kwargs = mock_fetch.call_args.kwargs
         assert kwargs["data"] == {"k": 1}
@@ -875,21 +879,24 @@ class TestRawPayloadAndMediaType:
         """_execute_request 对 RAW + scalar body → data=scalar。"""
         from unittest.mock import MagicMock
 
-        from src.client import Client, RawPayload, RequestBody
+        from src.client import Client
+        from src.dependencies.request import RawPayload, Request, RequestBody
 
         mock_fetch = MagicMock()
         mock_context = MagicMock(fetch=mock_fetch)
         client = Client(context=mock_context)
 
         client._execute_request(
-            "POST",
-            "/x",
-            {},
-            {},
-            RequestBody(
-                kind=RequestBodyKind.RAW,
-                raw_data=RawPayload(value=5, media_type=None),
-            ),
+            Request(
+                method="POST",
+                path="/x",
+                params={},
+                headers={},
+                body=RequestBody(
+                    kind=RequestBodyKind.RAW,
+                    raw_data=RawPayload(value=5, media_type=None),
+                ),
+            )
         )
         kwargs = mock_fetch.call_args.kwargs
         assert kwargs["data"] == 5
@@ -898,21 +905,24 @@ class TestRawPayloadAndMediaType:
         """_execute_request: raw_data.media_type → Content-Type header。"""
         from unittest.mock import MagicMock
 
-        from src.client import Client, RawPayload, RequestBody
+        from src.client import Client
+        from src.dependencies.request import RawPayload, Request, RequestBody
 
         mock_fetch = MagicMock()
         mock_context = MagicMock(fetch=mock_fetch)
         client = Client(context=mock_context)
 
         client._execute_request(
-            "POST",
-            "/x",
-            {},
-            {},
-            RequestBody(
-                kind=RequestBodyKind.RAW,
-                raw_data=RawPayload(value=5, media_type="text/plain"),
-            ),
+            Request(
+                method="POST",
+                path="/x",
+                params={},
+                headers={},
+                body=RequestBody(
+                    kind=RequestBodyKind.RAW,
+                    raw_data=RawPayload(value=5, media_type="text/plain"),
+                ),
+            )
         )
         kwargs = mock_fetch.call_args.kwargs
         assert kwargs["headers"] == {"Content-Type": "text/plain"}
@@ -921,21 +931,24 @@ class TestRawPayloadAndMediaType:
         """_execute_request: caller headers 覆盖 raw_data.media_type。"""
         from unittest.mock import MagicMock
 
-        from src.client import Client, RawPayload, RequestBody
+        from src.client import Client
+        from src.dependencies.request import RawPayload, Request, RequestBody
 
         mock_fetch = MagicMock()
         mock_context = MagicMock(fetch=mock_fetch)
         client = Client(context=mock_context)
 
         client._execute_request(
-            "POST",
-            "/x",
-            {},
-            {"Content-Type": "application/x-custom"},
-            RequestBody(
-                kind=RequestBodyKind.RAW,
-                raw_data=RawPayload(value=5, media_type="text/plain"),
-            ),
+            Request(
+                method="POST",
+                path="/x",
+                params={},
+                headers={"Content-Type": "application/x-custom"},
+                body=RequestBody(
+                    kind=RequestBodyKind.RAW,
+                    raw_data=RawPayload(value=5, media_type="text/plain"),
+                ),
+            )
         )
         kwargs = mock_fetch.call_args.kwargs
         assert kwargs["headers"] == {"Content-Type": "application/x-custom"}
