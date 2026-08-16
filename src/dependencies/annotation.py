@@ -7,8 +7,10 @@ from typing import Annotated, Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
-from src.constants import PLAYWRIGHT_FORM_SCALAR_TYPES
 from src.params import UploadFile
+
+# Playwright ``FormData`` 支持的标量类型集合，bytes 不在其中。
+_PLAYWRIGHT_FORM_SCALAR_TYPES: tuple[type, ...] = (str, int, float, bool)
 
 
 def _lenient_issubclass(cls: Any, class_or_tuple: type | tuple[type, ...]) -> bool:
@@ -215,7 +217,7 @@ def validate_form_field_annotation(annotation: Any) -> None:
 
     if origin is list:
         args = get_args(annotation)
-        if len(args) == 1 and args[0] in PLAYWRIGHT_FORM_SCALAR_TYPES:
+        if len(args) == 1 and args[0] in _PLAYWRIGHT_FORM_SCALAR_TYPES:
             return
         if len(args) == 1 and args[0] is bytes:
             msg = (
@@ -250,7 +252,7 @@ def validate_form_field_annotation(annotation: Any) -> None:
         )
         raise ValueError(msg)
 
-    if annotation in PLAYWRIGHT_FORM_SCALAR_TYPES:
+    if annotation in _PLAYWRIGHT_FORM_SCALAR_TYPES:
         return
 
     msg = (
