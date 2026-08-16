@@ -1367,8 +1367,11 @@ components:
         assert "avatar: Annotated[str, Form()]" in content
         compile(content, "submit_mixed.py", "exec")
 
-    def test_multiple_media_types_raises_schema_error(self, cli_runner: Any, tmp_path: Path) -> None:
-        """验证 ``requestBody`` 含多个 media type 时抛出 ``OpenAPISchemaError``（stoma 不支持）。"""
+    def test_multiple_media_types_silently_picks_first(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 ``requestBody`` 含多个 media type 时静默选第一个 + stderr 报告警告（不自举报错）。
+
+        对应 commit 857e1b3：多 media type 行为从「抛错中断」改为「静默选第一个 + 报告到 stderr」。
+        """
         spec = _build_spec_with_components(
             "/ambiguous",
             "post",
@@ -1396,11 +1399,15 @@ components:
         out_dir = tmp_path / "output"
 
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
-        # CLI 退出码非零（codegen 报错）
-        assert result.exit_code != 0
-        # 错误信息提示多 media type（来自 result.exception 或 output）
-        error_repr = repr(result.exception) if result.exception else result.output
-        assert "Multiple media types" in error_repr
+
+        assert result.exit_code == 0, result.output
+        assert "多个 media type" in result.stderr or "multiple media type" in result.stderr.lower()
+        assert "POST /ambiguous" in result.stderr
+        route_file = out_dir / "ambiguous_body.py"
+        assert route_file.exists(), f"route 文件未生成: {route_file}"
+        content = route_file.read_text(encoding="utf-8")
+        assert "AmbiguousBodyRequest" in content
+        compile(content, "ambiguous_body.py", "exec")
 
     def test_multipart_file_field_non_snake_case_property(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 multipart file property 名非 snake_case 时自动加 ``Field(serialization_alias=...)``。
