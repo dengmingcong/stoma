@@ -11,7 +11,9 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from src.exceptions import OpenAPISchemaError
-from src.openapi.constants import (
+from src.openapi.models import Endpoint
+from src.openapi.reference import expand_path_refs, validate_cycle_refs
+from src.openapi.version import (
     OpenAPI30,
     OpenAPI31,
     Parameter30,
@@ -24,8 +26,6 @@ from src.openapi.constants import (
     Response31,
     SpecVersion,
 )
-from src.openapi.models import Endpoint
-from src.openapi.reference import expand_path_refs, validate_cycle_refs
 
 
 def _read_raw_spec(spec_path: Path) -> dict[str, Any]:

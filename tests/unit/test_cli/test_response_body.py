@@ -71,8 +71,8 @@ components:
 
         直接走 ``make_openapi_parser`` + ``make_endpoint_renderer`` 而不绕道 CLI——
         绕开 ``datamodel-code-generator`` 的副产物，纯粹验证 renderer 对 3.0
-        ``Reference30`` 实例的 ``_is_reference`` 检测（factory 注入 ``Reference30``
-        类到 ``EndpointRenderer.Reference``，3.1 / 3.0 不串类）。
+        ``Reference30`` 实例的 ``isinstance(schema, self.Reference)`` 检测
+        （factory 注入 ``Reference30`` 类到 ``EndpointRenderer.Reference``，3.1 / 3.0 不串类）。
         """
         parser = make_openapi_parser(valid_v30_spec)
         parser.load()
