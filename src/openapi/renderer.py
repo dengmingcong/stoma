@@ -66,6 +66,7 @@ from pydantic.alias_generators import to_snake
 
 from openapi.naming import is_snake_case, to_field_name, to_pascal_case
 from src.exceptions import OpenAPISchemaError
+from src.openapi.constants import Reference30, Reference31, SpecVersion
 from src.openapi.models import (
     BinaryRequestBodyFields,
     Endpoint,
@@ -75,8 +76,6 @@ from src.openapi.models import (
     ScalarRequestBodyFields,
     UrlencodedFormRequestBodyFields,
 )
-from src.openapi.models_types import SpecVersion
-from src.openapi.reference_types import Reference30, Reference31
 
 
 class _ReferenceLike(Protocol):

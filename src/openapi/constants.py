@@ -1,25 +1,20 @@
-"""Version-specific OpenAPI reference types for v3.0 and v3.1.
+"""OpenAPI 模块的固定常量定义。
 
-This module re-exports versioned class aliases from openapi_pydantic to avoid
-circular imports and provide a single canonical import site for version-specific
-OpenAPI model classes used throughout the codebase.
+集中存放：
 
-Classes from v3.0 (openapi_pydantic.v3.v3_0):
-    - OpenAPI30: OpenAPI 3.0 specification root
-    - Parameter30: Parameter object for 3.0
-    - RequestBody30: RequestBody object for 3.0
-    - Response30: Response object for 3.0
-    - Reference30: Reference object for 3.0
+- :data:`SpecVersion`：支持的 OpenAPI 主版本（``3.0`` / ``3.1``），由 parser
+  与 renderer 共用，独立成模块以避免循环 import。
+- 版本特定的 Pydantic 模型类别名（``OpenAPI30/31``、``Parameter30/31``、
+  ``RequestBody30/31``、``Response30/31``、``Reference30/31``）：从
+  ``openapi_pydantic`` 重新导出，供 parser 与 renderer 按版本注入使用。
 
-Classes from v3.1 (openapi_pydantic.v3.v3_1):
-    - OpenAPI31: OpenAPI 3.1 specification root
-    - Parameter31: Parameter object for 3.1
-    - RequestBody31: RequestBody object for 3.1
-    - Response31: Response object for 3.1
-    - Reference31: Reference object for 3.1
+将这些不变的定义集中在一处，使 parser / renderer / models 能单向依赖本模块，
+避免双向耦合。
 """
 
 from __future__ import annotations
+
+from typing import Literal
 
 from openapi_pydantic.v3.v3_0 import (
     OpenAPI as OpenAPI30,
@@ -52,15 +47,18 @@ from openapi_pydantic.v3.v3_1 import (
     Response as Response31,
 )
 
+SpecVersion = Literal["3.0", "3.1"]
+
 __all__ = [
     "OpenAPI30",
     "OpenAPI31",
     "Parameter30",
     "Parameter31",
+    "Reference30",
+    "Reference31",
     "RequestBody30",
     "RequestBody31",
     "Response30",
     "Response31",
-    "Reference30",
-    "Reference31",
+    "SpecVersion",
 ]

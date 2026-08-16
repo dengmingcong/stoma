@@ -30,7 +30,7 @@
    ``_PARAMETER_UNION_ADAPTER`` 的写法）。
 
 版本特定的类（``Parameter30`` / ``Parameter31`` / ``Reference30`` /
-``Reference31`` 等）统一在 :mod:`src.openapi.reference_types` 重新导出，
+``Reference31`` 等）统一在 :mod:`src.openapi.constants` 重新导出，
 避免本模块与 ``parser`` / ``renderer`` 形成循环导入。
 
 为什么不导出 Union 别名
@@ -43,12 +43,12 @@
 - Union 把 ``3.0`` 和 ``3.1`` 的类型揉到一起，调用方拿到一个 ``Parameter``
   实例时无法判断它来自哪个版本；
 - Union 别名让 ``parser`` / ``renderer`` 不得不依赖 ``models.py`` 才能
-  拿到跨版本类型，破坏了 ``reference_types.py`` 的封装边界；
+  拿到跨版本类型，破坏了 ``constants.py`` 的封装边界；
 - 真正需要跨版本处理的位置（reference 派发）会在调用点显式判断
   ``spec_version``，而其余只读访问（``param.name``、``operation_id``
   等）两个版本的字段名一致，泛型参数自动适配即可。
 
-调用方如需 3.0 / 3.1 具体类，请直接从 :mod:`src.openapi.reference_types`
+调用方如需 3.0 / 3.1 具体类，请直接从 :mod:`src.openapi.constants`
 导入 ``Parameter30``、``Parameter31``、``Reference30``、``Reference31``
 等；版本由 ``Endpoint.spec_version`` 字段携带。
 
@@ -81,7 +81,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from src.openapi.models_types import SpecVersion
+from src.openapi.constants import SpecVersion
 
 __all__ = [
     "Endpoint",
@@ -194,8 +194,8 @@ class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseMo
 
     三个类型参数按 spec 版本注入：
 
-    - 3.0 → :class:`src.openapi.reference_types.Parameter30` 等
-    - 3.1 → :class:`src.openapi.reference_types.Parameter31` 等
+    - 3.0 → :class:`src.openapi.constants.Parameter30` 等
+    - 3.1 → :class:`src.openapi.constants.Parameter31` 等
 
     :var operation_id: OpenAPI ``operationId``，作为生成文件名的依据。
     :vartype operation_id: str
