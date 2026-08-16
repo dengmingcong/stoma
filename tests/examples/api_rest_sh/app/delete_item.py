@@ -1,0 +1,19 @@
+"""Delete a sample item。
+
+Generated from OpenAPI: delete-item
+"""
+
+from __future__ import annotations
+
+from typing import Annotated
+from pydantic import Field
+from stoma import APIRouter, APIRoute
+
+router = APIRouter()
+
+
+@router.delete("/items/{item-id}")
+class DeleteItem(APIRoute):
+    """Delete a sample item。
+    """
+    item_id: Annotated[str, Field(serialization_alias='item-id')]
