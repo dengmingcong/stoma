@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from src.cli import app
+from src.openapi.parser import make_openapi_parser
+from src.openapi.parameters import make_param_fields
+
+FIXTURE_NULLABLE_PARAM: Path = Path(__file__).parent / "fixtures" / "nullable_param.yaml"
 
 
 class TestMakeParameters:
@@ -452,3 +456,56 @@ paths:
         content = (out_dir / "list_items.py").read_text(encoding="utf-8")
         # 继承 path_item 级，required=True → str（无 | None，无 default）
         assert "x_tenant_id: Annotated[str, Header(), Field(serialization_alias='X-Tenant-ID')]" in content
+
+
+class TestNullableParameterSchemas:
+    """OpenAPI 3.1 nullable parameter schema 覆盖测试。
+
+    验证 make_param_fields 对 4 种 schema 形态的类型派生：
+    1. 纯 primitive（无 nullable）
+    2. nullable primitive（type: ["string", "null"]）
+    3. nullable array（type: ["array", "null"]）
+    4. 单层 nullable integer（type: ["integer", "null"]，
+       即 make_param_fields 能处理的"嵌套 nullable"简化形态）
+    """
+
+    def test_opPlainScalar_param(self) -> None:
+        """纯 primitive：type: integer → 断言输出含 "int"（不含 | None）。"""
+        parser = make_openapi_parser(FIXTURE_NULLABLE_PARAM)
+        parser.load()
+        endpoints = parser.get_endpoints()
+        target = next(e for e in endpoints if e.operation_id == "opPlainScalar")
+        _header, param_fields, _ = make_param_fields(target.parameters)
+        rendered = "\n".join(param_fields)
+        assert "int" in rendered
+        assert "| None" not in rendered
+
+    def test_opNullableString_param(self) -> None:
+        """nullable primitive：type: ["string", "null"] → 断言输出含 "str | None"。"""
+        parser = make_openapi_parser(FIXTURE_NULLABLE_PARAM)
+        parser.load()
+        endpoints = parser.get_endpoints()
+        target = next(e for e in endpoints if e.operation_id == "opNullableString")
+        _header, param_fields, _ = make_param_fields(target.parameters)
+        rendered = "\n".join(param_fields)
+        assert "str | None" in rendered
+
+    def test_opNullableArray_param(self) -> None:
+        """nullable array：type: ["array", "null"] + items → 断言输出含 "list[str] | None"。"""
+        parser = make_openapi_parser(FIXTURE_NULLABLE_PARAM)
+        parser.load()
+        endpoints = parser.get_endpoints()
+        target = next(e for e in endpoints if e.operation_id == "opNullableArray")
+        _header, param_fields, _ = make_param_fields(target.parameters)
+        rendered = "\n".join(param_fields)
+        assert "list[str] | None" in rendered
+
+    def test_opNestedNullable_param(self) -> None:
+        """单层 nullable：type: ["integer", "null"] → 断言输出含 "int | None"。"""
+        parser = make_openapi_parser(FIXTURE_NULLABLE_PARAM)
+        parser.load()
+        endpoints = parser.get_endpoints()
+        target = next(e for e in endpoints if e.operation_id == "opNestedNullable")
+        _header, param_fields, _ = make_param_fields(target.parameters)
+        rendered = "\n".join(param_fields)
+        assert "int | None" in rendered
