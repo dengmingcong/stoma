@@ -1,10 +1,15 @@
-"""测试各种 parameter 场景的生成结果。"""
+"""``src.openapi.parameters``（含 ``make_param_fields`` 渲染管线）的端到端单元测试。
+
+迁移自 :mod:`tests.unit.test_cli.test_parameters` —— 之前被混入 ``test_cli/``
+包内，但实际验证的是 :mod:`src.openapi.parameters` 在 OpenAPI ``parameters``
+字段上的派生结果（query / path / header、``$ref`` 解析、链式 ``$ref``、环引用、
+外部 ref、path item 级 ``parameters`` 合并与继承）。
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
-
-from typer.testing import CliRunner
+from typing import Any
 
 from src.cli import app
 
@@ -12,7 +17,7 @@ from src.cli import app
 class TestMakeParameters:
     """测试各种 parameter 场景的生成结果。"""
 
-    def test_query_parameters_with_types(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_query_parameters_with_types(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证不同类型的 query 参数被正确映射为 Python 类型。"""
         spec = """\
 openapi: 3.1.0
@@ -63,10 +68,11 @@ paths:
         assert "score: float | None = None" in content
         assert "active: bool | None = None" in content
 
-    def test_header_parameter_uses_annotated(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 header 参数使用 Annotated[..., Header(...)] 标记。
+    def test_header_parameter_uses_annotated(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 header 参数使用 ``Annotated[..., Header(...)]`` 标记。
 
-        非 snake_case 参数会被转为 snake_case 并通过 Field(serialization_alias=...) 保留原名。
+        非 snake_case 参数会被转为 snake_case 并通过 ``Field(serialization_alias=...)``
+        保留原名。
         """
         spec = """\
 openapi: 3.1.0
@@ -101,7 +107,7 @@ paths:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "check_auth.py").read_text(encoding="utf-8")
-        # header 参数使用 Annotated[..., Header(...)] 标记。
+        # header 参数使用 ``Annotated[..., Header(...)]`` 标记。
         assert "from stoma import APIRouter, APIRoute, Header" in content
         # models 来自 .models 导入，所以这里只需要 Field（不再内联 BaseModel 定义）。
         assert "from pydantic import Field" in content
@@ -113,7 +119,7 @@ paths:
             "x_request_id: Annotated[str | None, Header(), Field(serialization_alias='X-Request-ID')] = None" in content
         )
 
-    def test_required_vs_optional_path_param(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_required_vs_optional_path_param(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 path 参数必填、无默认值。"""
         spec = """\
 openapi: 3.1.0
@@ -147,8 +153,8 @@ paths:
         # required 参数不应有 = None 默认值。
         assert "item_id: str = None" not in content
 
-    def test_parameter_ref_resolves(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 spec 中 components.parameters 的 $ref 能被解析并生成正确字段。"""
+    def test_parameter_ref_resolves(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 spec 中 ``components.parameters`` 的 ``$ref`` 能被解析并生成正确字段。"""
         spec = """\
 openapi: 3.1.0
 info:
@@ -181,7 +187,7 @@ paths:
         content = (out_dir / "list_items.py").read_text(encoding="utf-8")
         assert "page: int | None = None" in content
 
-    def test_parameter_v30_ref_detection(self, cli_runner: CliRunner, valid_v30_spec: Path) -> None:
+    def test_parameter_v30_ref_detection(self, cli_runner: Any, valid_v30_spec: Path) -> None:
         """验证 OpenAPI 3.0.x ``parameters[*].$ref`` 被 CLI 正确解析。
 
         ``components.parameters.UserIdParam`` 定义 ``schema: type: string``，
@@ -196,7 +202,7 @@ paths:
         assert "user_id: str" in content
         assert "user_id: UserIdParam" not in content
 
-    def test_parameter_ref_chained_resolves(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_parameter_ref_chained_resolves(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 A → B → C 三层链式 ref 能递归解析到 C。"""
         spec = """\
 openapi: 3.1.0
@@ -234,7 +240,7 @@ paths:
         content = (out_dir / "list_items.py").read_text(encoding="utf-8")
         assert "page: int | None = None" in content
 
-    def test_parameter_cycle_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_parameter_cycle_raises(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 ``components.parameters.A -> B -> A`` 环引用被 CLI 捕获并报告。
 
         经 ``make_openapi_parser`` 在工厂层做 cycle 检测，遇到环立即抛
@@ -271,7 +277,7 @@ paths:
         assert "Cycle detected in parameter $ref chain" in result.output
         assert "A -> B -> A" in result.output
 
-    def test_parameter_external_ref_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_parameter_external_ref_raises(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证指向外部文件的 ``$ref``（如 ``common.yaml#/schemas/X``）被 CLI 捕获并报告。
 
         :func:`expand_path_refs` 委托 :mod:`jsonref` 解析，jsonref 抛
@@ -305,13 +311,14 @@ paths:
         assert result.exit_code != 0
         assert "Failed to resolve parameter or requestBody $ref" in result.output
 
-    def test_parameter_cycle_not_referenced_still_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_parameter_cycle_not_referenced_still_raises(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 ``components.parameters`` 中的环即使没被任何 path 引用也被检测到。
 
-        :func:`src.openapi.reference.validate_cycle_refs` 是对整张 ``components.parameters`` 表做
-        DFS，而不是只走被引用的子图；任何 ``$ref`` 闭环都会立即抛
-        :class:`OpenAPISchemaError`。场景里 path 不带 ``parameters``，只用 ``responses`` 占位——确保
-        C / D 不会被任何 path 触达，cycle 检测仍然命中。
+        :func:`src.openapi.reference.validate_cycle_refs` 是对整张
+        ``components.parameters`` 表做 DFS，而不是只走被引用的子图；任何
+        ``$ref`` 闭环都会立即抛 :class:`OpenAPISchemaError`。场景里 path 不带
+        ``parameters``，只用 ``responses`` 占位——确保 C / D 不会被任何 path 触达，
+        cycle 检测仍然命中。
         """
         spec = """\
 openapi: 3.1.0
@@ -342,10 +349,11 @@ paths:
         assert "Cycle detected in parameter $ref chain" in result.output
         assert "C -> D -> C" in result.output
 
-    def test_path_item_parameters_merged_with_override(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_path_item_parameters_merged_with_override(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 path_item 级 + operation 级同名覆盖 + path_item 级独占继承同时工作。
 
         场景：
+
         - path_item.parameters：
           - X-Tenant-ID（required=true）  → 会被 operation 覆盖
           - Authorization（required=true） → path_item 独占，operation 没 override
@@ -353,8 +361,10 @@ paths:
           - X-Tenant-ID（required=false）  → 覆盖 path_item 级同名
           - q（query）                     → operation 独占
 
-        修复后输出含 4 个字段断言（X-Tenant-ID 用 op 覆盖值、Authorization 继承、q 是 op 独有）。
-        bug 状态下（没合并 path_item）只有 2 个（X-Tenant-ID 用 op 覆盖、q 是 op 独有），缺少 Authorization。
+        修复后输出含 4 个字段断言（X-Tenant-ID 用 op 覆盖值、Authorization 继承、
+        q 是 op 独有）。
+        bug 状态下（没合并 path_item）只有 2 个（X-Tenant-ID 用 op 覆盖、q 是 op 独有），
+        缺少 Authorization。
         """
         spec = """\
 openapi: 3.1.0
@@ -407,9 +417,7 @@ paths:
         # 3. operation 级独有的 q
         assert "q: str | None = None" in content
 
-    def test_path_item_parameters_inherited_when_no_operation_override(
-        self, cli_runner: CliRunner, tmp_path: Path
-    ) -> None:
+    def test_path_item_parameters_inherited_when_no_operation_override(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 operation 没 override 时，path_item 级参数被自动继承。
 
         path_item 级 X-Tenant-ID (required=true)，operation 没 parameters → 继承后

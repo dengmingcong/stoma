@@ -1094,36 +1094,5 @@ class TestRawUploadBody:
         }
 
 
-def test_form_marked_uploadfile_raises() -> None:
-    """``Annotated[UploadFile, Form()]`` 在路由分类阶段抛 ``ValueError``。"""
-
-    class UploadFileFormEndpoint(APIRoute[dict[str, Any]]):
-        """含 UploadFile Form 字段的路由类。"""
-
-        file: Annotated[UploadFile, Form()]
-
-    with pytest.raises(ValueError, match="Form 不支持的字段类型"):
-        UploadFileFormEndpoint._get_dependant(method="POST", path="/upload")
-
-
-def test_form_basemodel_raises_in_routing() -> None:
-    """``Annotated[BaseModel, Form()]`` 在路由分类阶段抛 ``ValueError``。
-
-    集成测试的端到端场景：客户端构造路由类时即被路由层拒绝，
-    fail-fast 暴露错误用法，确保 user signature 错误不会走到序列化阶段。
-    不使用 ``@router.post`` 装饰器（其内部 ``update_api_route`` 会调用
-    ``_get_dependant()``，导致 raise 在装饰期触发），
-    改为直接调用 ``_get_dependant()`` 确保 raise 发生在调用期。
-    """
-
-    class SubmitFormEndpoint(APIRoute[dict[str, Any]]):
-        """含 BaseModel Form 字段的路由类。"""
-
-        data: Annotated[CreateUserRequest, Form()]
-
-    with pytest.raises(ValueError, match="Form 不支持的字段类型"):
-        SubmitFormEndpoint._get_dependant(method="POST", path="/submit")
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

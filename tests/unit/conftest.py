@@ -1,4 +1,13 @@
-"""CLI 测试共享的 fixtures 和 OpenAPI 规范。"""
+"""单元测试共享的 fixtures 和 OpenAPI 规范常量。
+
+从 :mod:`tests.unit.test_cli.conftest`（已删除）迁移而来，集中暴露：
+
+- ``cli_runner``：Typer ``CliRunner`` 实例，所有需要调用 ``src.cli:app`` 的测试都用它。
+- ``valid_spec``：写入 ``VALID_OPENAPI_YAML`` 并返回 ``(spec_file, out_dir)`` 元组，
+  CLI 端到端用例复用。
+- ``valid_v30_spec``：OpenAPI 3.0.x 规范，仅 ``src.openapi.parser`` 涉及 3.0 解析路径
+  的测试需要。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +19,7 @@ from typer.testing import CliRunner
 runner = CliRunner()
 
 
-VALID_OPENAPI_YAML = """\
+VALID_OPENAPI_YAML: str = """\
 openapi: 3.1.0
 info:
   title: Test API
@@ -50,7 +59,7 @@ paths:
           description: 成功
 """
 
-INVALID_OPENAPI_YAML = """\
+INVALID_OPENAPI_YAML: str = """\
 openapi: 2.0.0
 info:
   title: Old API
@@ -58,12 +67,12 @@ info:
 paths: {}
 """
 
-MALFORMED_YAML = """\
+MALFORMED_YAML: str = """\
 openapi: 3.0.0
 info: not a valid info
 """
 
-EMPTY_OPENAPI_YAML = """\
+EMPTY_OPENAPI_YAML: str = """\
 openapi: 3.1.0
 info:
   title: Empty API
@@ -71,7 +80,7 @@ info:
 paths: {}
 """
 
-OPENAPI_30_SPEC = """\
+OPENAPI_30_SPEC: str = """\
 openapi: 3.0.3
 info:
   title: Test API
@@ -163,3 +172,15 @@ def valid_v30_spec(tmp_path: Path) -> Path:
     spec_file = tmp_path / "spec_v30.yaml"
     spec_file.write_text(OPENAPI_30_SPEC, encoding="utf-8")
     return spec_file
+
+
+__all__ = [
+    "EMPTY_OPENAPI_YAML",
+    "INVALID_OPENAPI_YAML",
+    "MALFORMED_YAML",
+    "OPENAPI_30_SPEC",
+    "VALID_OPENAPI_YAML",
+    "cli_runner",
+    "valid_spec",
+    "valid_v30_spec",
+]

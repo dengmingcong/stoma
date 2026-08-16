@@ -1,22 +1,29 @@
-"""测试 OpenAPI 规范的校验。"""
+"""``src.openapi.parser`` 的单元测试。
+
+迁移自 :mod:`tests.unit.test_cli.test_openapi_validation` —— 之前被混入
+``test_cli/`` 包内，但实际验证的是 :mod:`src.openapi.parser`：
+
+- 不支持的 OpenAPI 版本（CLI 包装后报错）；
+- JSON 格式 spec 接受；
+- 3.0.x ``$ref`` 通过 ``make_openapi_parser`` 工厂注入 ``Reference30``，被
+  ``parser.get_endpoints()`` 正确识别。
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
-
-from typer.testing import CliRunner
+from typing import Any
 
 from src.cli import app
 from src.openapi.parser import make_openapi_parser
+from tests.unit.conftest import INVALID_OPENAPI_YAML
 
 
 class TestMakeOpenAPIValidation:
     """测试 OpenAPI 规范的校验。"""
 
-    def test_unsupported_version(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_unsupported_version(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证不支持的 OpenAPI 版本报错。"""
-        from tests.unit.test_cli.conftest import INVALID_OPENAPI_YAML
-
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text(INVALID_OPENAPI_YAML, encoding="utf-8")
         out_dir = tmp_path / "output"
@@ -26,7 +33,7 @@ class TestMakeOpenAPIValidation:
         assert result.exit_code != 0
         assert "Unsupported OpenAPI version" in result.output
 
-    def test_json_spec_accepted(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_json_spec_accepted(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 JSON 格式的 OpenAPI 规范也能处理。"""
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(
@@ -56,6 +63,7 @@ class TestMakeOpenAPIValidation:
         """验证 ``make_openapi_parser`` 能识别 OpenAPI 3.0.x 规范。
 
         工厂按 ``openapi`` 版本字符串前缀注入 3.0 模型类，断言：
+
         1. ``load()`` 不抛异常
         2. ``spec_version == "3.0"``
         3. 解析出 2 个 endpoint（``getUser`` / ``createUser``）

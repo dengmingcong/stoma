@@ -1,18 +1,109 @@
-"""测试 OpenAPI schema 字段约束的生成结果。"""
+"""``src.openapi.model_generator`` 的单元测试。
+
+合并自以下历史文件：
+
+- :mod:`tests.unit.test_model_generator` 中的 :class:`TestGenerateModels` —— 调用
+  ``datamodel-code-generator`` 端到端生成 Pydantic ``models.py``，验证父目录自动创建、
+  无效 spec 抛 ``RuntimeError``。
+- :mod:`tests.unit.test_cli.test_field_constraints` —— 验证 OpenAPI 字段约束（enum、
+  format、nullable、default、minimum/maximum/minLength/maxLength、additionalProperties、
+  readOnly/writeOnly、kebab-case → PascalCase、Annotated alias）经 dmcg 0.72.2 + 固化参数
+  保留为 Pydantic v2 ``Annotated[T, Field(...)]`` 形式。
+
+``TestExpandPathRefs`` / ``TestValidateCycleRefs`` 涉及 :mod:`src.openapi.reference`，
+已迁出至 :mod:`tests.unit.openapi.test_reference`。
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
-
-from typer.testing import CliRunner
+from typing import Any
 
 from src.cli import app
+
+# ===== generate_models 端到端 =====
+
+
+def _minimal_spec() -> dict[str, Any]:
+    """给测试用的最小 OpenAPI 规范（prance 风格，``$ref`` 已展开）。"""
+    return {
+        "openapi": "3.1.0",
+        "info": {"title": "Test", "version": "1.0.0"},
+        "paths": {
+            "/users": {
+                "post": {
+                    "operationId": "createUser",
+                    "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/User"}}}},
+                    "responses": {
+                        "201": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/User"}}}}
+                    },
+                }
+            }
+        },
+        "components": {
+            "schemas": {
+                "User": {
+                    "type": "object",
+                    "title": "User",
+                    "required": ["id", "name"],
+                    "properties": {
+                        "id": {"type": "string"},
+                        "name": {"type": "string"},
+                    },
+                }
+            }
+        },
+    }
+
+
+class TestGenerateModels:
+    """测试 :func:`generate_models` 端到端调用 ``datamodel-code-generator``。"""
+
+    def test_generates_models_file(self, tmp_path: Path) -> None:
+        """应生成 ``models.py`` 文件，且包含至少一个 ``class`` 定义。"""
+        spec = _minimal_spec()
+        output_path = tmp_path / "models.py"
+        from src.openapi.model_generator import generate_models
+
+        generate_models(spec, output_path)
+        assert output_path.exists()
+        content = output_path.read_text(encoding="utf-8")
+        assert "class" in content
+        assert "User" in content
+
+    def test_creates_parent_directory(self, tmp_path: Path) -> None:
+        """父目录不存在时自动创建。"""
+        spec = _minimal_spec()
+        output_path = tmp_path / "deep" / "nested" / "models.py"
+        from src.openapi.model_generator import generate_models
+
+        generate_models(spec, output_path)
+        assert output_path.exists()
+
+    def test_raises_on_invalid_spec(self, tmp_path: Path) -> None:
+        """无效 spec 应抛出 ``RuntimeError``。"""
+        output_path = tmp_path / "models.py"
+        from src.openapi.model_generator import generate_models
+
+        try:
+            generate_models({"paths": {}}, output_path)
+        except RuntimeError:
+            # 预期：错误包装为 ``RuntimeError``
+            pass
+        else:
+            # 部分无效 spec 仍能生成，文件不存在才报错
+            if not output_path.exists():
+                msg = "无效 spec 应报错"
+                raise AssertionError(msg)
+
+
+# ===== 字段约束生成结果 =====
 
 
 class TestFieldConstraints:
     """测试 OpenAPI schema 字段约束场景的生成结果。"""
 
-    def test_enum_string_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_enum_string_field(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 OpenAPI enum 字段生成 Pydantic StrEnum 类。
 
         回归测试：``datamodel-code-generator`` 对
@@ -67,7 +158,7 @@ components:
         assert "class Pet(BaseModel):" in models
         assert "kind: Kind" in models
 
-    def test_format_datetime_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_format_datetime_field(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 ``format: date-time`` 字段生成 ``AwareDatetime`` 类型注解。
 
         回归测试：``datamodel-code-generator`` 将 OpenAPI ``format: date-time``
@@ -108,11 +199,11 @@ paths:
         models = (out_dir / "models.py").read_text(encoding="utf-8")
         assert "AwareDatetime" in models
 
-    def test_nullable_and_default_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 nullable: true 和 default: <v> 正确生成 Pydantic 字段。
+    def test_nullable_and_default_field(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 ``nullable: true`` 和 ``default: <v>`` 正确生成 Pydantic 字段。
 
-        - nullable: true → str | None = None
-        - default: last → str | None = "last"
+        - ``nullable: true`` → ``str | None = None``
+        - ``default: last`` → ``str | None = "last"``
         """
         spec = """\
 openapi: 3.1.0
@@ -152,8 +243,8 @@ paths:
         assert "prev: str | None = None" in content
         assert 'next: str | None = "last"' in content
 
-    def test_min_max_length_constraints(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 minimum/maximum/minLength/maxLength 约束被保留为 Pydantic v2 风格。
+    def test_min_max_length_constraints(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 ``minimum/maximum/minLength/maxLength`` 约束被保留为 Pydantic v2 风格。
 
         ``src/openapi/model_generator.py`` 已启用 dmcg 的 ``field_constraints=True``
         + ``use_annotated=True``，约束字段以 ``Annotated[T, Field(...)]``
@@ -211,12 +302,11 @@ paths:
         assert "constr(" not in content
         assert "from typing import Annotated" in content
 
-    def test_additional_properties_dict(
-        self, cli_runner: CliRunner, tmp_path: Path
-    ) -> None:
+    def test_additional_properties_dict(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 ``additionalProperties: { schema }`` 生成 ``dict[str, <type>]`` 注解。
 
-        dmcg 0.72.2 将 OpenAPI 的 ``additionalProperties: { type: array, items: { type: string } }``
+        dmcg 0.72.2 将 OpenAPI 的
+        ``additionalProperties: { type: array, items: { type: string } }``
         映射为 Pydantic v2 的 ``dict[str, list[str]]`` 类型注解。
         """
         spec = """\
@@ -262,7 +352,7 @@ paths:
         assert "dict[" in models, "tags field should be typed as dict[str, ...]"
         assert "list[str]" in models, "tags field should be typed as dict[..., list[str]]"
 
-    def test_format_uuid_and_byte_fields(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_format_uuid_and_byte_fields(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 ``format: uuid`` 生成 ``UUID``，``format: byte`` 生成 ``Base64Str``。
 
         dmcg 0.72.2 对 OpenAPI ``format: uuid`` → Pydantic ``UUID``，
@@ -310,9 +400,7 @@ paths:
         # format: byte → Base64Str（不是内置 bytes）。
         assert "Base64Str" in models
 
-    def test_read_only_and_write_only_fields(
-        self, cli_runner: CliRunner, tmp_path: Path
-    ) -> None:
+    def test_read_only_and_write_only_fields(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 OpenAPI ``readOnly`` / ``writeOnly`` 字段修饰符的 dmcg 默认行为。
 
         回归测试：在 ``src/openapi/model_generator.py:41-52`` 的固化参数下，
@@ -358,7 +446,7 @@ paths:
         assert result.exit_code == 0, result.output
         models = (out_dir / "models.py").read_text(encoding="utf-8")
 
-        # 类由 operationId `createUser` 派生。
+        # 类由 operationId ``createUser`` 派生。
         assert "class CreateUserRequest(BaseModel):" in models
 
         # dmcg 0.72.2 默认行为：readOnly 字段变成可选，writeOnly 无痕迹。
@@ -370,9 +458,7 @@ paths:
         assert "write_only" not in models
         assert "json_schema_extra" not in models
 
-    def test_non_snake_case_field_uses_annotated_alias(
-        self, cli_runner: CliRunner, tmp_path: Path
-    ) -> None:
+    def test_non_snake_case_field_uses_annotated_alias(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证非 snake_case 字段的 ``alias`` 以 ``Annotated[T, Field(...)]`` 形式输出。
 
         与 ``test_min_max_length_constraints`` 配对：
