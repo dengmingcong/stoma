@@ -12,66 +12,6 @@
 
 - 3.0 → ``Endpoint[Parameter30, RequestBody30, Response30]``
 - 3.1 → ``Endpoint[Parameter31, RequestBody31, Response31]``
-
-把 ``Endpoint`` 做成泛型而不是 ``Endpoint`` 持 ``list[Parameter30 | Parameter31]``
-的 Union 字段，主要有两个理由：
-
-1. **版本派发必须显式**。OpenAPI 3.0 和 3.1 的 ``Parameter`` /
-   ``RequestBody`` / ``Response`` 在 openapi-pydantic 里是 **互相独立的
-   类**（没有继承关系）。把它们合成 Union 会把版本信息擦掉 —— 调用方
-   就无法用 ``isinstance(schema, Reference30)`` 做版本感知派发。本任务
-   的核心修复（``fix-openapi-reference-detection``）正是依赖显式
-   版本派发，因此 IR 层必须保留版本信息。
-
-2. **mypy --strict 友好**。类型参数约束到 ``BaseModel`` 之后，
-   ``model_validate`` / ``model_dump_json`` 等方法在静态检查时可直接
-   访问，无需 ``cast``。Union 字段在严格模式下需要额外的 ``TypeAdapter``
-   或 ``cast`` 才能调用这些方法（参考修复前 ``parser.py`` 用
-   ``_PARAMETER_UNION_ADAPTER`` 的写法）。
-
-版本特定的类（``Parameter30`` / ``Parameter31`` / ``Reference30`` /
-``Reference31`` 等）统一在 :mod:`src.openapi.constants` 重新导出，
-避免本模块与 ``parser`` / ``renderer`` 形成循环导入。
-
-为什么不导出 Union 别名
-======================
-
-旧版本（修复前）的 ``models.py`` 导出了 ``Operation`` / ``Parameter`` /
-``RequestBody`` / ``Response`` 四个 Union 别名（``Parameter30 | Parameter31``）。
-本次重构 **故意删除** 这些 Union 别名，原因：
-
-- Union 把 ``3.0`` 和 ``3.1`` 的类型揉到一起，调用方拿到一个 ``Parameter``
-  实例时无法判断它来自哪个版本；
-- Union 别名让 ``parser`` / ``renderer`` 不得不依赖 ``models.py`` 才能
-  拿到跨版本类型，破坏了 ``constants.py`` 的封装边界；
-- 真正需要跨版本处理的位置（reference 派发）会在调用点显式判断
-  ``spec_version``，而其余只读访问（``param.name``、``operation_id``
-  等）两个版本的字段名一致，泛型参数自动适配即可。
-
-调用方如需 3.0 / 3.1 具体类，请直接从 :mod:`src.openapi.constants`
-导入 ``Parameter30``、``Parameter31``、``Reference30``、``Reference31``
-等；版本由 ``Endpoint.spec_version`` 字段携带。
-
-请求体渲染字段类型层次
-=====================
-
-:func:`_extract_request_body_info` 返回 ``BaseRequestBodyFields`` 的某个
-子类实例，对应一种请求体渲染形态：
-
-- :class:`JSONRequestBodyFields` — ``application/json`` + object schema
-  （含 ``$ref`` 或 inline）。
-- :class:`UrlencodedFormRequestBodyFields` —
-  ``application/x-www-form-urlencoded``，form 标量字段列表。
-- :class:`MultipartFormRequestBodyFields` — ``multipart/form-data``，
-  form 标量 + 文件字段列表。
-- :class:`BinaryRequestBodyFields` — ``string + format=binary`` 单文件
-  raw body，不以 multipart 传输。
-- :class:`ScalarRequestBodyFields` — primitive schema（任意 content type）
-  单字段 body。
-
-NONE 路径返回 ``None``（不再返回 ``BaseRequestBodyFields()`` 实例），
-由 :meth:`EndpointRenderer.render` 用 ``isinstance`` 拍平为模板变量，
-子类多态自然反映"哪种 body 形态激活"的语义。
 """
 
 from __future__ import annotations
@@ -191,11 +131,6 @@ class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseMo
     BaseModel,
 ):
     """单个接口的完整信息（IR - Intermediate Representation）。
-
-    三个类型参数按 spec 版本注入：
-
-    - 3.0 → :class:`src.openapi.constants.Parameter30` 等
-    - 3.1 → :class:`src.openapi.constants.Parameter31` 等
 
     :var operation_id: OpenAPI ``operationId``，作为生成文件名的依据。
     :vartype operation_id: str
