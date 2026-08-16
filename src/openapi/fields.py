@@ -104,7 +104,12 @@ def build_param_field_line(
     is_snake = is_snake_case(name)
     field_name = name if is_snake else to_field_name(name)
 
-    base_type = param_type if required else f"{param_type} | None"
+    if required:
+        base_type = param_type
+    elif " | None" in param_type:
+        base_type = param_type
+    else:
+        base_type = f"{param_type} | None"
 
     metadata: list[str] = []
     if is_header:
