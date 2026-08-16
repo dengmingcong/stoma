@@ -9,9 +9,11 @@ from __future__ import annotations
 from typing import Any
 
 from openapi.naming import is_snake_case
-from src.exceptions import OpenAPISchemaError
 from src.openapi.fields import build_param_field_line
-from src.openapi.type_mapping import is_primitive_json_type, python_type_name
+from src.openapi.type_mapping import (
+    is_nullable_json_type,
+    python_type_for_nullable_param,
+)
 
 
 def make_param_fields(parameters: list[Any]) -> tuple[list[str], list[str], bool]:
@@ -22,8 +24,8 @@ def make_param_fields(parameters: list[Any]) -> tuple[list[str], list[str], bool
         ``uses_field_import`` 为 ``True`` 时表示存在至少一个非 snake_case
         参数，其字段声明会引用 ``Field(serialization_alias=...)``，
         渲染时需要在模板里加上 ``from pydantic import Field`` 导入。
-    :raise OpenAPISchemaError: 参数 schema 类型不在 OpenAPI primitive
-        4 元素集合内。
+    :raise OpenAPISchemaError: 参数 schema 类型不支持时抛出，
+        包括 str 非 primitive、list 含 3+ 元素、或含 "object" 等不支持的形态。
     """
     header_fields: list[str] = []
     param_fields: list[str] = []
@@ -42,14 +44,13 @@ def make_param_fields(parameters: list[Any]) -> tuple[list[str], list[str], bool
         # 注入的 ``Reference30`` / ``Reference31`` 实例）。
         schema_dict = schema.model_dump(mode="json") if schema else {}
         json_type = schema_dict.get("type", "Any")
-        # 1.0 范围：仅支持 primitive 类型作为参数，复杂 schema 应挪到 requestBody。
-        if not is_primitive_json_type(json_type):
-            msg = (
-                f"Unsupported schema type for parameter {name!r} ({location}): "
-                f"{json_type!r}. Only primitive types (string/integer/number/boolean) are supported."
-            )
-            raise OpenAPISchemaError(msg)
-        param_type = python_type_name(str(json_type))
+        items_dict = schema_dict.get("items")
+        # 新逻辑：支持 OpenAPI 3.1 nullable list 语法（`type: ["<primitive>", "null"]`
+        # / `type: ["array", "null"]`），通过 `python_type_for_nullable_param`
+        # 内部校验，不支持的形态由该函数抛出 OpenAPISchemaError。
+        param_type = python_type_for_nullable_param(json_type, items_dict)
+        if is_nullable_json_type(json_type):
+            param_type = f"{param_type} | None"
 
         if not is_snake_case(name):
             uses_field_import = True
