@@ -8,49 +8,6 @@
 - 解析请求体引用哪个模型（名字符串）
 - 解析响应引用哪个模型（名字符串）
 - 输出 ``from .models import ...`` 导入
-
-版本感知
-========
-
-OpenAPI 3.0 和 3.1 的 ``Reference`` 在 openapi-pydantic 里是互相独立的
-类（没有继承关系），用 ``Reference30 | Reference31`` 联合类型无法做
-``isinstance`` 检测。本模块的做法：
-
-- :class:`EndpointRenderer` 是带类型参数 ``ReferenceT`` 的泛型类，构造时
-  通过关键字参数 ``Reference`` 注入版本对应的 Reference 类
-  （``Reference30`` 或 ``Reference31``）；``ReferenceT`` 上界为结构化
-  Protocol :class:`_ReferenceLike`（要求 ``ref: str`` 字段），这样
-  ``mypy --strict`` 下 :meth:`_is_reference` 的 ``TypeGuard`` 收窄才能在
-  True 分支看到 ``schema.ref``（``BaseModel`` 纯上界不带 ``ref`` 字段）；
-- :func:`make_endpoint_renderer` 工厂按 spec 版本选择 Reference 类并构造
-  渲染器，返回 ``EndpointRenderer[Any]``，调用方无需关心具体版本；
-- 渲染器内部用 :meth:`EndpointRenderer._is_reference` 在 ``object`` 上做
-  ``TypeGuard`` 收窄——True 分支把 schema 收窄到 ``ReferenceT``，可安全
-  访问 ``schema.ref``。
-
-所有 schema → model 转换都在 :mod:`src.openapi.parser` 的 ``load()``
-阶段（用 openapi-pydantic 构造 Pydantic 模型，``$ref`` 字段会被填充为
-版本对应的 Reference 实例）。renderer 直接读 ``Reference.ref`` 字符串
-计算模型名。
-
-请求体渲染管道
-==============
-
-:meth:`_extract_request_body_info` 7 步流程判断 body 形态，并构造
-:class:`BinaryRequestBodyFields` / :class:`ScalarRequestBodyFields` /
-:class:`JSONRequestBodyFields` / :class:`UrlencodedFormRequestBodyFields` /
-:class:`MultipartFormRequestBodyFields` 子类实例。NONE 路径返回 ``None``，由
-:meth:`render` 用 ``isinstance`` 拍平为模板变量。
-
-两条路径读取 schema：
-
-- JSON 路径调用 :meth:`EndpointRenderer._get_media_type_schema` 从
-  ``request_body.content`` 拿原始 Pydantic 模型（Reference30/31 或 Schema30/31），
-  由 :meth:`_build_json_body` 直接用 :meth:`_is_reference` 派生 model 名。
-- 非 JSON 路径（multipart / urlencoded / binary / RAW scalar）调用
-  :meth:`EndpointRenderer._get_expanded_schema_dict` 走 jsonref 展开
-  （仅展开 ``$ref``，不影响 model_generator 已生成的 import——dmcg 阶段已完成），
-  用于遍历 ``properties``。
 """
 
 from __future__ import annotations
@@ -158,7 +115,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         file_name = f"{to_snake(operation_id)}.py"
         response_type = self._extract_response_info(endpoint.responses, endpoint)
         body_fields_template = self._extract_request_body_info(endpoint.request_body, endpoint)
-        header_fields, param_fields, uses_field_import = self._extract_params(endpoint.parameters)
+        header_fields, param_fields, uses_field_import = self._make_param_fields(endpoint.parameters)
 
         # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
         # model 名字来自 JSON body 路径（import_model），response 路径也独立收集。
@@ -185,7 +142,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
         # body 字段（非 snake_case 时含 ``Field(serialization_alias=)``）也会触发 Field import。
         # 检查 4 类 body 字段字符串中是否含 ``Field(``，避免 multipart 纯文件场景漏 import。
-        uses_field_import = uses_field_import or self._body_fields_use_field(body_template_vars)
+        uses_field_import = uses_field_import or self._is_body_fields_use_field(body_template_vars)
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
         rendered_code = template.render(
@@ -300,7 +257,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         raise TypeError(msg)
 
     @staticmethod
-    def _body_fields_use_field(body_template_vars: dict[str, Any]) -> bool:
+    def _is_body_fields_use_field(body_template_vars: dict[str, Any]) -> bool:
         """判断 body 字段声明中是否含 ``Field(``，决定是否追加 ``from pydantic import Field``。
 
         4 类 body 字段（``form_text_fields`` / ``form_file_fields`` /
@@ -322,11 +279,11 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 return True
         return False
 
-    def _extract_params(
+    def _make_param_fields(
         self,
         parameters: list[Any],
     ) -> tuple[list[str], list[str], bool]:
-        """提取参数信息（query/header/path），仍由 renderer 渲染为字段声明。
+        """将参数信息（query/header/path）转换为 pydantic 字段声明列表。
 
         :param parameters: OpenAPI 参数列表。
         :return: ``(Header 字段声明列表, Query/Path 字段声明列表, uses_field_import)``。
