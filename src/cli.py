@@ -74,6 +74,13 @@ def make(
         )
         generated_files.append(file_path)
 
+    if renderer.multi_media_type_endpoints:
+        typer.echo("⚠ 以下 endpoint 有多个 media type，已静默使用第一个（其他被忽略）：", err=True)
+        for info in renderer.multi_media_type_endpoints:
+            typer.echo(f"  - {info['method']} {info['path']}", err=True)
+            typer.echo(f"    所有 media type: {', '.join(info['all_media_types'])}", err=True)
+            typer.echo(f"    选中: {info['selected_media_type']}", err=True)
+
     # 输出结果。
     typer.echo(f"生成 models.py + {len(generated_files)} 个 route 文件到 {out}:")
     for f in generated_files:

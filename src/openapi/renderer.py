@@ -104,6 +104,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             trim_blocks=True,
             lstrip_blocks=True,
         )
+        self.multi_media_type_endpoints: list[dict[str, Any]] = []
 
     def render(self, endpoint: Endpoint[Any, Any, Any]) -> tuple[str, str]:
         """渲染 endpoint 的 route.py 内容。
@@ -221,14 +222,20 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             return None
 
         if len(content) != 1:
-            msg = f"Multiple media types in requestBody not supported: {list(content.keys())}"
-            raise OpenAPISchemaError(msg)
-
-        media_type, _ = next(iter(content.items()))
+            all_media_types = list(content.keys())
+            media_type, _ = next(iter(content.items()))
+            self.multi_media_type_endpoints.append({
+                "method": endpoint.method,
+                "path": endpoint.path,
+                "all_media_types": all_media_types,
+                "selected_media_type": media_type,
+            })
+        else:
+            media_type, _ = next(iter(content.items()))
         expanded_schema_dict: dict[str, Any] | None = get_expanded_schema_dict(request_body, media_type)
 
-        # 步骤 3：application/json（dmcg 处理顶层 oneOf/anyOf/allOf，无需组合子检查）
-        if media_type == "application/json":
+        # 步骤 3：application/json 及 application/*+json（dmcg 处理顶层 oneOf/anyOf/allOf，无需组合子检查）
+        if media_type == "application/json" or media_type.endswith("+json"):
             if is_primitive_schema_dict(expanded_schema_dict):
                 return self._build_scalar_body(expanded_schema_dict, media_type)
             schema_model = get_media_type_schema(request_body, media_type)
@@ -312,7 +319,8 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         form_text_fields: list[str] = []
         if expanded_schema_dict is None:
             return UrlencodedFormRequestBodyFields(form_text_fields=form_text_fields)
-        for prop_name, prop_schema in expanded_schema_dict.get("properties", {}).items():
+        properties = expanded_schema_dict.get("properties") or {}
+        for prop_name, prop_schema in properties.items():
             if not isinstance(prop_schema, dict):
                 continue
             prop_format = prop_schema.get("schema_format", "") or prop_schema.get("format", "")
