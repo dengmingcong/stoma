@@ -110,8 +110,7 @@ paths:
         assert "authorization: Annotated[str, Header(), Field(serialization_alias='Authorization')]" in content
         # non-required header 参数：转为 snake_case + Annotated[..., Header(), Field(serialization_alias=...)] = None
         assert (
-            "x_request_id: Annotated[str | None, Header(), Field(serialization_alias='X-Request-ID')] = None"
-            in content
+            "x_request_id: Annotated[str | None, Header(), Field(serialization_alias='X-Request-ID')] = None" in content
         )
 
     def test_required_vs_optional_path_param(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -266,9 +265,7 @@ paths:
         spec_file.write_text(spec, encoding="utf-8")
         out_dir = tmp_path / "output"
 
-        result = cli_runner.invoke(
-            app, [str(spec_file), "--out", str(out_dir)], catch_exceptions=False
-        )
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)], catch_exceptions=False)
 
         assert result.exit_code != 0
         assert "Cycle detected in parameter $ref chain" in result.output
@@ -277,7 +274,7 @@ paths:
     def test_parameter_external_ref_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证指向外部文件的 ``$ref``（如 ``common.yaml#/schemas/X``）被 CLI 捕获并报告。
 
-        ``_expand_path_refs`` 委托 :mod:`jsonref` 解析，jsonref 抛
+        :func:`expand_path_refs` 委托 :mod:`jsonref` 解析，jsonref 抛
         :class:`jsonref.JsonRefError` 时被包装为 :class:`OpenAPISchemaError`，
         CLI 退出码非 0 并把 "Failed to resolve parameter or requestBody $ref" 打到输出。
         """
@@ -303,21 +300,17 @@ paths:
         spec_file.write_text(spec, encoding="utf-8")
         out_dir = tmp_path / "output"
 
-        result = cli_runner.invoke(
-            app, [str(spec_file), "--out", str(out_dir)], catch_exceptions=False
-        )
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)], catch_exceptions=False)
 
         assert result.exit_code != 0
         assert "Failed to resolve parameter or requestBody $ref" in result.output
 
-    def test_parameter_cycle_not_referenced_still_raises(
-        self, cli_runner: CliRunner, tmp_path: Path
-    ) -> None:
+    def test_parameter_cycle_not_referenced_still_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``components.parameters`` 中的环即使没被任何 path 引用也被检测到。
 
-        ``_detect_parameter_cycle`` 是对整张 ``components.parameters`` 表做
-        DFS，而不是只走被引用的子图；任何 ``$ref`` 闭环都会立即报错。
-        场景里 path 不带 ``parameters``，只用 ``responses`` 占位——确保
+        :func:`src.openapi.reference.validate_cycle_refs` 是对整张 ``components.parameters`` 表做
+        DFS，而不是只走被引用的子图；任何 ``$ref`` 闭环都会立即抛
+        :class:`OpenAPISchemaError`。场景里 path 不带 ``parameters``，只用 ``responses`` 占位——确保
         C / D 不会被任何 path 触达，cycle 检测仍然命中。
         """
         spec = """\
@@ -343,9 +336,7 @@ paths:
         spec_file.write_text(spec, encoding="utf-8")
         out_dir = tmp_path / "output"
 
-        result = cli_runner.invoke(
-            app, [str(spec_file), "--out", str(out_dir)], catch_exceptions=False
-        )
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)], catch_exceptions=False)
 
         assert result.exit_code != 0
         assert "Cycle detected in parameter $ref chain" in result.output
@@ -409,8 +400,7 @@ paths:
         content = (out_dir / "list_items.py").read_text(encoding="utf-8")
         # 1. operation 级覆盖 path_item 级 X-Tenant-ID（required=False）
         assert (
-            "x_tenant_id: Annotated[str | None, Header(), Field(serialization_alias='X-Tenant-ID')] = None"
-            in content
+            "x_tenant_id: Annotated[str | None, Header(), Field(serialization_alias='X-Tenant-ID')] = None" in content
         )
         # 2. path_item 级 Authorization 被 operation 继承（required=True）
         assert "authorization: Annotated[str, Header(), Field(serialization_alias='Authorization')]" in content

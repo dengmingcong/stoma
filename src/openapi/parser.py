@@ -8,7 +8,7 @@
 边界处对齐（运行时已由 jsonref 上游保证引用已展开）。
 
 参数与 ``requestBody`` 的 ``$ref`` 解析由工厂在上游通过
-:func:`src.openapi.model_generator._expand_path_refs` 完成（基于 ``jsonref``），
+:func:`expand_path_refs` 完成（基于 ``jsonref``），
 本模块只负责接收已展开的 spec 并做 Pydantic 校验 + IR 构建，不再自行
 解析引用。``requestBody`` 的展开结果以 ``(path, method_upper)`` 键存入
 解析器实例的 ``request_body_map``，由 :meth:`get_endpoints` 按需填充到
@@ -26,9 +26,9 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from src.exceptions import OpenAPISchemaError
-from src.openapi.model_generator import _detect_parameter_cycle, _expand_path_refs
 from src.openapi.models import Endpoint
 from src.openapi.models_types import SpecVersion
+from src.openapi.reference import expand_path_refs, validate_cycle_refs
 from src.openapi.reference_types import (
     OpenAPI30,
     OpenAPI31,
@@ -109,7 +109,7 @@ class OpenAPIParser[
         :param spec_version: 当前解析器处理的 OpenAPI 主版本。
         :param raw_spec: 已读取的原始规范字典（由工厂预填充）。
         :param request_body_map: ``(path, method_upper)`` → 展开后 requestBody 字典的映射，
-            由工厂通过 :func:`src.openapi.model_generator._expand_path_refs` 提供。
+            由工厂通过 :func:`expand_path_refs` 提供。
             ``None`` 时按空 dict 处理（保持向后兼容，便于测试 / mock）。
         """
         self.OpenAPI = OpenAPI
@@ -263,10 +263,10 @@ class OpenAPIParser[
 def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, Any, Any]:
     """按规范声明的版本构造参数化解析器。
 
-    工厂会先沿 :func:`src.openapi.model_generator._detect_parameter_cycle`
+    工厂会先调用 :func:`validate_cycle_refs`
     检查 ``components.parameters`` 中的 ``$ref`` 链是否有环，遇到环立即
     抛出 :class:`OpenAPISchemaError`（避免 jsonref 陷入无限递归）。
-    随后调用 :func:`src.openapi.model_generator._expand_path_refs`
+    随后调用 :func:`expand_path_refs`
     在 ``paths[*]`` 操作级 ``parameters`` 上就地展开 ``$ref``，并将
     展开后的 ``requestBody`` 抽离到 ``request_body_map``（key 为
     ``(path, method_upper)`` 元组，value 为展开后 requestBody 字典）。
@@ -279,11 +279,8 @@ def make_openapi_parser(spec_path: str | Path) -> OpenAPIParser[Any, Any, Any, A
     """
     path = Path(spec_path)
     raw_spec = _read_raw_spec(path)
-    cycle_path = _detect_parameter_cycle(raw_spec)
-    if cycle_path is not None:
-        msg = f"Cycle detected in parameter $ref chain: {cycle_path}"
-        raise OpenAPISchemaError(msg)
-    raw_spec, request_body_map = _expand_path_refs(raw_spec)
+    validate_cycle_refs(raw_spec)
+    raw_spec, request_body_map = expand_path_refs(raw_spec)
     version = _declared_version(raw_spec)
     if version.startswith("3.0."):
         return OpenAPIParser[OpenAPI30, Reference30, Parameter30, RequestBody30, Response30](

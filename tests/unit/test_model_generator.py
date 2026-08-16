@@ -8,11 +8,8 @@ from typing import Any
 import pytest
 
 from src.exceptions import OpenAPISchemaError
-from src.openapi.model_generator import (
-    _detect_parameter_cycle,
-    _expand_path_refs,
-    generate_models,
-)
+from src.openapi.model_generator import generate_models
+from src.openapi.reference import expand_path_refs, validate_cycle_refs
 
 
 def _minimal_spec() -> dict[str, Any]:
@@ -83,12 +80,12 @@ class TestGenerateModels:
 
 
 class TestExpandPathRefs:
-    """测试 :func:`_expand_path_refs` 选择性参数 ``$ref`` 展开。"""
+    """测试 :func:`expand_path_refs` 选择性参数 ``$ref`` 展开。"""
 
     def test_expand_path_refs_preserves_body_refs(self) -> None:
         """``responses`` 中的 ``$ref`` 字符串保持原样（``requestBody`` 已被抽离）。
 
-        ``_expand_path_refs`` 仅展开 ``parameters`` 与 ``requestBody`` 中的 ``$ref``；
+        :func:`expand_path_refs` 仅展开 ``parameters`` 与 ``requestBody`` 中的 ``$ref``；
         展开后的 ``requestBody`` 抽离到返回的 ``request_body_map``，原始 spec
         中的 ``requestBody`` 保持 ``$ref`` 字符串原样；``responses``、``summary``
         等字段在合成 spec 中被丢弃，原样 spec 中保持不变。
@@ -124,7 +121,7 @@ class TestExpandPathRefs:
             },
         }
 
-        result, _request_body_map = _expand_path_refs(spec)
+        result, _request_body_map = expand_path_refs(spec)
 
         expanded_param = result["paths"]["/items"]["get"]["parameters"][0]
         assert expanded_param == {
@@ -155,7 +152,7 @@ class TestExpandPathRefs:
             },
         }
 
-        result, _request_body_map = _expand_path_refs(spec)
+        result, _request_body_map = expand_path_refs(spec)
 
         assert result["paths"]["/items"]["get"]["parameters"] == [
             {"name": "page", "in": "query", "schema": {"type": "integer"}}
@@ -177,7 +174,7 @@ class TestExpandPathRefs:
         }
 
         with pytest.raises(OpenAPISchemaError, match=r"Failed to resolve parameter or requestBody \$ref"):
-            _expand_path_refs(spec)
+            expand_path_refs(spec)
 
     def test_expand_path_refs_resolves_path_item_level_ref(self) -> None:
         """path item 级 ``parameters`` 中的 ``$ref`` 也应被展开。
@@ -210,7 +207,7 @@ class TestExpandPathRefs:
             },
         }
 
-        result, _request_body_map = _expand_path_refs(spec)
+        result, _request_body_map = expand_path_refs(spec)
 
         expanded = result["paths"]["/items"]["parameters"][0]
         assert "$ref" not in expanded
@@ -224,11 +221,11 @@ class TestExpandPathRefs:
         assert "parameters" not in result["paths"]["/items"]["get"]
 
 
-class TestDetectParameterCycle:
-    """测试 :func:`_detect_parameter_cycle` 参数 ``$ref`` 环检测。"""
+class TestValidateCycleRefs:
+    """测试 :func:`src.openapi.reference.validate_cycle_refs` 参数 ``$ref`` 环检测。"""
 
-    def test_detect_parameter_cycle_finds_cycle(self) -> None:
-        """``A -> B -> A`` 的环应被检测并返回包含 ``A``、``B`` 的路径。"""
+    def test_validate_cycle_refs_raises_on_cycle(self) -> None:
+        """``A -> B -> A`` 的环应抛出 :class:`OpenAPISchemaError`，错误信息含 ``A``、``B``。"""
         spec: dict[str, Any] = {
             "components": {
                 "parameters": {
@@ -238,16 +235,18 @@ class TestDetectParameterCycle:
             }
         }
 
-        result = _detect_parameter_cycle(spec)
+        with pytest.raises(OpenAPISchemaError) as exc:
+            validate_cycle_refs(spec)
 
-        assert result is not None
-        parts = [part.strip() for part in result.split("->")]
+        msg = str(exc.value)
+        cycle_path = msg.removeprefix("Cycle detected in parameter $ref chain: ")
+        parts = [part.strip() for part in cycle_path.split("->")]
         assert parts[0] == parts[-1]
         assert "A" in parts
         assert "B" in parts
 
-    def test_detect_parameter_cycle_no_cycle_returns_none(self) -> None:
-        """非环参数链（引用同一内联参数或只引用一次）返回 ``None``。"""
+    def test_validate_cycle_refs_no_cycle_returns_silently(self) -> None:
+        """非环参数链（引用同一内联参数或只引用一次）静默通过不抛异常。"""
         spec: dict[str, Any] = {
             "components": {
                 "parameters": {
@@ -261,6 +260,4 @@ class TestDetectParameterCycle:
             }
         }
 
-        result = _detect_parameter_cycle(spec)
-
-        assert result is None
+        validate_cycle_refs(spec)

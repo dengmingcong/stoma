@@ -347,7 +347,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             schema = param.param_schema
 
             # 参数级 ``$ref`` 已在 :func:`src.openapi.parser.make_openapi_parser`
-            # 上游通过 ``_expand_path_refs`` 展开为内联 schema，因此
+            # 上游通过 :func:`expand_path_refs` 展开为内联 schema，因此
             # ``schema`` 此时只会是普通 Schema（不会触发 ``_is_reference``）。
             schema_dict = schema.model_dump(mode="json") if schema else {}
             json_type = schema_dict.get("type", "Any")

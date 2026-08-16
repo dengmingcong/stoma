@@ -218,7 +218,7 @@ class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseMo
         或 ``3.1``），供 renderer 按版本派发 reference 检测。
     :vartype spec_version: SpecVersion
     :var expanded_raw_request_body: 经 jsonref 展开后的 ``requestBody`` dict
-        （由 :func:`src.openapi.model_generator._expand_path_refs` 抽离出来），
+        （由 :func:`expand_path_refs` 抽离出来），
         供 renderer 在判别 body 形态后直接读取 schema 内容。无 requestBody
         或非 requestBody 引用展开场景时为 ``None``。
     :vartype expanded_raw_request_body: dict[str, Any] | None
