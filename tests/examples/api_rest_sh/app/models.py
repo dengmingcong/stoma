@@ -1154,3 +1154,71 @@ class GetEventsResponse(RootModel[list[GetEventsResponse1]]):
             title="Server Sent Events",
         ),
     ]
+
+
+class GetMethodRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class GetAnythingPathRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class PostMethodRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class HeadMethodRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class OptionsMethodRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class DeleteMethodRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class PostEchoRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class PatchMethodRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class PutMethodRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class PutEchoRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class DeleteEchoRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class PatchEchoRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class GetEchoRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class GetAnythingRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class PutTypesExampleRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class GetBytesResponse(RootModel[bytes]):
+    root: bytes
+
+
+class GetAcceptImageResponse(RootModel[bytes]):
+    root: bytes
