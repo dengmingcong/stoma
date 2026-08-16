@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.exceptions import OpenAPISchemaError
+
 # OpenAPI scalar / form / parameter 路径支持的 primitive 类型集合。
 # 顶层 body 通常走 ``$ref``，仅这 4 个 primitive 类型可作为裸 scalar。
 JSON_PRIMITIVE_TYPES: frozenset[str] = frozenset({"string", "integer", "number", "boolean"})
@@ -74,10 +76,85 @@ def python_type_for_array_items(items: dict[str, Any] | None) -> str:
     return f"list[{python_type_name(items.get('type', '') or 'str')}]"
 
 
+def is_nullable_json_type(json_type: object) -> bool:
+    """判断 JSON Schema ``type`` 值是否为 OpenAPI 3.1 nullable list 语法。
+
+    OpenAPI 3.1 支持以列表形式声明可空类型，例如 ``["string", "null"]``
+    或 ``["array", "null"]``。本函数判断传入的 ``json_type`` 是否属于此类
+    nullable list。
+
+    :param json_type: JSON Schema ``type`` 值，可能为 str、list、None 或其他类型。
+    :return: 当 ``json_type`` 为 list 且含 ``"null"`` 时返回 ``True``，
+        否则返回 ``False``。
+    """
+    return isinstance(json_type, list) and "null" in json_type
+
+
+def extract_non_null_type(json_type: list[str]) -> str:
+    """从 nullable list 中提取非 null 的那个类型字符串。
+
+    假设 list 最多 2 元素，必有一个非 null。常见形态为 ``["string", "null"]``
+    或 ``["array", "null"]``。
+
+    :param json_type: 包含 null 的 JSON Schema type 列表。
+    :return: 非 null 的那个类型字符串。
+    :raise OpenAPISchemaError: list 中找不到非 null 元素时抛出。
+    """
+    for t in json_type:
+        if t != "null":
+            return t
+    msg = f"Nullable list must contain at least one non-null type: {json_type!r}"
+    raise OpenAPISchemaError(msg)
+
+
+def python_type_for_nullable_param(json_type: object, items: dict[str, Any] | None) -> str:
+    """为 OpenAPI 3.1 nullable parameter schema 派生 Python 类型名字符串。
+
+    处理三种形态：
+
+    1. ``json_type`` 为 str 且在 :data:`JSON_PRIMITIVE_TYPES` 中：
+       直接查 :data:`JSON_TYPE_TO_PYTHON` 返回。
+    2. ``json_type`` 为 list 且仅含 ``"null"`` + 一个 primitive：
+       提取该 primitive，调用 :func:`python_type_name` 返回。
+    3. ``json_type`` 为 list 且含 ``"null"`` + ``"array"``：
+       用 ``items`` 调用 :func:`python_type_for_array_items` 派生元素类型，
+       包成 ``f"list[{element_type}]"``。
+
+    :param json_type: JSON Schema ``type`` 值，可能为 str 或 list。
+    :param items: 当 ``json_type`` 含 ``"array"`` 时的 items schema 字典。
+    :return: Python 类型名字符串（如 ``"str"``、``"int"``、``"list[str]"``）。
+    :raise OpenAPISchemaError: 遇到不支持的形态时抛出，
+        包括 ``["object", "null"]``、list 含 3+ 元素、str 形态非 primitive。
+    """
+    if isinstance(json_type, str):
+        if json_type in JSON_PRIMITIVE_TYPES:
+            return JSON_TYPE_TO_PYTHON[json_type]
+        msg = f"Unsupported nullable param schema: {json_type!r}"
+        raise OpenAPISchemaError(msg)
+
+    if isinstance(json_type, list):
+        if len(json_type) > 2:
+            msg = f"Unsupported nullable param schema: {json_type!r}"
+            raise OpenAPISchemaError(msg)
+        if "array" in json_type and "null" in json_type:
+            return python_type_for_array_items(items)
+        if "object" in json_type and "null" in json_type:
+            msg = f"Unsupported nullable param schema: {json_type!r}"
+            raise OpenAPISchemaError(msg)
+        non_null = extract_non_null_type(json_type)
+        return python_type_name(non_null)
+
+    msg = f"Unsupported nullable param schema: {json_type!r}"
+    raise OpenAPISchemaError(msg)
+
+
 __all__ = [
     "JSON_PRIMITIVE_TYPES",
     "JSON_TYPE_TO_PYTHON",
     "is_primitive_json_type",
     "python_type_name",
     "python_type_for_array_items",
+    "is_nullable_json_type",
+    "extract_non_null_type",
+    "python_type_for_nullable_param",
 ]
