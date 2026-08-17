@@ -223,22 +223,26 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         if len(content) != 1:
             all_media_types = list(content.keys())
             media_type, _ = next(iter(content.items()))
-            self.multi_media_type_endpoints.append({
-                "method": endpoint.method,
-                "path": endpoint.path,
-                "all_media_types": all_media_types,
-                "selected_media_type": media_type,
-            })
+            self.multi_media_type_endpoints.append(
+                {
+                    "method": endpoint.method,
+                    "path": endpoint.path,
+                    "all_media_types": all_media_types,
+                    "selected_media_type": media_type,
+                }
+            )
         else:
             media_type, _ = next(iter(content.items()))
+
         # 直接从 endpoint.expanded_raw_request_body 导航到 schema（已经过 jsonref 展开）
         # 替代原 get_expanded_schema_dict(request_body, media_type) 调用
+        if not endpoint.expanded_raw_request_body:
+            return None
+
         expanded_schema_dict: dict[str, Any] | None = (
-            endpoint.expanded_raw_request_body
-            .get("content", {})
-            .get(media_type, {})
-            .get("schema")
+            endpoint.expanded_raw_request_body.get("content", {}).get(media_type, {}).get("schema")
         )
+
         # 空 schema {} 或 schema 缺失 → 不生成 body 字段
         # （如 api.rest.sh 的 GET /get 等端点 requestBody.content.application/json.schema={}）
         if not expanded_schema_dict:

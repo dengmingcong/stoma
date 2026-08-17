@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import jsonref
 from pydantic import BaseModel
 
 from src.openapi.models import (
@@ -152,49 +151,8 @@ def get_media_type_schema(
     return getattr(media_type_obj, "media_type_schema", None)
 
 
-def get_expanded_schema_dict(
-    request_body: Any,
-    media_type: str,
-) -> dict[str, Any] | None:
-    """从 ``request_body.content`` 取指定 ``media_type`` 的 schema 并用 jsonref 展开。
-
-    仅展开 ``$ref``，不影响 model_generator 生成的 import（dmcg 阶段已完成）。
-
-    非 JSON 路径（multipart / urlencoded / binary / RAW scalar）使用本方法
-    拿到展开后的 dict 以遍历 ``properties``。JSON 路径使用
-    :func:`get_media_type_schema` 直接拿原始 Pydantic 模型，
-    通过 ``isinstance(schema, Reference)`` 检测 Reference 并访问 ``schema.ref``。
-
-    对于 openapi-pydantic 的 ``Reference`` 实例（``$ref`` schema），保留
-    ``{"$ref": "..."}`` 形式返回——后续若再次引用，可继续从 dict 提取 ref。
-    走 jsonref 反而会把 ``$ref`` 替换为 inline 内容，丢失 model 名信息。
-
-    :param request_body: openapi-pydantic ``RequestBody`` 实例。
-    :param media_type: 媒体类型字符串（如 ``"application/json"``）。
-    :return: 展开后的 schema dict，缺失时返回 ``None``。
-    """
-    content = getattr(request_body, "content", None)
-    if not isinstance(content, dict):
-        return None
-    media_type_obj = content.get(media_type)
-    if media_type_obj is None:
-        return None
-    media_type_schema = getattr(media_type_obj, "media_type_schema", None)
-    if media_type_schema is None:
-        return None
-    ref_value = getattr(media_type_schema, "ref", None)
-    if isinstance(ref_value, str):
-        return {"$ref": ref_value}
-    schema_dict = media_type_schema.model_dump(mode="json")
-    try:
-        return jsonref.replace_refs(schema_dict, proxies=False, lazy_load=False)
-    except Exception:
-        return schema_dict
-
-
 __all__ = [
     "flatten_body_fields",
-    "get_expanded_schema_dict",
     "get_media_type_schema",
     "is_body_fields_use_field",
 ]
