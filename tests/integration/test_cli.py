@@ -115,8 +115,8 @@ def test_codegen_all_methods(
     )
 
     # 验证 import 语句包含 stoma
-    assert "from stoma import APIRouter, APIRoute" in route_code, (
-        f"生成的 route.py 缺少 'from stoma import APIRouter, APIRoute'\n实际内容:\n{route_code}"
+    assert "from stoma import APIRoute, APIRouter" in route_code, (
+        f"生成的 route.py 缺少 'from stoma import APIRoute, APIRouter'\n实际内容:\n{route_code}"
     )
 
 
