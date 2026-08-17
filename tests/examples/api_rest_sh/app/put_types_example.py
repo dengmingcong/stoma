@@ -6,10 +6,10 @@ Example write for edits
 
 from __future__ import annotations
 
-from .models import EchoModel, PutTypesExampleRequest
+from .models import EchoModel
 from typing import Annotated
 from pydantic import Field
-from stoma import APIRouter, APIRoute, Header, Body
+from stoma import APIRouter, APIRoute, Header
 
 router = APIRouter()
 
@@ -24,4 +24,3 @@ class PutTypesExample(APIRoute[EchoModel]):
     if_none_match: Annotated[list[str] | None, Header(), Field(serialization_alias='If-None-Match')] = None
     if_modified_since: Annotated[str | None, Header(), Field(serialization_alias='If-Modified-Since')] = None
     if_unmodified_since: Annotated[str | None, Header(), Field(serialization_alias='If-Unmodified-Since')] = None
-    body: PutTypesExampleRequest
