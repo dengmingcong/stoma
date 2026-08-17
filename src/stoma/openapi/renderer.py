@@ -493,8 +493,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             content = getattr(response, "content", None) or {}
             # 修复 1：匹配所有 JSON 家族（application/json + application/*+json）
             json_content = next(
-                (mt_obj for mt, mt_obj in content.items()
-                 if is_json_media_type(mt)),
+                (mt_obj for mt, mt_obj in content.items() if is_json_media_type(mt)),
                 None,
             )
             if not json_content:
@@ -510,11 +509,13 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                     name = f"{operation_id_pascal}Response{inline_counter - 1}"
 
             if self.available_models is not None and name not in self.available_models:
-                self.missing_response_models.append({
-                    "method": endpoint.method,
-                    "path": endpoint.path,
-                    "missing_model": name,
-                })
+                self.missing_response_models.append(
+                    {
+                        "method": endpoint.method,
+                        "path": endpoint.path,
+                        "missing_model": name,
+                    }
+                )
                 continue
 
             ordered_names.append(name)

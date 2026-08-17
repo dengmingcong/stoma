@@ -71,4 +71,4 @@ def e2e_client(
     try:
         yield client
     finally:
-        client.dispose(    )
+        client.dispose()

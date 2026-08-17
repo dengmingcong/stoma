@@ -232,10 +232,12 @@ async def echo_body(request: Request) -> JSONResponse:
     :return: 原始 body 字符串与 Content-Type header 值。
     """
     raw = await request.body()
-    return JSONResponse(content={
-        "body": raw.decode("utf-8"),
-        "content_type": request.headers.get("content-type", ""),
-    })
+    return JSONResponse(
+        content={
+            "body": raw.decode("utf-8"),
+            "content_type": request.headers.get("content-type", ""),
+        }
+    )
 
 
 @app.head("/probe")

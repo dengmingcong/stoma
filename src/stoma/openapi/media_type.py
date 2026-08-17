@@ -6,6 +6,7 @@
   ``application/problem+json``、``application/json-patch+json``）。
   接受可能带 ``;charset=...`` 后缀的 content-type header（先 strip 再判断）。
 """
+
 from __future__ import annotations
 
 

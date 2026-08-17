@@ -83,9 +83,7 @@ def make(
         import ast
 
         tree = ast.parse(models_path.read_text(encoding="utf-8"))
-        renderer.available_models = {
-            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
-        }
+        renderer.available_models = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
 
     endpoint_errors: list[dict[str, Any]] = []
     for endpoint in endpoints:
@@ -99,9 +97,7 @@ def make(
             )
             generated_files.append(file_path)
         except (OpenAPISchemaError, ValueError, TypeError) as e:
-            endpoint_errors.append(
-                {"method": endpoint.method, "path": endpoint.path, "error_message": str(e)}
-            )
+            endpoint_errors.append({"method": endpoint.method, "path": endpoint.path, "error_message": str(e)})
 
     if renderer.multi_media_type_endpoints:
         typer.echo("⚠ 以下 endpoint 有多个 media type，已静默使用第一个（其他被忽略）：", err=True)
