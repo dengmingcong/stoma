@@ -119,6 +119,11 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
     :func:`make_endpoint_renderer` 工厂创建，工厂返回 ``EndpointRenderer[Any]``，
     调用方无需关心具体版本。
 
+    渲染过程中遇到的非致命问题（多 media type、Response 模型缺失）以及致命问题
+    （spec 形态不被支持）统一收集到 :attr:`errors`，由调用方（``cli.make``）
+    按 :class:`GenerationErrorKind` 分组打印并决定 exit code——只有
+    ``SCHEMA_UNSUPPORTED``（实际未生成 route 文件）才触发非零退出。
+
     :var Reference: 实例化时注入的 Reference 类，用于在 ``object`` 上做
         版本感知的 Reference ``isinstance`` 检测。
     :vartype Reference: type[ReferenceT]
@@ -126,6 +131,8 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
     :vartype template_dir: Path
     :var env: 已加载模板目录的 Jinja2 环境。
     :vartype env: jinja2.Environment
+    :var errors: 渲染过程中收集的错误记录（按 :class:`GenerationErrorKind` 分类）。
+    :vartype errors: list[GenerationError]
     """
 
     def __init__(
