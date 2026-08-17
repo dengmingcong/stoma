@@ -5,17 +5,23 @@
 
 from __future__ import annotations
 
+import ast
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 
 from stoma.exceptions import OpenAPISchemaError
 from stoma.openapi.model_generator import generate_models
 from stoma.openapi.parser import make_openapi_parser
-from stoma.openapi.renderer import make_endpoint_renderer, render_to_file
+from stoma.openapi.renderer import (
+    GenerationError,
+    GenerationErrorKind,
+    make_endpoint_renderer,
+    render_to_file,
+)
 
 app = typer.Typer(
     help="Stoma - OpenAPI 接口代码生成工具",
@@ -80,12 +86,9 @@ def make(
     # renderer 据 此 检 查 {OpId}Response 是否真实存在；不存在的跳过 + 记录
     models_path = out / "models.py"
     if models_path.exists():
-        import ast
-
         tree = ast.parse(models_path.read_text(encoding="utf-8"))
         renderer.available_models = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
 
-    endpoint_errors: list[dict[str, Any]] = []
     for endpoint in endpoints:
         try:
             file_name, rendered_code = renderer.render(endpoint)
@@ -96,30 +99,43 @@ def make(
                 enable_ruff=not no_format,
             )
             generated_files.append(file_path)
-        except (OpenAPISchemaError, ValueError, TypeError) as e:
-            endpoint_errors.append({"method": endpoint.method, "path": endpoint.path, "error_message": str(e)})
+        except OpenAPISchemaError as e:
+            # 可允许的 spec 不支持或边缘 case（type_mapping.py:107/133/138/143/148,
+            # renderer.py:273/457）→ 跳过该 endpoint，收集到 renderer.errors
+            renderer.errors.append(
+                GenerationError(
+                    method=endpoint.method,
+                    path=endpoint.path,
+                    kind=GenerationErrorKind.SCHEMA_UNSUPPORTED,
+                    message=str(e),
+                )
+            )
+        # 显式不捕获以下异常：
+        # - TypeError（flatten_body_fields:101）→ 内部 bug，立即终止 CLI
+        # - ValueError → 内部 bug，立即终止 CLI
 
-    if renderer.multi_media_type_endpoints:
-        typer.echo("⚠ 以下 endpoint 有多个 media type，已静默使用第一个（其他被忽略）：", err=True)
-        for info in renderer.multi_media_type_endpoints:
-            typer.echo(f"  - {info['method']} {info['path']}", err=True)
-            typer.echo(f"    所有 media type: {', '.join(info['all_media_types'])}", err=True)
-            typer.echo(f"    选中: {info['selected_media_type']}", err=True)
+    if renderer.errors:
+        by_kind: dict[GenerationErrorKind, list[GenerationError]] = {}
+        for err in renderer.errors:
+            by_kind.setdefault(err.kind, []).append(err)
 
-    # 打印 Response 模型缺失警告（与 multi-media-type 同模式）
-    if renderer.missing_response_models:
-        typer.echo("⚠ 以下 endpoint 缺少 Response 模型（已跳过 import + generic）：", err=True)
-        for info in renderer.missing_response_models:
-            typer.echo(f"  - {info['method']} {info['path']}", err=True)
-            typer.echo(f"    缺少: {info['missing_model']}", err=True)
+        kind_titles = {
+            GenerationErrorKind.MULTI_MEDIA_TYPE: "以下 endpoint 有多个 media type（已用第一个）",
+            GenerationErrorKind.MISSING_RESPONSE_MODEL: "以下 endpoint 缺少 Response 模型（已用 generic）",
+            GenerationErrorKind.SCHEMA_UNSUPPORTED: "以下 endpoint 生成失败（spec 不被支持）",
+        }
 
-    # 打印 per-endpoint 错误并以非零 exit code 退出
-    if endpoint_errors:
-        typer.echo("⚠ 以下 endpoint 生成失败：", err=True)
-        for info in endpoint_errors:
-            typer.echo(f"  - {info['method']} {info['path']}", err=True)
-            typer.echo(f"    错误: {info['error_message']}", err=True)
-        raise typer.Exit(code=1)
+        for kind in GenerationErrorKind:
+            if kind not in by_kind:
+                continue
+            typer.echo(f"⚠ {kind_titles[kind]}：", err=True)
+            for err in by_kind[kind]:
+                typer.echo(f"  - {err.location}", err=True)
+                typer.echo(f"    {err.message}", err=True)
+
+        # 只有 SCHEMA_UNSUPPORTED（实际未生成文件）才 exit 1
+        if by_kind.get(GenerationErrorKind.SCHEMA_UNSUPPORTED):
+            raise typer.Exit(code=1)
 
     # 输出结果。
     typer.echo(f"生成 models.py + {len(generated_files)} 个 route 文件到 {out}:")
