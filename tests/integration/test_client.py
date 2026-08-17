@@ -14,6 +14,8 @@ import pathlib
 from typing import Annotated, Any
 
 import pytest
+
+pytest.importorskip("fastapi", reason="Mock server 测试需要 fastapi (stoma[test])")
 from pydantic import BaseModel, Field
 
 from stoma import Body, Form, Header, Path, Query, UploadFile

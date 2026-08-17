@@ -25,6 +25,8 @@ from typing import Any
 
 import pytest
 from playwright.sync_api import sync_playwright
+
+pytest.importorskip("typer", reason="CLI 测试需要 typer (stoma[cli])")
 from typer.testing import CliRunner
 
 from stoma import UploadFile
@@ -419,3 +421,24 @@ def test_models_equivalent_to_datamodel_codegen(
         f"  generated: {generated_fields}\n"
         f"  reference: {reference_fields}"
     )
+
+
+# ============================================================
+# Per-endpoint 错误收集
+# ============================================================
+
+
+def test_make_collects_per_endpoint_errors(cli_runner: CliRunner, tmp_path: Path) -> None:
+    """Bad endpoint → exit code 1, output contains '以下 endpoint 生成失败'."""
+    fixture = Path(__file__).parent / "fixtures" / "bad_endpoint_raw.yaml"
+    result = cli_runner.invoke(app, [str(fixture), "--out", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "以下 endpoint 生成失败" in result.output or "endpoint" in result.output.lower()
+
+
+def test_make_fatal_on_invalid_spec(cli_runner: CliRunner, tmp_path: Path) -> None:
+    """Invalid JSON spec → BadParameter, no per-endpoint collection."""
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not valid json", encoding="utf-8")
+    result = cli_runner.invoke(app, [str(bad), "--out", str(tmp_path)])
+    assert result.exit_code != 0

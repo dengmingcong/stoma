@@ -8,7 +8,20 @@
 
 ```bash
 python3 --version
-pip install -e .
+```
+
+```bash
+# 核心（pydantic + playwright 运行时；可 import stoma + 用 Client）
+pip install stoma
+
+# 加 CLI 工具 `stoma make`
+pip install stoma[cli]
+
+# 加测试基础设施（pytest + FastAPI mock server）
+pip install stoma[test]
+
+# 开发（全部 + 类型/lint）
+pip install stoma[dev]
 ```
 
 ## 生成代码
