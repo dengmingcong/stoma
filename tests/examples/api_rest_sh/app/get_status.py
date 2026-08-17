@@ -6,10 +6,13 @@ Status code example
 
 from __future__ import annotations
 
-from .models import ErrorModel
 from typing import Annotated
+
 from pydantic import Field
-from stoma import APIRouter, APIRoute
+
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel
 
 router = APIRouter()
 
@@ -19,6 +22,7 @@ class GetStatus(APIRoute[ErrorModel]):
     """None。
     Status code example
     """
+
     code: int
-    retry_after: Annotated[str | None, Field(serialization_alias='retry-after')] = None
-    x_retry_in: Annotated[str | None, Field(serialization_alias='x-retry-in')] = None
+    retry_after: Annotated[str | None, Field(serialization_alias="retry-after")] = None
+    x_retry_in: Annotated[str | None, Field(serialization_alias="x-retry-in")] = None

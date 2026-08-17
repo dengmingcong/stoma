@@ -6,8 +6,9 @@ Accepts an application/x-www-form-urlencoded username and password and returns a
 
 from __future__ import annotations
 
-from .models import TokenResponseBody, ErrorModel
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, TokenResponseBody
 
 router = APIRouter()
 

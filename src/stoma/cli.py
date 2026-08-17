@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -62,6 +64,13 @@ def make(
         schemas = (raw_spec.get("components") or {}).get("schemas") or {}
         if schemas or has_json_payloads:
             generate_models(raw_spec, out / "models.py")
+            if not no_format and shutil.which("ruff") is not None:
+                subprocess.run(
+                    ["ruff", "format", str(out / "models.py")],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
 
     # 渲染每个 endpoint 的 route.py。
     generated_files: list[Path] = []
@@ -86,6 +95,7 @@ def make(
                 output_dir=out,
                 file_name=file_name,
                 rendered_code=rendered_code,
+                enable_ruff=not no_format,
             )
             generated_files.append(file_path)
         except (OpenAPISchemaError, ValueError, TypeError) as e:

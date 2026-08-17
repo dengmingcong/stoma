@@ -5,13 +5,13 @@ Generated from OpenAPI: get-accept-image
 
 from __future__ import annotations
 
+from stoma import APIRoute, APIRouter
+
 from .models import ErrorModel
-from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
 
 @router.get("/image")
 class GetAcceptImage(APIRoute[ErrorModel]):
-    """Return an image based on the Accept header。
-    """
+    """Return an image based on the Accept header。"""

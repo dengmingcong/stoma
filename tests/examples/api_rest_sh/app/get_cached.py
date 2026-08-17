@@ -6,8 +6,9 @@ Cached response example
 
 from __future__ import annotations
 
+from stoma import APIRoute, APIRouter
+
 from .models import CachedModel, ErrorModel
-from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
@@ -17,5 +18,6 @@ class GetCached(APIRoute[CachedModel | ErrorModel]):
     """None。
     Cached response example
     """
+
     seconds: int
     private: bool | None = None

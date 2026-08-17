@@ -5,14 +5,15 @@ Generated from OpenAPI: get-relative-redirect
 
 from __future__ import annotations
 
+from stoma import APIRoute, APIRouter
+
 from .models import ErrorModel
-from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
 
 @router.get("/relative-redirect/{n}")
 class GetRelativeRedirect(APIRoute[ErrorModel]):
-    """Redirect a configurable number of times。
-    """
+    """Redirect a configurable number of times。"""
+
     n: int

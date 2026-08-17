@@ -5,13 +5,13 @@ Generated from OpenAPI: get-problem
 
 from __future__ import annotations
 
-from .models import GetProblemResponse, ErrorModel
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetProblemResponse
 
 router = APIRouter()
 
 
 @router.get("/problem")
 class GetProblem(APIRoute[GetProblemResponse | ErrorModel]):
-    """Return an RFC 7807 problem document。
-    """
+    """Return an RFC 7807 problem document。"""

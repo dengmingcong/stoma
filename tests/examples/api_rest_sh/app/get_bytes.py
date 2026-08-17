@@ -5,15 +5,16 @@ Generated from OpenAPI: get-bytes
 
 from __future__ import annotations
 
+from stoma import APIRoute, APIRouter
+
 from .models import ErrorModel
-from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
 
 @router.get("/bytes/{n}")
 class GetBytes(APIRoute[ErrorModel]):
-    """Return random bytes。
-    """
+    """Return random bytes。"""
+
     n: int
     seed: int | None = None

@@ -6,8 +6,9 @@ Example large structured data response
 
 from __future__ import annotations
 
-from .models import Resume, ErrorModel
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, Resume
 
 router = APIRouter()
 

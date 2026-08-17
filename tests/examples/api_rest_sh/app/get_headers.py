@@ -5,13 +5,13 @@ Generated from OpenAPI: get-headers
 
 from __future__ import annotations
 
-from .models import GetHeadersResponse, ErrorModel
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetHeadersResponse
 
 router = APIRouter()
 
 
 @router.get("/headers")
 class GetHeaders(APIRoute[GetHeadersResponse | ErrorModel]):
-    """Return request headers。
-    """
+    """Return request headers。"""

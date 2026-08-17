@@ -5,13 +5,13 @@ Generated from OpenAPI: list-items
 
 from __future__ import annotations
 
-from .models import ListItemsResponse, ErrorModel
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, ListItemsResponse
 
 router = APIRouter()
 
 
 @router.get("/items")
 class ListItems(APIRoute[ListItemsResponse | ErrorModel]):
-    """List sample items。
-    """
+    """List sample items。"""

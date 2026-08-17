@@ -6,8 +6,9 @@ List available images
 
 from __future__ import annotations
 
-from .models import ListImagesResponse, ErrorModel
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, ListImagesResponse
 
 router = APIRouter()
 
@@ -17,6 +18,7 @@ class ListImages(APIRoute[ListImagesResponse | ErrorModel]):
     """None。
     List available images
     """
+
     cursor: str | None = None
     format: str | None = None
     search: str | None = None

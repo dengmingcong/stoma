@@ -5,13 +5,13 @@ Generated from OpenAPI: get-cookies-delete
 
 from __future__ import annotations
 
-from .models import GetCookiesDeleteResponse, ErrorModel
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetCookiesDeleteResponse
 
 router = APIRouter()
 
 
 @router.get("/cookies/delete")
 class GetCookiesDelete(APIRoute[GetCookiesDeleteResponse | ErrorModel]):
-    """Delete cookies named by query parameters。
-    """
+    """Delete cookies named by query parameters。"""
