@@ -6,7 +6,7 @@
 1. test_get_method → GetMethod(status=200) → status==200
 2. test_get_anything_path → GetAnythingPath(path="foo/bar") → status==200, "foo/bar" in text
    （codegen: body rendered required）
-3. test_post_method → PostMethod(body=...) → status==200（codegen: body rendered required）
+3. test_post_method → PostMethod() → status==200
 4. test_post_login → PostLogin(username="alice") → status==200
     （api.rest.sh returns anonymous token; partial）
 5. test_post_upload → PostUpload(file=...) → status==400（spec malformed, deferred）
@@ -37,7 +37,6 @@ from tests.examples.api_rest_sh.app.get_etag import GetEtag
 from tests.examples.api_rest_sh.app.get_method import GetMethod
 from tests.examples.api_rest_sh.app.get_status import GetStatus
 from tests.examples.api_rest_sh.app.head_method import HeadMethod
-from tests.examples.api_rest_sh.app.models import PostMethodRequest
 from tests.examples.api_rest_sh.app.options_method import OptionsMethod
 from tests.examples.api_rest_sh.app.patch_book import PatchBook
 from tests.examples.api_rest_sh.app.post_login import PostLogin
@@ -64,12 +63,9 @@ def test_get_anything_path(e2e_client: Client) -> None:
 def test_post_method(e2e_client: Client) -> None:
     """POST /post：回显请求体。
 
-    Codegen bug: spec marks requestBody optional but body field rendered as required.
-    Workaround: pass PostMethodRequest via body= instead of data=.
+    POST /post has an empty request body schema ({}), so no body field is generated.
     """
-    response = e2e_client.send(
-        PostMethod(body=PostMethodRequest.model_construct({"key": "value"})),
-    )
+    response = e2e_client.send(PostMethod())
     assert response.raw.status == 200
 
 
