@@ -3,18 +3,18 @@
 13 个匿名（无鉴权）端到端场景，发送到真实 api.rest.sh。
 
 场景对应表（标注 known limitation）：
-1. test_get_method → GetMethod(status=200) → status==200（codegen: body rendered required）
+1. test_get_method → GetMethod(status=200) → status==200
 2. test_get_anything_path → GetAnythingPath(path="foo/bar") → status==200, "foo/bar" in text
    （codegen: body rendered required）
 3. test_post_method → PostMethod(body=...) → status==200（codegen: body rendered required）
 4. test_post_login → PostLogin(username="alice") → status==200
-   （api.rest.sh returns anonymous token; partial）
+    （api.rest.sh returns anonymous token; partial）
 5. test_post_upload → PostUpload(file=...) → status==400（spec malformed, deferred）
 6. test_patch_book → PatchBook(book_id="123", body=[{...}]) → status in (200, 404)
-   （api.rest.sh: no book id=123; partial）
+    （api.rest.sh: no book id=123; partial）
 7. test_delete_book → DeleteBook(book_id="123") → status==204
-8. test_head_method → HeadMethod() → status==200（codegen: body rendered required）
-9. test_options_method → OptionsMethod() → status==200（codegen: body rendered required）
+8. test_head_method → HeadMethod() → status==200
+9. test_options_method → OptionsMethod() → status==200
 10. test_get_bytes → GetBytes(n=100) → status==200, octet-stream, len>=50
 11. test_get_accept_image → GetAcceptImage() → status==200, image in content-type
 12. test_get_status_404 → GetStatus(code=404) → status==404
@@ -37,13 +37,7 @@ from tests.examples.api_rest_sh.app.get_etag import GetEtag
 from tests.examples.api_rest_sh.app.get_method import GetMethod
 from tests.examples.api_rest_sh.app.get_status import GetStatus
 from tests.examples.api_rest_sh.app.head_method import HeadMethod
-from tests.examples.api_rest_sh.app.models import (
-    GetAnythingPathRequest,
-    GetMethodRequest,
-    HeadMethodRequest,
-    OptionsMethodRequest,
-    PostMethodRequest,
-)
+from tests.examples.api_rest_sh.app.models import PostMethodRequest
 from tests.examples.api_rest_sh.app.options_method import OptionsMethod
 from tests.examples.api_rest_sh.app.patch_book import PatchBook
 from tests.examples.api_rest_sh.app.post_login import PostLogin
@@ -52,23 +46,15 @@ from tests.examples.api_rest_sh.app.post_upload import PostUpload
 
 
 def test_get_method(e2e_client: Client) -> None:
-    """GET /get：返回默认 status=200。
-
-    Codegen bug: spec marks requestBody optional but body field rendered as required.
-    Workaround: pass empty GetMethodRequest() to satisfy codegen-required body.
-    """
-    response = e2e_client.send(GetMethod(status=200, body=GetMethodRequest()))
+    """GET /get：返回默认 status=200。"""
+    response = e2e_client.send(GetMethod(status=200))
     assert response.raw.status == 200
 
 
 def test_get_anything_path(e2e_client: Client) -> None:
-    """GET /anything/{path}：回显路径参数。
-
-    Codegen bug: spec marks requestBody optional but body field rendered as required.
-    Workaround: pass empty GetAnythingPathRequest() to satisfy codegen-required body.
-    """
+    """GET /anything/{path}：回显路径参数。"""
     response = e2e_client.send(
-        GetAnythingPath(path="foo/bar", body=GetAnythingPathRequest()),
+        GetAnythingPath(path="foo/bar"),
     )
     assert response.raw.status == 200
     text = response.raw.text()
@@ -133,22 +119,14 @@ def test_delete_book(e2e_client: Client) -> None:
 
 
 def test_head_method(e2e_client: Client) -> None:
-    """HEAD /head：返回 200（无响应体）。
-
-    Codegen bug: spec marks requestBody optional but body field rendered as required.
-    Workaround: pass empty HeadMethodRequest() to satisfy codegen-required body.
-    """
-    response = e2e_client.send(HeadMethod(body=HeadMethodRequest()))
+    """HEAD /head：返回 200（无响应体）。"""
+    response = e2e_client.send(HeadMethod())
     assert response.raw.status == 200
 
 
 def test_options_method(e2e_client: Client) -> None:
-    """OPTIONS /options：返回允许的方法。
-
-    Codegen bug: spec marks requestBody optional but body field rendered as required.
-    Workaround: pass empty OptionsMethodRequest() to satisfy codegen-required body.
-    """
-    response = e2e_client.send(OptionsMethod(body=OptionsMethodRequest()))
+    """OPTIONS /options：返回允许的方法。"""
+    response = e2e_client.send(OptionsMethod())
     assert response.raw.status == 200
 
 
