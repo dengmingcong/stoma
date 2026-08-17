@@ -5,13 +5,12 @@ Generated from OpenAPI: get-deflate
 
 from __future__ import annotations
 
-from .models import GetDeflateResponse
 from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
 
 @router.get("/deflate")
-class GetDeflate(APIRoute[GetDeflateResponse]):
+class GetDeflate(APIRoute):
     """Return an explicitly compressed response。
     """

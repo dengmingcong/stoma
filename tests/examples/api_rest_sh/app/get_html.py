@@ -5,13 +5,12 @@ Generated from OpenAPI: get-html
 
 from __future__ import annotations
 
-from .models import GetHtmlResponse
 from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
 
 @router.get("/html")
-class GetHtml(APIRoute[GetHtmlResponse]):
+class GetHtml(APIRoute):
     """Return HTML。
     """

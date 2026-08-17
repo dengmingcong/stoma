@@ -104,6 +104,11 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             lstrip_blocks=True,
         )
         self.multi_media_type_endpoints: list[dict[str, Any]] = []
+        # 由 cli 在生成 models.py 后注入可用 class 名字集合
+        # 若为 None 则不检查（向后兼容）
+        self.available_models: set[str] | None = None
+        # Response 模型在 models.py 中找不到时记录，与 multi_media_type_endpoints 同模式
+        self.missing_response_models: list[dict[str, Any]] = []
 
     def render(self, endpoint: Endpoint[Any, Any, Any]) -> tuple[str, str]:
         """渲染 endpoint 的 route.py 内容。
@@ -492,13 +497,23 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 continue
             schema = getattr(json_content, "media_type_schema", None)
             if isinstance(schema, self.Reference):
-                ordered_names.append(to_pascal_case(schema.ref.rsplit("/", 1)[-1]))
-                continue
-            inline_counter += 1
-            if inline_counter == 1:
-                ordered_names.append(f"{operation_id_pascal}Response")
+                name = to_pascal_case(schema.ref.rsplit("/", 1)[-1])
             else:
-                ordered_names.append(f"{operation_id_pascal}Response{inline_counter - 1}")
+                inline_counter += 1
+                if inline_counter == 1:
+                    name = f"{operation_id_pascal}Response"
+                else:
+                    name = f"{operation_id_pascal}Response{inline_counter - 1}"
+
+            if self.available_models is not None and name not in self.available_models:
+                self.missing_response_models.append({
+                    "method": endpoint.method,
+                    "path": endpoint.path,
+                    "missing_model": name,
+                })
+                continue
+
+            ordered_names.append(name)
 
         return list(dict.fromkeys(ordered_names))
 

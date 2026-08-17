@@ -65,6 +65,18 @@ def make(
     # 渲染每个 endpoint 的 route.py。
     generated_files: list[Path] = []
     renderer = make_endpoint_renderer(parser.spec_version)
+
+    # 从生成的 models.py 提取所有 class 名字，注入到 renderer
+    # renderer 据 此 检 查 {OpId}Response 是否真实存在；不存在的跳过 + 记录
+    models_path = out / "models.py"
+    if models_path.exists():
+        import ast
+
+        tree = ast.parse(models_path.read_text(encoding="utf-8"))
+        renderer.available_models = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        }
+
     for endpoint in endpoints:
         file_name, rendered_code = renderer.render(endpoint)
         file_path = render_to_file(
@@ -80,6 +92,13 @@ def make(
             typer.echo(f"  - {info['method']} {info['path']}", err=True)
             typer.echo(f"    所有 media type: {', '.join(info['all_media_types'])}", err=True)
             typer.echo(f"    选中: {info['selected_media_type']}", err=True)
+
+    # 打印 Response 模型缺失警告（与 multi-media-type 同模式）
+    if renderer.missing_response_models:
+        typer.echo("⚠ 以下 endpoint 缺少 Response 模型（已跳过 import + generic）：", err=True)
+        for info in renderer.missing_response_models:
+            typer.echo(f"  - {info['method']} {info['path']}", err=True)
+            typer.echo(f"    缺少: {info['missing_model']}", err=True)
 
     # 输出结果。
     typer.echo(f"生成 models.py + {len(generated_files)} 个 route 文件到 {out}:")
