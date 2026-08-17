@@ -436,6 +436,53 @@ def test_make_collects_per_endpoint_errors(cli_runner: CliRunner, tmp_path: Path
     assert "以下 endpoint 生成失败" in result.output or "endpoint" in result.output.lower()
 
 
+def test_make_collects_multi_media_type_warnings(
+    cli_runner: CliRunner,
+    tmp_path: Path,
+) -> None:
+    """多 media type 软警告：exit 0 + 按 GenerationErrorKind 分组打印。
+
+    Construct a fixture spec with one endpoint declaring two media types
+    (application/json + text/plain). Multi-media-type is collected as
+    GenerationErrorKind.MULTI_MEDIA_TYPE; file is still written with the
+    first media type; exit code is 0 (not a hard failure).
+    """
+    import textwrap
+
+    fixture = tmp_path / "multi_media.yaml"
+    fixture.write_text(
+        textwrap.dedent("""\
+        openapi: 3.1.0
+        info:
+          title: multi-media test
+          version: "0.1.0"
+        paths:
+          /thing:
+            post:
+              operationId: postThing
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      properties:
+                        ok:
+                          type: boolean
+                  text/plain:
+                    schema:
+                      type: string
+              responses:
+                "200":
+                  description: ok
+        """),
+        encoding="utf-8",
+    )
+    result = cli_runner.invoke(app, [str(fixture), "--out", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "以下 endpoint 有多个 media type" in result.output or "multi media" in result.output.lower()
+    assert "生成" in result.output  # 末尾的成功摘要
+
+
 def test_make_fatal_on_invalid_spec(cli_runner: CliRunner, tmp_path: Path) -> None:
     """Invalid JSON spec → BadParameter, no per-endpoint collection."""
     bad = tmp_path / "bad.json"
