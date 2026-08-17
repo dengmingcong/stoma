@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.openapi.type_mapping import is_primitive_json_type
+from stoma.openapi.type_mapping import is_primitive_json_type
 
 
 def has_combinator(schema: dict[str, Any] | None) -> bool:

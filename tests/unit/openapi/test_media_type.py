@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.openapi.media_type import is_json_media_type
+from stoma.openapi.media_type import is_json_media_type
 
 
 class TestIsJsonMediaType:

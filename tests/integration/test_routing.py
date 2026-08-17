@@ -22,8 +22,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from src import Body, Header, Path, Query
-from src.routing import APIRoute, APIRouter
+from stoma import Body, Header, Path, Query
+from stoma.routing import APIRoute, APIRouter
 
 
 # ===== 定义响应模型 =====

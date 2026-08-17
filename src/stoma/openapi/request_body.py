@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from src.openapi.models import (
+from stoma.openapi.models import (
     BinaryRequestBodyFields,
     JSONRequestBodyFields,
     MultipartFormRequestBodyFields,

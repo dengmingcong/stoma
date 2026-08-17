@@ -21,7 +21,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from src.openapi.version import SpecVersion
+from stoma.openapi.version import SpecVersion
 
 __all__ = [
     "Endpoint",

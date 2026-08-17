@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.exceptions import OpenAPISchemaError
+from stoma.exceptions import OpenAPISchemaError
 
 # OpenAPI scalar / form / parameter 路径支持的 primitive 类型集合。
 # 顶层 body 通常走 ``$ref``，仅这 4 个 primitive 类型可作为裸 scalar。

@@ -10,11 +10,11 @@ from typing import Any, cast
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from src.exceptions import OpenAPISchemaError
-from src.openapi.media_type import is_json_media_type
-from src.openapi.models import Endpoint
-from src.openapi.reference import expand_path_refs, validate_cycle_refs
-from src.openapi.version import (
+from stoma.exceptions import OpenAPISchemaError
+from stoma.openapi.media_type import is_json_media_type
+from stoma.openapi.models import Endpoint
+from stoma.openapi.reference import expand_path_refs, validate_cycle_refs
+from stoma.openapi.version import (
     OpenAPI30,
     OpenAPI31,
     Parameter30,

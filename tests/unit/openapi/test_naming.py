@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from src.cli import app
+from stoma.cli import app
 
 
 class TestMakeFileNaming:

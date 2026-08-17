@@ -20,7 +20,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from src.cli import app
+from stoma.cli import app
 from tests.unit.conftest import EMPTY_OPENAPI_YAML, MALFORMED_YAML
 
 

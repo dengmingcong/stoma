@@ -3,11 +3,11 @@
 提供类似 FastAPI 声明式风格的接口定义和自动化测试能力。
 """
 
-from src.client import Client
-from src.dependencies.response import Response
-from src.param_functions import Body, Form, Header, Path, Query
-from src.params import UploadFile
-from src.routing import APIRoute, APIRouter
+from stoma.client import Client
+from stoma.dependencies.response import Response
+from stoma.param_functions import Body, Form, Header, Path, Query
+from stoma.params import UploadFile
+from stoma.routing import APIRoute, APIRouter
 
 __all__ = [
     "__version__",

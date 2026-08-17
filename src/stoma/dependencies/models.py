@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import TypeAdapter
 from pydantic.fields import FieldInfo
 
-from src.params import Param
+from stoma.params import Param
 
 
 @dataclass(frozen=True)

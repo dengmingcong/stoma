@@ -27,8 +27,8 @@ from __future__ import annotations
 
 import pytest
 
-from src import UploadFile
-from src.client import Client
+from stoma.params import UploadFile
+from stoma.client import Client
 from tests.examples.api_rest_sh.app.delete_book import DeleteBook
 from tests.examples.api_rest_sh.app.get_accept_image import GetAcceptImage
 from tests.examples.api_rest_sh.app.get_anything_path import GetAnythingPath

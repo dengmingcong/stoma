@@ -16,14 +16,14 @@ from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
-from dependencies.annotation import (
+from stoma.dependencies import Dependant, ModelField
+from stoma.dependencies.annotation import (
     field_annotation_is_complex,
     is_uploadfile_or_list_annotation,
     validate_binary_body_annotation,
     validate_form_field_annotation,
 )
-from src.dependencies import Dependant, ModelField
-from src.params import Form, Param, ParamTypes
+from stoma.params import Form, Param, ParamTypes
 
 
 class APIRoute[T](BaseModel):

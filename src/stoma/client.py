@@ -29,14 +29,14 @@ from typing import Any
 
 from playwright.sync_api import APIRequestContext, APIResponse
 
-from src.dependencies.request import (
+from stoma.dependencies.request import (
     Request,
     RequestBodyKind,
     build_request,
 )
-from src.dependencies.response import Response, build_response
-from src.exceptions import HTTPError, ParseError, ValidationError
-from src.routing import APIRoute
+from stoma.dependencies.response import Response, build_response
+from stoma.exceptions import HTTPError, ParseError, ValidationError
+from stoma.routing import APIRoute
 
 
 class Client:

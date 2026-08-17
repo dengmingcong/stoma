@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from openapi.naming import is_snake_case, to_field_name
-from src.openapi.type_mapping import python_type_for_array_items
+from stoma.openapi.naming import is_snake_case, to_field_name
+from stoma.openapi.type_mapping import python_type_for_array_items
 
 
 def resolve_array_type(prop_schema: dict[str, Any]) -> str:

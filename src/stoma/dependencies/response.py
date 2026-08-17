@@ -14,9 +14,9 @@ from typing import Any
 
 from playwright.sync_api import APIResponse
 
-from src.exceptions import ParseError, ValidationError
-from src.openapi.media_type import is_json_media_type
-from src.routing import APIRoute
+from stoma.exceptions import ParseError, ValidationError
+from stoma.openapi.media_type import is_json_media_type
+from stoma.routing import APIRoute
 
 
 @dataclass

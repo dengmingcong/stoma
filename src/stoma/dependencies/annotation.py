@@ -7,7 +7,7 @@ from typing import Annotated, Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
-from src.params import UploadFile
+from stoma.params import UploadFile
 
 # Playwright ``FormData`` 支持的标量类型集合，bytes 不在其中。
 _PLAYWRIGHT_FORM_SCALAR_TYPES: tuple[type, ...] = (str, int, float, bool)

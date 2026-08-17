@@ -17,8 +17,8 @@
 from typing import Any
 from unittest.mock import MagicMock
 
-from src.client import Client
-from src.dependencies.request import (
+from stoma.client import Client
+from stoma.dependencies.request import (
     RawPayload,
     Request,
     RequestBody,

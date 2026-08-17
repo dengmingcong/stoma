@@ -3,7 +3,7 @@
 提供参数依赖分析和管理功能。
 """
 
-from src.dependencies.models import Dependant, ModelField
+from stoma.dependencies.models import Dependant, ModelField
 
 __all__ = [
     "Dependant",

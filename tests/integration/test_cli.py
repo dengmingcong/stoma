@@ -27,9 +27,9 @@ import pytest
 from playwright.sync_api import sync_playwright
 from typer.testing import CliRunner
 
-from src import UploadFile
-from src.cli import app
-from src.client import Client
+from stoma import UploadFile
+from stoma.cli import app
+from stoma.client import Client
 
 FIXTURE_PATH_ALL_METHODS: Path = Path(__file__).parent / "fixtures" / "openapi_all_methods.yaml"
 FIXTURE_PATH_REQUEST_BODIES: Path = Path(__file__).parent / "fixtures" / "openapi_request_bodies.yaml"

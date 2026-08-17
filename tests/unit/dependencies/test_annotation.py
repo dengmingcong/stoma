@@ -18,13 +18,13 @@ from typing import Any, Optional, Union
 import pytest
 from pydantic import BaseModel
 
-from src import UploadFile
-from src.dependencies.annotation import (
+from stoma import UploadFile
+from stoma.dependencies.annotation import (
     field_annotation_is_complex,
     validate_binary_body_annotation,
 )
-from src.dependencies.request import RequestBodyKind, _serialize_body_params
-from src.routing import APIRoute, APIRouter
+from stoma.dependencies.request import RequestBodyKind, _serialize_body_params
+from stoma.routing import APIRoute, APIRouter
 
 
 class TestValidateBinaryBodyAnnotation:

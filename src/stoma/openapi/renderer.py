@@ -20,14 +20,14 @@ from jinja2 import Environment, FileSystemLoader, Template
 from pydantic import BaseModel
 from pydantic.alias_generators import to_snake
 
-from src.exceptions import OpenAPISchemaError
-from src.openapi.fields import (
+from stoma.exceptions import OpenAPISchemaError
+from stoma.openapi.fields import (
     build_form_field_line,
     build_upload_file_field_line,
     resolve_array_type,
 )
-from src.openapi.media_type import is_json_media_type
-from src.openapi.models import (
+from stoma.openapi.media_type import is_json_media_type
+from stoma.openapi.models import (
     BinaryRequestBodyFields,
     Endpoint,
     JSONRequestBodyFields,
@@ -36,20 +36,20 @@ from src.openapi.models import (
     ScalarRequestBodyFields,
     UrlencodedFormRequestBodyFields,
 )
-from src.openapi.naming import is_snake_case, to_pascal_case
-from src.openapi.parameters import build_content_type_header, make_param_fields
-from src.openapi.request_body import (
+from stoma.openapi.naming import is_snake_case, to_pascal_case
+from stoma.openapi.parameters import build_content_type_header, make_param_fields
+from stoma.openapi.request_body import (
     flatten_body_fields,
     get_media_type_schema,
     is_body_fields_use_field,
 )
-from src.openapi.schema import (
+from stoma.openapi.schema import (
     has_combinator,
     is_binary_schema_dict,
     is_primitive_schema_dict,
 )
-from src.openapi.type_mapping import is_primitive_json_type, python_type_name
-from src.openapi.version import Reference30, Reference31, SpecVersion
+from stoma.openapi.type_mapping import is_primitive_json_type, python_type_name
+from stoma.openapi.version import Reference30, Reference31, SpecVersion
 
 
 class _ReferenceLike(Protocol):

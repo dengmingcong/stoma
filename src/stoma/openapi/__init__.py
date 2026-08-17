@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from src.openapi.models import Endpoint
+from stoma.openapi.models import Endpoint
 
 if TYPE_CHECKING:
     from src.openapi.parser import OpenAPIParser

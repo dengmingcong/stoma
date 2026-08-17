@@ -16,9 +16,9 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel, Field
 
-from src import Body, Form, Header, Path, Query, UploadFile
-from src.client import Client
-from src.routing import APIRoute, APIRouter
+from stoma import Body, Form, Header, Path, Query, UploadFile
+from stoma.client import Client
+from stoma.routing import APIRoute, APIRouter
 
 
 class UserData(BaseModel):

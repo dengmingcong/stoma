@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from openapi.naming import is_snake_case
-from src.openapi.fields import build_param_field_line
-from src.openapi.type_mapping import (
+from stoma.openapi.fields import build_param_field_line
+from stoma.openapi.naming import is_snake_case
+from stoma.openapi.type_mapping import (
     is_nullable_json_type,
     python_type_for_nullable_param,
 )

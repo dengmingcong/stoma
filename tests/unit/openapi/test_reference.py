@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from src.exceptions import OpenAPISchemaError
-from src.openapi.reference import expand_path_refs, validate_cycle_refs
+from stoma.exceptions import OpenAPISchemaError
+from stoma.openapi.reference import expand_path_refs, validate_cycle_refs
 
 
 class TestExpandPathRefs:

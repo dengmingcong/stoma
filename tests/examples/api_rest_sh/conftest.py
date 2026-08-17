@@ -2,8 +2,7 @@
 
 为 stoma 演示 examples 提供共享 fixtures。
 
-``stoma`` 包由 ``pyproject.toml`` 的 ``[tool.setuptools.package-dir] stoma = "src"``
-映射到 ``src/``，因此 ``import stoma`` 真实可用；本 conftest 不需要任何 ``sys.modules`` patch。
+``stoma`` 包位于标准 ``src/stoma/`` 布局（setuptools 推荐），``import stoma`` 解析到 ``src/stoma/__init__.py``。
 生成代码 ``from stoma import ...`` 直接通过 Python 正常 import 解析。
 
 Fixtures：
@@ -30,7 +29,7 @@ from collections.abc import Generator  # noqa: E402
 import pytest  # noqa: E402
 from playwright.sync_api import APIRequestContext, Playwright, sync_playwright  # noqa: E402
 
-from src.client import Client  # noqa: E402
+from stoma.client import Client  # noqa: E402
 
 __all__ = [
     "e2e_client",
@@ -76,7 +75,7 @@ def e2e_client_playwright(
 def e2e_client(
     e2e_client_playwright: APIRequestContext,
 ) -> Generator[Client, None, None]:
-    """包装 :class:`src.client.Client` 供 e2e 测试使用。"""
+    """包装 :class:`stoma.client.Client` 供 e2e 测试使用。"""
     client = Client(context=e2e_client_playwright)
     try:
         yield client
@@ -101,7 +100,7 @@ def auth_bearer_client_playwright(
 
 @pytest.fixture(scope="session")
 def auth_bearer_client(auth_bearer_client_playwright: APIRequestContext) -> Generator[Client, None, None]:
-    """包装 :class:`src.client.Client` 供 Bearer token 鉴权 e2e 测试使用。"""
+    """包装 :class:`stoma.client.Client` 供 Bearer token 鉴权 e2e 测试使用。"""
     client = Client(context=auth_bearer_client_playwright)
     try:
         yield client
@@ -128,7 +127,7 @@ def auth_apikey_header_client_playwright(
 def auth_apikey_header_client(
     auth_apikey_header_client_playwright: APIRequestContext,
 ) -> Generator[Client, None, None]:
-    """包装 :class:`src.client.Client` 供 API Key header 鉴权 e2e 测试使用。"""
+    """包装 :class:`stoma.client.Client` 供 API Key header 鉴权 e2e 测试使用。"""
     client = Client(context=auth_apikey_header_client_playwright)
     try:
         yield client
@@ -154,7 +153,7 @@ def auth_basic_client_playwright(
 
 @pytest.fixture(scope="session")
 def auth_basic_client(auth_basic_client_playwright: APIRequestContext) -> Generator[Client, None, None]:
-    """包装 :class:`src.client.Client` 供 Basic 鉴权 e2e 测试使用。"""
+    """包装 :class:`stoma.client.Client` 供 Basic 鉴权 e2e 测试使用。"""
     client = Client(context=auth_basic_client_playwright)
     try:
         yield client

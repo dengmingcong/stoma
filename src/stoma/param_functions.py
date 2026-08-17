@@ -13,11 +13,11 @@
 每个函数的参数与对应类 ``__init__`` 完全一致；返回值是对应类的实例。
 """
 
-from src.params import Body as _Body
-from src.params import Form as _Form
-from src.params import Header as _Header
-from src.params import Path as _Path
-from src.params import Query as _Query
+from stoma.params import Body as _Body
+from stoma.params import Form as _Form
+from stoma.params import Header as _Header
+from stoma.params import Path as _Path
+from stoma.params import Query as _Query
 
 
 def Path() -> _Path:  # noqa: N802

@@ -51,7 +51,7 @@ select = [
 ignore = []
 
 [tool.ruff.lint.isort]
-known-first-party = ["src"]
+known-first-party = ["stoma"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -79,5 +79,5 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [project.scripts]
-stoma = "src.cli:app"
+stoma = "stoma.cli:app"
 

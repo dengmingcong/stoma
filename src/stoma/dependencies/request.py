@@ -29,10 +29,10 @@ from typing import Any, NamedTuple
 from playwright.sync_api import FilePayload, FormData
 from pydantic import BaseModel
 
-from dependencies.annotation import field_annotation_is_complex
-from src.dependencies import Dependant, ModelField
-from src.params import Body, UploadFile
-from src.routing import APIRoute
+from stoma.dependencies import Dependant, ModelField
+from stoma.dependencies.annotation import field_annotation_is_complex
+from stoma.params import Body, UploadFile
+from stoma.routing import APIRoute
 
 
 class BodyItem(NamedTuple):

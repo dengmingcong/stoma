@@ -16,7 +16,7 @@ from typing import Any
 
 import jsonref
 
-from src.exceptions import OpenAPISchemaError
+from stoma.exceptions import OpenAPISchemaError
 
 # 循环检测只沿 ``#/components/parameters/`` 开头的内部 ``$ref`` 展开；
 # 指向 schema 或外部文件的 ``$ref`` 不属于参数链，遇到即停止。

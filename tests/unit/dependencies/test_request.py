@@ -18,9 +18,9 @@ from playwright.sync_api import FormData
 from pydantic import BaseModel, Field
 from pydantic.fields import FieldInfo
 
-from src import Body, Form, Path, Query, UploadFile
-from src.dependencies import ModelField
-from src.dependencies.request import (
+from stoma import Body, Form, Path, Query, UploadFile
+from stoma.dependencies import ModelField
+from stoma.dependencies.request import (
     RawPayload,
     RequestBodyKind,
     _collect_query_params,
@@ -28,7 +28,7 @@ from src.dependencies.request import (
     _interpolate_path_params,
     _serialize_body_params,
 )
-from src.routing import APIRoute, APIRouter
+from stoma.routing import APIRoute, APIRouter
 
 router = APIRouter()
 

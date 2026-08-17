@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from src.cli import app
+from stoma.cli import app
 
 # ===== generate_models 端到端 =====
 
@@ -63,7 +63,7 @@ class TestGenerateModels:
         """应生成 ``models.py`` 文件，且包含至少一个 ``class`` 定义。"""
         spec = _minimal_spec()
         output_path = tmp_path / "models.py"
-        from src.openapi.model_generator import generate_models
+        from stoma.openapi.model_generator import generate_models
 
         generate_models(spec, output_path)
         assert output_path.exists()
@@ -75,7 +75,7 @@ class TestGenerateModels:
         """父目录不存在时自动创建。"""
         spec = _minimal_spec()
         output_path = tmp_path / "deep" / "nested" / "models.py"
-        from src.openapi.model_generator import generate_models
+        from stoma.openapi.model_generator import generate_models
 
         generate_models(spec, output_path)
         assert output_path.exists()
@@ -83,7 +83,7 @@ class TestGenerateModels:
     def test_raises_on_invalid_spec(self, tmp_path: Path) -> None:
         """无效 spec 应抛出 ``RuntimeError``。"""
         output_path = tmp_path / "models.py"
-        from src.openapi.model_generator import generate_models
+        from stoma.openapi.model_generator import generate_models
 
         try:
             generate_models({"paths": {}}, output_path)

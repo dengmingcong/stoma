@@ -13,7 +13,7 @@ api.rest.sh 接受任意凭证通过鉴权端点（用于演示）。默认凭�
 """
 from __future__ import annotations
 
-from src.client import Client
+from stoma.client import Client
 from tests.examples.api_rest_sh.app.get_auth_api_key_header import GetAuthApiKeyHeader
 from tests.examples.api_rest_sh.app.get_auth_api_key_query import GetAuthApiKeyQuery
 from tests.examples.api_rest_sh.app.get_auth_basic import GetAuthBasic

@@ -11,9 +11,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from src.cli import app
-from src.openapi.parser import make_openapi_parser
-from src.openapi.parameters import make_param_fields
+from stoma.cli import app
+from stoma.openapi.parser import make_openapi_parser
+from stoma.openapi.parameters import make_param_fields
 
 FIXTURE_NULLABLE_PARAM: Path = Path(__file__).parent / "fixtures" / "nullable_param.yaml"
 

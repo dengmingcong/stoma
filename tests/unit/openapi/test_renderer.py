@@ -27,9 +27,9 @@ from typing import Any
 
 import pytest
 
-from src.cli import app
-from src.openapi.parser import make_openapi_parser
-from src.openapi.renderer import make_endpoint_renderer
+from stoma.cli import app
+from stoma.openapi.parser import make_openapi_parser
+from stoma.openapi.renderer import make_endpoint_renderer
 
 # ============================================================
 # Request Body

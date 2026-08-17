@@ -14,8 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from src.cli import app
-from src.openapi.parser import make_openapi_parser
+from stoma.cli import app
+from stoma.openapi.parser import make_openapi_parser
 from tests.unit.conftest import INVALID_OPENAPI_YAML
 
 

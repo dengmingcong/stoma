@@ -22,9 +22,9 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel, Field
 
-from src import Body, Form, Header, Path, Query, UploadFile
-from src.dependencies.request import RequestBodyKind, _serialize_body_params
-from src.routing import APIRoute, APIRouter
+from stoma import Body, Form, Header, Path, Query, UploadFile
+from stoma.dependencies.request import RequestBodyKind, _serialize_body_params
+from stoma.routing import APIRoute, APIRouter
 
 router = APIRouter()
 
@@ -849,15 +849,15 @@ def test_form_embed_kwarg_removed_raises_type_error() -> None:
 
 def test_form_no_longer_inherits_body() -> None:
     """``Form.__mro__`` 不含 ``Body``。"""
-    from src import Body as BodyCls
-    from src.params import Form
+    from stoma import Body as BodyCls
+    from stoma.params import Form
 
     assert BodyCls not in Form.__mro__
 
 
 def test_form_has_no_init_method() -> None:
     """``Form.__init__`` 是 ``object.__init__`` / ``Param.__init__``（无自己定义）。"""
-    from src.params import Form, Param
+    from stoma.params import Form, Param
 
     assert Form.__init__ is Param.__init__
     assert Form.__init__ is object.__init__
@@ -997,7 +997,7 @@ def test_request_body_kind_raw_enum() -> None:
 
 def test_request_body_field_names() -> None:
     """``RequestBody`` 字段名：``raw_data`` / ``binary_file`` 存在；``json_body`` / ``binary_body`` 不存在。"""
-    from src.dependencies.request import RequestBody
+    from stoma.dependencies.request import RequestBody
 
     assert "raw_data" in RequestBody.__dataclass_fields__
     assert "binary_file" in RequestBody.__dataclass_fields__
