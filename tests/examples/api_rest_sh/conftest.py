@@ -2,10 +2,9 @@
 
 为 stoma 演示 examples 提供共享 fixtures。
 
-模块级别 patch：
-``stoma`` 别名在 conftest.py import 时即设置（不在 fixture 内），
-因为生成代码在 module import time 执行 ``from stoma import ...``，
-autouse fixture 来得及。pytest import 顺序保证 conftest.py 先于 test_*.py import。
+``stoma`` 包由 ``pyproject.toml`` 的 ``[tool.setuptools.package-dir] stoma = "src"``
+映射到 ``src/``，因此 ``import stoma`` 真实可用；本 conftest 不需要任何 ``sys.modules`` patch。
+生成代码 ``from stoma import ...`` 直接通过 Python 正常 import 解析。
 
 Fixtures：
 - ``_shared_playwright``：session 级，所有 e2e fixtures 共享的 Playwright 实例。
@@ -24,12 +23,6 @@ playwright.stop()）。
 """
 
 from __future__ import annotations
-
-import sys
-
-import src as _src_module  # noqa: F401
-
-sys.modules["stoma"] = _src_module
 
 import base64  # noqa: E402
 from collections.abc import Generator  # noqa: E402
