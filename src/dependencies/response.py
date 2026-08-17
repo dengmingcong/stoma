@@ -15,6 +15,7 @@ from typing import Any
 from playwright.sync_api import APIResponse
 
 from src.exceptions import ParseError, ValidationError
+from src.openapi.media_type import is_json_media_type
 from src.routing import APIRoute
 
 
@@ -85,7 +86,7 @@ def build_response[T](api_route: APIRoute[T], api_response: APIResponse) -> Resp
         return Response[T](raw=api_response, validated=None)
 
     # 3. 仅当 content-type 为 JSON 时才解析并填充 validated
-    if media_type.startswith("application/json") or media_type.endswith("+json"):
+    if is_json_media_type(media_type):
         try:
             payload: Any = api_response.json()
         except Exception as e:

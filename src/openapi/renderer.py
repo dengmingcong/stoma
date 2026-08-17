@@ -26,6 +26,7 @@ from src.openapi.fields import (
     build_upload_file_field_line,
     resolve_array_type,
 )
+from src.openapi.media_type import is_json_media_type
 from src.openapi.models import (
     BinaryRequestBodyFields,
     Endpoint,
@@ -256,7 +257,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             return None
 
         # 步骤 3：application/json 及 application/*+json（dmcg 处理顶层 oneOf/anyOf/allOf，无需组合子检查）
-        if media_type == "application/json" or media_type.endswith("+json"):
+        if is_json_media_type(media_type):
             if is_primitive_schema_dict(expanded_schema_dict):
                 return self._build_scalar_body(expanded_schema_dict, media_type)
             schema_model = get_media_type_schema(request_body, media_type)
@@ -491,7 +492,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             # 修复 1：匹配所有 JSON 家族（application/json + application/*+json）
             json_content = next(
                 (mt_obj for mt, mt_obj in content.items()
-                 if mt == "application/json" or mt.endswith("+json")),
+                 if is_json_media_type(mt)),
                 None,
             )
             if not json_content:

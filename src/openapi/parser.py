@@ -11,6 +11,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from src.exceptions import OpenAPISchemaError
+from src.openapi.media_type import is_json_media_type
 from src.openapi.models import Endpoint
 from src.openapi.reference import expand_path_refs, validate_cycle_refs
 from src.openapi.version import (
@@ -183,7 +184,7 @@ class OpenAPIParser[
             return False
         for media_type, media_type_obj in content.items():
             # 仅 JSON 家族（与 renderer._extract_request_body_info 派发规则一致）
-            if media_type != "application/json" and not media_type.endswith("+json"):
+            if not is_json_media_type(media_type):
                 continue
             schema = getattr(media_type_obj, "media_type_schema", None)
             if not schema:
