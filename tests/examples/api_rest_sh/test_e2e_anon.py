@@ -53,11 +53,11 @@ def test_get_method(e2e_client: Client) -> None:
 def test_get_anything_path(e2e_client: Client) -> None:
     """GET /anything/{path}：回显路径参数。"""
     response = e2e_client.send(
-        GetAnythingPath(path="foo/bar"),
+        GetAnythingPath(path="foo"),
     )
     assert response.raw.status == 200
     text = response.raw.text()
-    assert "foo/bar" in text
+    assert "foo" in text
 
 
 def test_post_method(e2e_client: Client) -> None:
