@@ -1,4 +1,4 @@
-"""``src.cli:app`` 端到端集成测试。
+"""``stoma.cli:app`` 端到端集成测试。
 
 合并自以下历史文件：
 
@@ -85,7 +85,7 @@ def test_codegen_all_methods(
 ) -> None:
     """验证 8 个 HTTP method 的 codegen 输出正确。"""
     result = subprocess.run(
-        [sys.executable, "-m", "src.cli", str(FIXTURE_PATH_ALL_METHODS), "--out", str(tmp_path)],
+        [sys.executable, "-m", "stoma.cli", str(FIXTURE_PATH_ALL_METHODS), "--out", str(tmp_path)],
         capture_output=True,
         text=True,
         check=False,
@@ -317,7 +317,7 @@ def fixtures() -> list[tuple[int, str]]:
 def _run_stoma_make(spec_path: Path, out_dir: Path) -> subprocess.CompletedProcess:
     """运行 ``stoma make`` 并返回结果。"""
     return subprocess.run(
-        [sys.executable, "-m", "src.cli", str(spec_path), "--out", str(out_dir)],
+        [sys.executable, "-m", "stoma.cli", str(spec_path), "--out", str(out_dir)],
         capture_output=True,
         text=True,
         check=False,
