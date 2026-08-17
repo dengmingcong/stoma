@@ -172,12 +172,28 @@ class OpenAPIParser[
 
     @staticmethod
     def _has_json_schema(node: BaseModel) -> bool:
-        """判断请求体或响应是否声明 application/json schema。"""
+        """判断请求体或响应是否声明有意义的 application/json schema（含 +json 后缀变体）。
+
+        仅遍历 JSON content type（``application/json`` 与 ``application/*+json``），
+        与 :meth:`src.openapi.renderer.EndpointRenderer._extract_request_body_info`
+        派发规则保持一致。用 truthy 判断 schema 是否有内容（空 ``{}`` 视为无 schema）。
+        """
         content = getattr(node, "content", None)
         if not isinstance(content, dict):
             return False
-        media_type = content.get("application/json")
-        return media_type is not None and getattr(media_type, "media_type_schema", None) is not None
+        for media_type, media_type_obj in content.items():
+            # 仅 JSON 家族（与 renderer._extract_request_body_info 派发规则一致）
+            if media_type != "application/json" and not media_type.endswith("+json"):
+                continue
+            schema = getattr(media_type_obj, "media_type_schema", None)
+            if not schema:
+                continue
+            # truthy 判断：Schema(BaseModel) 实例本身 truthy=True，但其内容（dump 后）可能为 {}
+            if hasattr(schema, "model_dump"):
+                if not schema.model_dump(mode="json", exclude_none=True):
+                    continue
+            return True
+        return False
 
     def validate_operation_ids(self) -> None:
         """校验所有操作均有非空 ``operationId``。"""

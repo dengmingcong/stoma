@@ -39,7 +39,6 @@ from src.openapi.naming import is_snake_case, to_pascal_case
 from src.openapi.parameters import build_content_type_header, make_param_fields
 from src.openapi.request_body import (
     flatten_body_fields,
-    get_expanded_schema_dict,
     get_media_type_schema,
     is_body_fields_use_field,
 )
@@ -232,7 +231,18 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             })
         else:
             media_type, _ = next(iter(content.items()))
-        expanded_schema_dict: dict[str, Any] | None = get_expanded_schema_dict(request_body, media_type)
+        # 直接从 endpoint.expanded_raw_request_body 导航到 schema（已经过 jsonref 展开）
+        # 替代原 get_expanded_schema_dict(request_body, media_type) 调用
+        expanded_schema_dict: dict[str, Any] | None = (
+            endpoint.expanded_raw_request_body
+            .get("content", {})
+            .get(media_type, {})
+            .get("schema")
+        )
+        # 空 schema {} 或 schema 缺失 → 不生成 body 字段
+        # （如 api.rest.sh 的 GET /get 等端点 requestBody.content.application/json.schema={}）
+        if not expanded_schema_dict:
+            return None
 
         # 步骤 3：application/json 及 application/*+json（dmcg 处理顶层 oneOf/anyOf/allOf，无需组合子检查）
         if media_type == "application/json" or media_type.endswith("+json"):
