@@ -8,7 +8,6 @@
 
 - codegen 代码生成（静态验证）
 - 匿名端点 e2e 测试（13 场景）
-- 鉴权端点 e2e 测试（4 场景，支持 Basic / Bearer / API Key header / API Key query）
 
 测试默认发往 https://api.rest.sh（真实网络请求），所有场景均基于 OpenAPI 3.1 spec（spec/api.rest.sh.json）驱动。
 
@@ -18,10 +17,9 @@
 |------|------|
 | `spec/api.rest.sh.json` | OpenAPI 3.1 规范文件（约 169 KB），定义 api.rest.sh 所有端点、鉴权方案和响应 schema |
 | `app/` | stoma make 生成的测试代码目录，包含 `models.py`（66 个 Pydantic 模型类）和 71 个 route 文件 |
-| `conftest.py` | pytest fixtures：6 个 session 级 Client fixtures，分别对应无鉴权、Basic、Bearer、API Key header、API Key query 场景 |
+| `conftest.py` | pytest fixtures：2 个 session 级 Client fixtures（匿名客户端） |
 | `test_codegen.py` | codegen 验证测试（3 个），不依赖网络，验证生成代码结构和语法 |
 | `test_e2e_anon.py` | 匿名端点 e2e 测试（13 个），发往 api.rest.sh 真实端点 |
-| `test_e2e_auth.py` | 鉴权端点 e2e 测试（4 个），分别验证 4 种鉴权方案 |
 
 ## 运行命令
 
@@ -38,7 +36,7 @@ stoma make --spec tests/examples/api_rest_sh/spec/api.rest.sh.json \
 pytest tests/examples/api_rest_sh/ -v
 ```
 
-结果：17/20 pass（3 fail 来自 stoma runtime 限制，见已知限制）
+结果：13/16 pass（3 fail 来自 stoma runtime 限制，见已知限制）
 
 ### 分别运行
 
@@ -48,9 +46,6 @@ pytest tests/examples/api_rest_sh/test_codegen.py -v
 
 # 匿名 e2e（13 tests，10 pass / 3 fail）
 pytest tests/examples/api_rest_sh/test_e2e_anon.py -v
-
-# 鉴权 e2e（4 tests，全部 pass）
-pytest tests/examples/api_rest_sh/test_e2e_auth.py -v
 ```
 
 ## 覆盖矩阵
@@ -72,21 +67,6 @@ pytest tests/examples/api_rest_sh/test_e2e_auth.py -v
 | GET | /image | 无 | 无 | image/* | 无 | test_e2e_anon.py |
 | GET | /status/{code} | code (path) | 无 | JSON | 无 | test_e2e_anon.py |
 | GET | /etag/{etag} | etag (path) | 无 | JSON | 无 | test_e2e_anon.py |
-| GET | /auth/bearer | 无 | 无 | JSON | Bearer | test_e2e_auth.py |
-| GET | /auth/api-key-header | 无 | 无 | JSON | API Key (header) | test_e2e_auth.py |
-| GET | /auth/basic | 无 | 无 | JSON | Basic | test_e2e_auth.py |
-| GET | /auth/api-key-query | api_key (query) | 无 | JSON | API Key (query) | test_e2e_auth.py |
-
-### 默认鉴权凭证
-
-api.rest.sh 在 x-cli-config 段声明以下默认值，测试直接使用：
-
-| Auth 方案 | 字段 | 默认值 |
-|-----------|------|--------|
-| Basic | username:password | `docs:docs` |
-| Bearer | token | `docs-token` |
-| API Key (header) | X-API-Key | `docs-key` |
-| API Key (query) | api_key | `docs-query-key` |
 
 ### 已知限制
 

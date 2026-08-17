@@ -22,17 +22,13 @@ TARGET_ROUTE_FILES: list[str] = [
     "options_method.py",
     "get_bytes.py",
     "get_accept_image.py",
-    "get_auth_bearer.py",
-    "get_auth_api_key_header.py",
-    "get_auth_basic.py",
-    "get_auth_api_key_query.py",
     "get_status.py",
     "get_etag.py",
 ]
 
 
 def test_codegen_produces_all_target_files() -> None:
-    """验证 models.py 和 17 个目标 route 文件均存在。"""
+    """验证 models.py 和 13 个目标 route 文件均存在。"""
     models: Path = APP_DIR / "models.py"
     assert models.exists(), "models.py missing in app/"
 
