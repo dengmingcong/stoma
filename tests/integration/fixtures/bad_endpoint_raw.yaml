@@ -1,0 +1,16 @@
+openapi: 3.1.0
+info:
+  title: Bad Endpoint Test
+  version: 1.0.0
+paths:
+  /bad:
+    get:
+      operationId: badEndpoint
+      requestBody:
+        content:
+          text/plain:
+            schema:
+              type: array
+      responses:
+        '200':
+          description: OK

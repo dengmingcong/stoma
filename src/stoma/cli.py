@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -25,6 +25,7 @@ app = typer.Typer(
 def make(
     spec: Annotated[Path, typer.Argument(help="OpenAPI 规范文件路径（YAML 或 JSON）")],
     out: Annotated[Path, typer.Option("--out", "-o", help="输出目录路径")] = Path("."),
+    no_format: Annotated[bool, typer.Option("--no-format", help="跳过 ruff format + isort fix")] = False,
 ) -> None:
     """从 OpenAPI 规范生成接口代码。
 
@@ -77,14 +78,20 @@ def make(
             node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
         }
 
+    endpoint_errors: list[dict[str, Any]] = []
     for endpoint in endpoints:
-        file_name, rendered_code = renderer.render(endpoint)
-        file_path = render_to_file(
-            output_dir=out,
-            file_name=file_name,
-            rendered_code=rendered_code,
-        )
-        generated_files.append(file_path)
+        try:
+            file_name, rendered_code = renderer.render(endpoint)
+            file_path = render_to_file(
+                output_dir=out,
+                file_name=file_name,
+                rendered_code=rendered_code,
+            )
+            generated_files.append(file_path)
+        except (OpenAPISchemaError, ValueError, TypeError) as e:
+            endpoint_errors.append(
+                {"method": endpoint.method, "path": endpoint.path, "error_message": str(e)}
+            )
 
     if renderer.multi_media_type_endpoints:
         typer.echo("⚠ 以下 endpoint 有多个 media type，已静默使用第一个（其他被忽略）：", err=True)
@@ -99,6 +106,14 @@ def make(
         for info in renderer.missing_response_models:
             typer.echo(f"  - {info['method']} {info['path']}", err=True)
             typer.echo(f"    缺少: {info['missing_model']}", err=True)
+
+    # 打印 per-endpoint 错误并以非零 exit code 退出
+    if endpoint_errors:
+        typer.echo("⚠ 以下 endpoint 生成失败：", err=True)
+        for info in endpoint_errors:
+            typer.echo(f"  - {info['method']} {info['path']}", err=True)
+            typer.echo(f"    错误: {info['error_message']}", err=True)
+        raise typer.Exit(code=1)
 
     # 输出结果。
     typer.echo(f"生成 models.py + {len(generated_files)} 个 route 文件到 {out}:")
