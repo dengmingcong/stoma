@@ -9,7 +9,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, APIRouter, Body
+from stoma import APIRoute, APIRouter
 
 from .models import ErrorModel, Item, PatchItemRequest
 
