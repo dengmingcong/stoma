@@ -5,7 +5,7 @@ Generated from OpenAPI: get-book
 
 from __future__ import annotations
 
-from .models import Book
+from .models import Book, ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.get("/books/{book-id}")
-class GetBook(APIRoute[Book]):
+class GetBook(APIRoute[Book | ErrorModel]):
     """None。
     """
     book_id: Annotated[str, Field(serialization_alias='book-id')]

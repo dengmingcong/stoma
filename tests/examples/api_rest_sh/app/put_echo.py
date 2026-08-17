@@ -5,7 +5,7 @@ Generated from OpenAPI: put-echo
 
 from __future__ import annotations
 
-from .models import EchoModel
+from .models import EchoModel, ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.put("/")
-class PutEcho(APIRoute[EchoModel]):
+class PutEcho(APIRoute[EchoModel | ErrorModel]):
     """None。
     """
     status: int | None = None

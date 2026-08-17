@@ -5,6 +5,7 @@ Generated from OpenAPI: delete-book
 
 from __future__ import annotations
 
+from .models import ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
@@ -13,7 +14,7 @@ router = APIRouter()
 
 
 @router.delete("/books/{book-id}")
-class DeleteBook(APIRoute):
+class DeleteBook(APIRoute[ErrorModel]):
     """None。
     """
     book_id: Annotated[str, Field(serialization_alias='book-id')]

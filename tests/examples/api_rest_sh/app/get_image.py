@@ -6,13 +6,14 @@ Get an image
 
 from __future__ import annotations
 
+from .models import ErrorModel
 from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
 
 @router.get("/images/{type}")
-class GetImage(APIRoute):
+class GetImage(APIRoute[ErrorModel]):
     """None。
     Get an image
     """

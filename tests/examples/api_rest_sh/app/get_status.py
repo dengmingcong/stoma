@@ -6,6 +6,7 @@ Status code example
 
 from __future__ import annotations
 
+from .models import ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute
@@ -14,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/status/{code}")
-class GetStatus(APIRoute):
+class GetStatus(APIRoute[ErrorModel]):
     """None。
     Status code example
     """

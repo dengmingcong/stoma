@@ -21,7 +21,7 @@ router = APIRouter()
 
 
 @router.{{ method }}("{{ path }}"{% if not upload_as_multipart %}, upload_as_multipart=False{% endif %})
-class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type | join(' | ') }}]{% endif %}):
+class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type }}]{% endif %}):
     """{{ summary | default(operation_id) }}。{{ "\n    " + description if description else "" }}
     """
 {% if param_fields %}

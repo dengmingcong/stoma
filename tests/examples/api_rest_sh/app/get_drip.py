@@ -5,13 +5,14 @@ Generated from OpenAPI: get-drip
 
 from __future__ import annotations
 
+from .models import ErrorModel
 from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
 
 @router.get("/drip")
-class GetDrip(APIRoute):
+class GetDrip(APIRoute[ErrorModel]):
     """Slowly stream bytes。
     """
     numbytes: int | None = None

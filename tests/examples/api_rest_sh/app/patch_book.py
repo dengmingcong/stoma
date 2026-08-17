@@ -6,7 +6,7 @@ Partial update operation supporting both JSON Merge Patch & JSON Patch updates.
 
 from __future__ import annotations
 
-from .models import PatchBookRequest
+from .models import ErrorModel, PatchBookRequest
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header, Body
@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.patch("/books/{book-id}")
-class PatchBook(APIRoute):
+class PatchBook(APIRoute[ErrorModel]):
     """Patch book。
     Partial update operation supporting both JSON Merge Patch & JSON Patch updates.
     """

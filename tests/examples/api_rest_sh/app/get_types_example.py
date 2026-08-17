@@ -6,14 +6,14 @@ Example structured data types
 
 from __future__ import annotations
 
-from .models import TypesModel
+from .models import TypesModel, ErrorModel
 from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
 
 @router.get("/types")
-class GetTypesExample(APIRoute[TypesModel]):
+class GetTypesExample(APIRoute[TypesModel | ErrorModel]):
     """None。
     Example structured data types
     """

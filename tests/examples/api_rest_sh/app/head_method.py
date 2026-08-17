@@ -5,7 +5,7 @@ Generated from OpenAPI: head-method
 
 from __future__ import annotations
 
-from .models import EchoModel
+from .models import EchoModel, ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.head("/head")
-class HeadMethod(APIRoute[EchoModel]):
+class HeadMethod(APIRoute[EchoModel | ErrorModel]):
     """Echo request data。
     """
     status: int | None = None

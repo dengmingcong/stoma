@@ -5,7 +5,7 @@ Generated from OpenAPI: patch-method
 
 from __future__ import annotations
 
-from .models import EchoModel
+from .models import EchoModel, ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.patch("/patch")
-class PatchMethod(APIRoute[EchoModel]):
+class PatchMethod(APIRoute[EchoModel | ErrorModel]):
     """Echo request data。
     """
     status: int | None = None

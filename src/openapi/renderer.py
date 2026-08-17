@@ -125,7 +125,9 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         operation_id = endpoint.operation_id
         class_name = to_pascal_case(operation_id)
         file_name = f"{to_snake(operation_id)}.py"
-        response_type = self._extract_response_info(endpoint.responses, endpoint)
+        # 用户指定：变量名 json_reponse_types（按用户字面意思，含 typo"reponse"）
+        json_reponse_types = self._get_json_response_types(endpoint.responses, endpoint)
+        response_type = " | ".join(json_reponse_types) if json_reponse_types else ""
         body_fields_template = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields, uses_field_import = make_param_fields(endpoint.parameters)
 
@@ -134,7 +136,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         body_import_model: str | None = (
             body_fields_template.import_model if isinstance(body_fields_template, JSONRequestBodyFields) else None
         )
-        models_for_import: list[str] = list(response_type)
+        models_for_import: list[str] = list(json_reponse_types)
         if body_import_model:
             models_for_import.append(body_import_model)
         imported_models = list(dict.fromkeys(models_for_import))
@@ -456,27 +458,21 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         scalar_field = f"body: Annotated[{py_type}, Body(media_type={media_type!r})]"
         return ScalarRequestBodyFields(scalar_field=scalar_field)
 
-    def _extract_response_info(
+    def _get_json_response_types(
         self,
         responses: dict[str, Any] | None,
         endpoint: Endpoint[Any, Any, Any],
     ) -> list[str]:
         """提取响应模型名列表（也是要从 ``.models`` 导入的类名集合）。
 
-        遍历 ``responses`` 的所有键（数字状态码与 ``default`` 一视同仁），
-        按字典插入顺序处理；没有 ``application/json`` 内容的响应会被跳过。
-        命名规则：
+        遍历所有 response 的所有 content media type，匹配 JSON 家族：
+        - ``application/json``
+        - ``application/*+json``（RFC 6839 structured syntax suffix，如
+          ``application/problem+json``、``application/json-patch+json``）
 
-        - ``$ref`` 路径：取末段并 PascalCase 化（对齐 ``datamodel-code-generator``
-          对 ``components.schemas`` key 的自动 PascalCase 行为，例如
-          ``user-profile`` → ``UserProfile``），不消耗 inline 计数器。
-        - Inline 对象：按出现顺序使用 ``{PascalOpId}Response``、
-          ``{PascalOpId}Response1``、``{PascalOpId}Response2`` 命名（对齐
-          ``datamodel-code-generator`` 的 ``use_operation_id_as_name=True``
-          —— 该模式下多状态 inline response 按递增后缀区分）。
-
-        返回结果按 ``responses`` 迭代顺序保序，重复项用 ``dict.fromkeys``
-        去重（保留首次出现的相对位置）。
+        命名规则与之前一致（``$ref`` 取末段 PascalCase；inline object 用
+        ``{PascalOpId}Response`` / ``{PascalOpId}Response{n}``）。返回的 list 后续
+        在 :meth:`render` 中用 ``" | "`` join 成 Union 字符串供模板使用。
 
         :param responses: OpenAPI 响应字典（状态码 → Response 对象），可为
             ``None`` 或空。
@@ -492,7 +488,12 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
         for response in responses.values():
             content = getattr(response, "content", None) or {}
-            json_content = content.get("application/json")
+            # 修复 1：匹配所有 JSON 家族（application/json + application/*+json）
+            json_content = next(
+                (mt_obj for mt, mt_obj in content.items()
+                 if mt == "application/json" or mt.endswith("+json")),
+                None,
+            )
             if not json_content:
                 continue
             schema = getattr(json_content, "media_type_schema", None)
