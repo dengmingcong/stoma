@@ -15,6 +15,8 @@ from __future__ import annotations
 import shutil
 import subprocess
 import warnings
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -68,6 +70,47 @@ class _ReferenceLike(Protocol):
     ref: str
 
 
+class GenerationErrorKind(str, Enum):  # noqa: UP042
+    """Codegen 错误的分类。
+
+    :var MULTI_MEDIA_TYPE: endpoint 有多个 media type，已静默使用第一个。
+    :vartype MULTI_MEDIA_TYPE: str
+    :var MISSING_RESPONSE_MODEL: endpoint 引用的 Response 模型未在 ``models.py`` 中找到，已 fallback 到 generic。
+    :vartype MISSING_RESPONSE_MODEL: str
+    :var SCHEMA_UNSUPPORTED: spec 形态不被 stoma 当前实现支持，已跳过该 endpoint。
+    :vartype SCHEMA_UNSUPPORTED: str
+    """
+
+    MULTI_MEDIA_TYPE = "multi_media_type"
+    MISSING_RESPONSE_MODEL = "missing_response_model"
+    SCHEMA_UNSUPPORTED = "schema_unsupported"
+
+
+@dataclass(frozen=True)
+class GenerationError:
+    """单条 codegen 错误记录。
+
+    :var method: HTTP 方法（GET / POST / ...）。
+    :vartype method: str
+    :var path: 路径模板（如 ``/books/{book_id}``）。
+    :vartype path: str
+    :var kind: 错误分类。
+    :vartype kind: GenerationErrorKind
+    :var message: 人类可读的错误消息。
+    :vartype message: str
+    """
+
+    method: str
+    path: str
+    kind: GenerationErrorKind
+    message: str
+
+    @property
+    def location(self) -> str:
+        """定位字符串，``"<METHOD> <PATH>"`` 形式。"""
+        return f"{self.method} {self.path}"
+
+
 class EndpointRenderer[ReferenceT: _ReferenceLike]:
     """Endpoint 路由文件渲染器（按 spec 版本注入 Reference 类型）。
 
@@ -106,12 +149,12 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             trim_blocks=True,
             lstrip_blocks=True,
         )
-        self.multi_media_type_endpoints: list[dict[str, Any]] = []
+        # 统一错误汇：soft warning（多 media type / 缺 Response 模型）
+        # 与 hard failure（spec 不被支持）通过 kind 区分；cli 在末尾按 kind 分组打印。
+        self.errors: list[GenerationError] = []
         # 由 cli 在生成 models.py 后注入可用 class 名字集合
         # 若为 None 则不检查（向后兼容）
         self.available_models: set[str] | None = None
-        # Response 模型在 models.py 中找不到时记录，与 multi_media_type_endpoints 同模式
-        self.missing_response_models: list[dict[str, Any]] = []
 
     def render(self, endpoint: Endpoint[Any, Any, Any]) -> tuple[str, str]:
         """渲染 endpoint 的 route.py 内容。
@@ -233,13 +276,16 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         if len(content) != 1:
             all_media_types = list(content.keys())
             media_type, _ = next(iter(content.items()))
-            self.multi_media_type_endpoints.append(
-                {
-                    "method": endpoint.method,
-                    "path": endpoint.path,
-                    "all_media_types": all_media_types,
-                    "selected_media_type": media_type,
-                }
+            self.errors.append(
+                GenerationError(
+                    method=endpoint.method,
+                    path=endpoint.path,
+                    kind=GenerationErrorKind.MULTI_MEDIA_TYPE,
+                    message=(
+                        f"endpoint 有多个 media type，已静默使用 {media_type!r}（其他被忽略："
+                        f"{', '.join(all_media_types)}）"
+                    ),
+                )
             )
         else:
             media_type, _ = next(iter(content.items()))
@@ -509,12 +555,13 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                     name = f"{operation_id_pascal}Response{inline_counter - 1}"
 
             if self.available_models is not None and name not in self.available_models:
-                self.missing_response_models.append(
-                    {
-                        "method": endpoint.method,
-                        "path": endpoint.path,
-                        "missing_model": name,
-                    }
+                self.errors.append(
+                    GenerationError(
+                        method=endpoint.method,
+                        path=endpoint.path,
+                        kind=GenerationErrorKind.MISSING_RESPONSE_MODEL,
+                        message=f"缺少 Response 模型 {name!r}（已跳过 import + generic）",
+                    )
                 )
                 continue
 
