@@ -27,8 +27,8 @@ from __future__ import annotations
 
 import pytest
 
-from stoma.params import UploadFile
 from stoma.client import Client
+from stoma.params import UploadFile
 from tests.examples.api_rest_sh.app.delete_book import DeleteBook
 from tests.examples.api_rest_sh.app.get_accept_image import GetAcceptImage
 from tests.examples.api_rest_sh.app.get_anything_path import GetAnythingPath
@@ -37,12 +37,12 @@ from tests.examples.api_rest_sh.app.get_etag import GetEtag
 from tests.examples.api_rest_sh.app.get_method import GetMethod
 from tests.examples.api_rest_sh.app.get_status import GetStatus
 from tests.examples.api_rest_sh.app.head_method import HeadMethod
+from tests.examples.api_rest_sh.app.models import EchoModel, Method, TokenResponseBody
 from tests.examples.api_rest_sh.app.options_method import OptionsMethod
 from tests.examples.api_rest_sh.app.patch_book import PatchBook
 from tests.examples.api_rest_sh.app.post_login import PostLogin
 from tests.examples.api_rest_sh.app.post_method import PostMethod
 from tests.examples.api_rest_sh.app.post_upload import PostUpload
-from tests.examples.api_rest_sh.app.models import EchoModel, TokenResponseBody, Method
 
 
 def test_get_method(e2e_client: Client) -> None:
