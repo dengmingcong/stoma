@@ -85,6 +85,14 @@ def build_response[T](api_route: APIRoute[T], api_response: APIResponse) -> Resp
     if api_response.status == 204:
         return Response[T](raw=api_response, validated=None)
 
+    # 2b. 空 body（204 / HEAD / 304 / 其他空响应）→ 跳过 JSON 解析
+    # 调用方按 raw.status + raw.text() 自行判断响应是空还是具体 model
+    try:
+        if not api_response.body():
+            return Response[T](raw=api_response, validated=None)
+    except Exception:
+        pass
+
     # 3. 仅当 content-type 为 JSON 时才解析并填充 validated
     if is_json_media_type(media_type):
         try:
