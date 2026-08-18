@@ -6,9 +6,9 @@ Echo the parsed request body as the complete response body.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
-
 from .models import ErrorModel, PostBodyRequest
+from typing import Annotated
+from stoma import APIRouter, APIRoute, Body
 
 router = APIRouter()
 

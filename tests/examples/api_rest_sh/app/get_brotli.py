@@ -5,9 +5,8 @@ Generated from OpenAPI: get-brotli
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
-
 from .models import ErrorModel
+from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 

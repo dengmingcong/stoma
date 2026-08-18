@@ -5,13 +5,10 @@ Generated from OpenAPI: get-item
 
 from __future__ import annotations
 
+from .models import Item, ErrorModel
 from typing import Annotated
-
 from pydantic import Field
-
-from stoma import APIRoute, APIRouter
-
-from .models import ErrorModel, Item
+from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
@@ -21,3 +18,4 @@ class GetItem(APIRoute[Item | ErrorModel]):
     """Get a sample item。"""
 
     item_id: Annotated[str, Field(serialization_alias="item-id")]
+    """Item identifier"""

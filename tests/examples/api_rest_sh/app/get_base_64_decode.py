@@ -5,9 +5,8 @@ Generated from OpenAPI: get-base64-decode
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
-
-from .models import ErrorModel, GetBase64DecodeResponse
+from .models import GetBase64DecodeResponse, ErrorModel
+from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 

@@ -5,9 +5,8 @@ Generated from OpenAPI: get-etag
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
-
 from .models import ErrorModel
+from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
@@ -17,3 +16,4 @@ class GetEtag(APIRoute[ErrorModel]):
     """Exercise ETag conditional headers。"""
 
     etag: str
+    """Opaque ETag value to return"""

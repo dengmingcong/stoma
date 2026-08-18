@@ -6,9 +6,8 @@ Streams a bounded Server-Sent Events feed with a simple `type`, `user.id`, `mess
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
-
 from .models import ErrorModel
+from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
@@ -20,3 +19,4 @@ class GetEvents(APIRoute[ErrorModel]):
     """
 
     count: int | None = None
+    """Number of events to emit"""

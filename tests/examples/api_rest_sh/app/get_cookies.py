@@ -5,9 +5,8 @@ Generated from OpenAPI: get-cookies
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
-
-from .models import ErrorModel, GetCookiesResponse
+from .models import GetCookiesResponse, ErrorModel
+from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 

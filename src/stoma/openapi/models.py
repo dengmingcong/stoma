@@ -25,6 +25,7 @@ from stoma.openapi.version import SpecVersion
 
 __all__ = [
     "Endpoint",
+    "FieldDecl",
     "JSONRequestBodyFields",
     "UrlencodedFormRequestBodyFields",
     "MultipartFormRequestBodyFields",
@@ -32,6 +33,31 @@ __all__ = [
     "ScalarRequestBodyFields",
     "RequestBodyFields",
 ]
+
+
+@dataclass(frozen=True)
+class FieldDecl:
+    """单一字段的渲染产物（``line`` + 字段 docstring）。
+
+    ``line`` 是字段声明字符串（含 ``Annotated[...]`` / 默认值等），模板按
+    原样写入；``docstring`` 非 ``None`` 时模板在 ``line`` 下一行追加字段
+    docstring（``\"\"\"...\"\"\"`` 或 ``\"\"\"\\n...\\n\"\"\"``）。没有
+    description / example 时 ``docstring`` 为 ``None``，模板跳过。
+
+    docstring 文本由 :func:`stoma.openapi.fields.build_field_value`
+    拼接（1:1 复刻 dmcg 0.72.2 ``model/base.py:887-921`` ``docstring``
+    property），格式由 :func:`stoma.openapi.fields.build_field_docstring`
+    套上三引号（1:1 复刻 dmcg ``model/base.py:181-214`` ``format_docstring``）。
+
+    :var line: 字段声明字符串（不含末尾换行）。
+    :vartype line: str
+    :var docstring: 字段 docstring 完整字符串（含三引号）；无 description
+        和 example 时为 ``None``，模板条件跳过。
+    :vartype docstring: str | None
+    """
+
+    line: str
+    docstring: str | None = None
 
 
 # 5 种 body 形态对应的 dataclass 子类联合，供 renderer 类型签名简化。
@@ -69,10 +95,12 @@ class UrlencodedFormRequestBodyFields:
     Content-Type 由 Playwright 根据 ``form`` 参数自动派生（urlencoded），
     renderer 不注入。
 
-    :var form_text_fields: form 标量字段声明字符串列表。
+    :var form_text_fields: form 标量字段 :class:`FieldDecl` 列表，
+        由 :func:`stoma.openapi.fields.build_form_field_line` 派生，
+        ``docstring`` 非 ``None`` 时模板在 ``line`` 下一行追加字段 docstring。
     """
 
-    form_text_fields: list[str] = field(default_factory=list)
+    form_text_fields: list[FieldDecl] = field(default_factory=list)
 
 
 @dataclass
@@ -83,12 +111,14 @@ class MultipartFormRequestBodyFields:
     renderer 不注入——若用户显式提供 ``content_type`` Header field，stoma 不干预，
     由 Playwright 自行处理。
 
-    :var form_text_fields: form 标量字段列表。
-    :var form_file_fields: file 字段列表（裸 ``UploadFile``，无 ``Form()`` marker）。
+    :var form_text_fields: form 标量字段 :class:`FieldDecl` 列表。
+    :var form_file_fields: file 字段 :class:`FieldDecl` 列表（裸 ``UploadFile``，
+        无 ``Form()`` marker）；由 :func:`stoma.openapi.fields.build_upload_file_field_line`
+        派生。
     """
 
-    form_text_fields: list[str] = field(default_factory=list)
-    form_file_fields: list[str] = field(default_factory=list)
+    form_text_fields: list[FieldDecl] = field(default_factory=list)
+    form_file_fields: list[FieldDecl] = field(default_factory=list)
 
 
 @dataclass
@@ -103,11 +133,13 @@ class BinaryRequestBodyFields:
 
     :var media_type: 媒体类型字符串（如 ``"application/octet-stream"`` / ``"image/png"``），
         供 renderer 生成 Content-Type header field。
-    :var binary_file_field: 单一文件字段声明字符串（如 ``body: UploadFile``）。
+    :var binary_file_field: 单一文件 :class:`FieldDecl`（如 ``body: UploadFile``），
+        由 :func:`stoma.openapi.fields.build_upload_file_field_line` 派生（schema
+        固定为 ``UploadFile``，仅 name 由 renderer 决定）；spec 未声明 binary 时为 ``None``。
     """
 
     media_type: str | None = None
-    binary_file_field: str | None = None
+    binary_file_field: FieldDecl | None = None
 
 
 @dataclass
@@ -121,10 +153,13 @@ class ScalarRequestBodyFields:
     把 media_type 嵌入 ``Body(media_type=...)``，由 client 通过 ``param_info.media_type``
     派生 Content-Type header（不走 Header field 路径）。
 
-    :var scalar_field: 单字段声明字符串（如 ``body: Annotated[int, Body(media_type="application/json")]``）。
+    :var scalar_field: 单字段 :class:`FieldDecl`（如
+        ``body: Annotated[int, Body(media_type="application/json")]``），
+        由 :func:`stoma.openapi.fields.build_scalar_body_line` 派生；
+        空 schema / 不支持 primitive 时为 ``None``。
     """
 
-    scalar_field: str | None = None
+    scalar_field: FieldDecl | None = None
 
 
 class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseModel](

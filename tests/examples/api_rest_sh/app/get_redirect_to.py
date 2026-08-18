@@ -5,9 +5,8 @@ Generated from OpenAPI: get-redirect-to
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
-
 from .models import ErrorModel
+from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
@@ -17,4 +16,6 @@ class GetRedirectTo(APIRoute[ErrorModel]):
     """Redirect to a supplied URL。"""
 
     url: str
+    """Absolute or relative redirect target"""
     status_code: int | None = None
+    """3xx redirect status code to send"""

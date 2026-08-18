@@ -2560,3 +2560,433 @@ paths:
         # ``get_endpoints()`` 必须先调,``has_json_payloads`` 由它内部计算。
         parser.get_endpoints()
         assert parser.has_json_payloads is True, "parser.has_json_payloads 应为 True ——4xx/5xx JSON 响应必须纳入判定"
+
+
+# ============================================================
+# Field Docstring Integration
+# ============================================================
+
+
+class TestBodyFieldDocstring:
+    """Body 字段（urlencoded form / multipart form / scalar body / binary body）字段 docstring 端到端渲染测试。
+
+    4 类 body 字段 × 4 种 docstring 形态：
+
+    1. 仅有 description（单行三引号格式）
+    2. description + 1 example（多行三引号，含 ``Example: <repr>``）
+    3. description + 多个 examples（多行三引号 + 项目符号列表）
+    4. 既无 description 也无 example（不渲染 docstring 行）
+
+    验证 docstring 文本存在（不要求完全匹配字符串，避免过度耦合）。
+    """
+
+    @staticmethod
+    def _build_spec(media_type: str, schema_block: str, components_block: str = "") -> str:
+        """构造带 requestBody 的 OpenAPI 3.1 模板。
+
+        :param schema_block: 完整的 schema body（不含 ``schema:`` 前缀）。
+        """
+        return f"""\
+openapi: 3.1.0
+info:
+  title: Body Docstring API
+  version: "1.0.0"
+paths:
+  /resource:
+    post:
+      operationId: postResource
+      summary: 测试
+      requestBody:
+        required: true
+        content:
+          {media_type}:
+            schema:
+{schema_block}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+{components_block}
+"""
+
+    @classmethod
+    def _object_form_schema(cls, fields_block: str) -> str:
+        """构造 ``type: object`` 表单 schema（含 properties 缩进）。"""
+        return f"              type: object\n              properties:\n{fields_block}"
+
+    @staticmethod
+    def _run(cli_runner: Any, spec: str, out_dir: Path) -> str:
+        """运行 CLI 并返回 route 文件内容。"""
+        out_dir.mkdir(parents=True, exist_ok=True)
+        spec_file = out_dir / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
+        assert result.exit_code == 0, result.output
+        return (out_dir / "post_resource.py").read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize(
+        ("media_type", "fields_block", "field_token", "docstring_token"),
+        [
+            (
+                "application/x-www-form-urlencoded",
+                '                username:\n                  type: string\n                  description: "用户名"\n',
+                "username: Annotated[str, Form()]",
+                '"""用户名"""',
+            ),
+            (
+                "multipart/form-data",
+                "                avatar:\n"
+                "                  type: string\n"
+                "                  format: binary\n"
+                '                  description: "头像文件"\n',
+                "avatar: UploadFile",
+                '"""头像文件"""',
+            ),
+        ],
+    )
+    def test_form_field_description_only_renders_single_line(
+        self,
+        cli_runner: Any,
+        tmp_path: Path,
+        media_type: str,
+        fields_block: str,
+        field_token: str,
+        docstring_token: str,
+    ) -> None:
+        """form 字段（urlencoded 标量 + multipart file）仅有 description 时渲染单行 docstring。"""
+        spec = self._build_spec(media_type=media_type, schema_block=self._object_form_schema(fields_block))
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        assert field_token in content, content
+        assert docstring_token in content, content
+
+    @pytest.mark.parametrize(
+        ("media_type", "fields_block", "field_token", "description_token", "example_token"),
+        [
+            (
+                "application/x-www-form-urlencoded",
+                "                username:\n"
+                "                  type: string\n"
+                '                  description: "用户名"\n'
+                "                  example: alice\n",
+                "username: Annotated[str, Form()]",
+                "用户名",
+                "Example: 'alice'",
+            ),
+            (
+                "multipart/form-data",
+                "                avatar:\n"
+                "                  type: string\n"
+                "                  format: binary\n"
+                '                  description: "头像文件"\n'
+                "                  example: <binary>\n",
+                "avatar: UploadFile",
+                "头像文件",
+                "Example: '<binary>'",
+            ),
+        ],
+    )
+    def test_form_field_description_and_single_example_renders_multiline(
+        self,
+        cli_runner: Any,
+        tmp_path: Path,
+        media_type: str,
+        fields_block: str,
+        field_token: str,
+        description_token: str,
+        example_token: str,
+    ) -> None:
+        """form 字段含 description + 1 example 时，docstring 是多行 + ``Example: <repr>``。"""
+        spec = self._build_spec(media_type=media_type, schema_block=self._object_form_schema(fields_block))
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        assert field_token in content
+        assert description_token in content
+        assert example_token in content
+
+    @pytest.mark.parametrize(
+        ("media_type", "fields_block", "field_token", "description_token"),
+        [
+            (
+                "application/x-www-form-urlencoded",
+                "                username:\n"
+                "                  type: string\n"
+                '                  description: "用户名"\n'
+                "                  examples:\n"
+                "                    - alice\n"
+                "                    - bob\n"
+                "                    - carol\n",
+                "username: Annotated[str, Form()]",
+                "用户名",
+            ),
+            (
+                "multipart/form-data",
+                "                avatar:\n"
+                "                  type: string\n"
+                "                  format: binary\n"
+                '                  description: "头像文件"\n'
+                "                  examples:\n"
+                "                    - <jpeg>\n"
+                "                    - <png>\n",
+                "avatar: UploadFile",
+                "头像文件",
+            ),
+        ],
+    )
+    def test_form_field_description_and_multiple_examples_renders_bullets(
+        self,
+        cli_runner: Any,
+        tmp_path: Path,
+        media_type: str,
+        fields_block: str,
+        field_token: str,
+        description_token: str,
+    ) -> None:
+        """form 字段含 description + 多个 examples 时，docstring 是多行 + 项目符号列表。"""
+        spec = self._build_spec(media_type=media_type, schema_block=self._object_form_schema(fields_block))
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        assert field_token in content
+        assert description_token in content
+        assert "Examples:" in content
+
+    @pytest.mark.parametrize(
+        ("media_type", "fields_block", "field_token"),
+        [
+            (
+                "application/x-www-form-urlencoded",
+                "                username:\n                  type: string\n",
+                "username: Annotated[str, Form()]",
+            ),
+            (
+                "multipart/form-data",
+                "                avatar:\n                  type: string\n                  format: binary\n",
+                "avatar: UploadFile",
+            ),
+        ],
+    )
+    def test_form_field_no_description_no_example_no_docstring(
+        self,
+        cli_runner: Any,
+        tmp_path: Path,
+        media_type: str,
+        fields_block: str,
+        field_token: str,
+    ) -> None:
+        """form 字段既无 description 也无 example 时，docstring 为 None，模板条件跳过。"""
+        spec = self._build_spec(media_type=media_type, schema_block=self._object_form_schema(fields_block))
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        assert field_token in content
+        compile(content, "post_resource.py", "exec")
+
+    def test_scalar_body_description_only_renders_single_line(self, cli_runner: Any, tmp_path: Path) -> None:
+        """scalar JSON integer body 仅有 description 时渲染单行 docstring。"""
+        spec = self._build_spec(
+            media_type="application/json",
+            schema_block='              type: integer\n              description: "分数"\n',
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        assert "body: Annotated[int, Body(media_type='application/json')]" in content
+        assert '"""分数"""' in content
+
+    def test_scalar_body_description_and_single_example_renders_multiline(
+        self, cli_runner: Any, tmp_path: Path
+    ) -> None:
+        """scalar body 含 description + 1 example 时，docstring 多行 + ``Example: <repr>``。"""
+        spec = self._build_spec(
+            media_type="application/json",
+            schema_block='              type: integer\n              description: "分数"\n              example: 100\n',
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        assert "body: Annotated[int, Body(media_type='application/json')]" in content
+        assert "分数" in content
+        assert "Example: 100" in content
+
+    def test_scalar_body_description_and_multiple_examples_renders_bullets(
+        self, cli_runner: Any, tmp_path: Path
+    ) -> None:
+        """scalar body 含 description + 多 examples 时，docstring 多行 + 项目符号列表。"""
+        spec = self._build_spec(
+            media_type="application/json",
+            schema_block=(
+                "              type: integer\n"
+                '              description: "分数"\n'
+                "              examples:\n"
+                "                - 100\n"
+                "                - 200\n"
+                "                - 300\n"
+            ),
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        assert "body: Annotated[int, Body(media_type='application/json')]" in content
+        assert "分数" in content
+        assert "Examples:" in content
+        assert "- 100" in content
+        assert "- 200" in content
+        assert "- 300" in content
+
+    def test_scalar_body_no_description_no_example_no_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """scalar body 既无 description 也无 example 时，docstring 为 None，模板条件跳过。"""
+        spec = self._build_spec(
+            media_type="application/json",
+            schema_block="              type: integer\n",
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        assert "body: Annotated[int, Body(media_type='application/json')]" in content
+        compile(content, "post_resource.py", "exec")
+
+    def test_binary_body_no_description_no_example_no_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """binary body schema 固定为 ``string + format=binary``，通常无 description/example。
+
+        spec 中即使声明 description 也会经 builder 处理，验证 docstring 仍走
+        ``build_upload_file_field_line`` 路径——空 docstring 时模板不插空行。
+        """
+        spec_yaml = """\
+openapi: 3.1.0
+info:
+  title: Binary API
+  version: "1.0.0"
+paths:
+  /upload:
+    post:
+      operationId: uploadFile
+      summary: 上传
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: ok
+"""
+        out_dir = tmp_path / "out"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        spec_file = out_dir / "spec.yaml"
+        spec_file.write_text(spec_yaml, encoding="utf-8")
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "upload_file.py").read_text(encoding="utf-8")
+        assert "body: UploadFile" in content
+        assert "upload_as_multipart=False" in content
+        compile(content, "upload_file.py", "exec")
+
+
+# ============================================================
+# Endpoint Docstring — summary is None
+# ============================================================
+
+
+class TestClassDocstringWithoutSummary:
+    """端点 summary=None（OpenAPI spec 中未声明 summary 字段）时的 class docstring 回归测试。
+
+    根因：Jinja2 ``default`` filter 只对 **undefined** 变量生效，不对 ``None`` 生效。
+    当 spec 里 endpoint 没有 ``summary`` 字段时，parser 把 summary 设为 ``None``，
+    Jinja2 的 ``{{ summary | default(operation_id) }}`` 把 ``None`` 字面渲染成字符串，
+    再拼上 ``。`` 变成字面量 ``None`` 加句号。
+
+    修复：``{{ summary or operation_id }}`` 在 Jinja2 中是标准 idiom，
+    当 summary 为 ``None``（或任何 falsy 值）时回退到 operation_id。
+
+    覆盖三种情况：
+
+    1. summary=None → class docstring 不含 ``None`` 字面量
+    2. summary="实际摘要" → class docstring 含实际摘要文本
+    3. summary=None + description="实际描述" → 描述在多行 docstring 中正常显示
+    """
+
+    @staticmethod
+    def _build_spec(
+        path: str,
+        method: str,
+        operation_id: str,
+        summary: str | None,
+        description: str | None = None,
+    ) -> str:
+        """构造一个 OpenAPI 3.1 规范，summary / description 可为 None。"""
+        summary_line = f"      summary: {summary}" if summary else ""
+        description_line = f"      description: {description}" if description else ""
+        return f"""\
+openapi: 3.1.0
+info:
+  title: Docstring API
+  version: "1.0.0"
+paths:
+  {path}:
+    {method}:
+      operationId: {operation_id}
+{summary_line}
+{description_line}
+      responses:
+        "200":
+          description: ok
+"""
+
+    @staticmethod
+    def _run(cli_runner: Any, spec: str, out_dir: Path) -> str:
+        """运行 CLI 并返回 route 文件内容。"""
+        out_dir.mkdir(parents=True, exist_ok=True)
+        spec_file = out_dir / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
+        assert result.exit_code == 0, result.output
+        return (out_dir / "get_resource.py").read_text(encoding="utf-8")
+
+    def test_summary_none_no_literal_none_in_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """summary=None 时，class docstring 不含 ``None`` 字面量（回退到 operation_id）。
+
+        场景：OpenAPI spec 中 endpoint 未声明 summary 字段，
+        parser.summary 收到 None，模板渲染 ``getResource`` 而不是 ``None``。
+        """
+        spec = self._build_spec(
+            path="/resource",
+            method="get",
+            operation_id="getResource",
+            summary=None,
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        # module docstring（第 1 行）不应出现 "None" 字面量
+        assert '"""None' not in content, "模块 docstring 不应出现 None 字面量"
+        # class docstring（第 25 行附近）也不应出现 "None" 字面量
+        # operation_id 回退值 "getResource" 应该出现
+        assert "getResource" in content, "summary=None 时应回退到 operation_id"
+        compile(content, "get_resource.py", "exec")
+
+    def test_summary_provided_uses_summary_text(self, cli_runner: Any, tmp_path: Path) -> None:
+        """summary 有值时，class docstring 使用该值而不是 operation_id。"""
+        spec = self._build_spec(
+            path="/resource",
+            method="get",
+            operation_id="getResource",
+            summary="获取资源详情",
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        assert "获取资源详情" in content, "summary 有值时应使用 summary 文本"
+        assert '"""None' not in content, "summary 有值时也不应出现 None 字面量"
+        compile(content, "get_resource.py", "exec")
+
+    def test_summary_none_with_description_renders_multiline_docstring(
+        self, cli_runner: Any, tmp_path: Path
+    ) -> None:
+        """summary=None 但有 description 时，多行 docstring 正确显示 description 内容。
+
+        验证 description 不被 summary=None 的字面量污染。
+        """
+        spec = self._build_spec(
+            path="/resource",
+            method="get",
+            operation_id="getResource",
+            summary=None,
+            description="这是资源描述",
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        # description 文本应该出现
+        assert "这是资源描述" in content, "description 有值时应出现在 docstring 中"
+        # 不应有 None 字面量
+        assert '"""None' not in content, "summary=None 时不应出现 None 字面量"
+        compile(content, "get_resource.py", "exec")

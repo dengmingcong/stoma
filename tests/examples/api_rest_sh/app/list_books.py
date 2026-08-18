@@ -1,17 +1,16 @@
-"""None。
+"""list-books。
 
 Generated from OpenAPI: list-books
 """
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
-
-from .models import ErrorModel, ListBooksResponse
+from .models import ListBooksResponse, ErrorModel
+from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
 
 @router.get("/books")
 class ListBooks(APIRoute[ListBooksResponse | ErrorModel]):
-    """None。"""
+    """list-books。"""

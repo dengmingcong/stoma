@@ -5,9 +5,8 @@ Generated from OpenAPI: get-relative-redirect
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
-
 from .models import ErrorModel
+from stoma import APIRouter, APIRoute
 
 router = APIRouter()
 
@@ -17,3 +16,4 @@ class GetRelativeRedirect(APIRoute[ErrorModel]):
     """Redirect a configurable number of times。"""
 
     n: int
+    """Number of redirects to follow before reaching /get"""

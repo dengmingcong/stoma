@@ -27,6 +27,7 @@ from pydantic.alias_generators import to_snake
 from stoma.exceptions import OpenAPISchemaError
 from stoma.openapi.fields import (
     build_form_field_line,
+    build_scalar_body_line,
     build_upload_file_field_line,
     resolve_array_type,
 )
@@ -34,6 +35,7 @@ from stoma.openapi.media_type import is_json_media_type
 from stoma.openapi.models import (
     BinaryRequestBodyFields,
     Endpoint,
+    FieldDecl,
     JSONRequestBodyFields,
     MultipartFormRequestBodyFields,
     RequestBodyFields,
@@ -206,7 +208,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         # :func:`serialize_header_params` 透传给 Playwright。
         content_type_header = build_content_type_header(header_fields, body_template_vars["media_type"])
         if content_type_header is not None:
-            header_fields.append(content_type_header)
+            header_fields.append(FieldDecl(line=content_type_header))
             uses_field_import = uses_field_import or not is_snake_case("Content-Type")
 
         # body 字段（非 snake_case 时含 ``Field(serialization_alias=)``）也会触发 Field import。
@@ -390,10 +392,14 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         - 非 snake_case 字段名自动追加 ``Field(serialization_alias=...)``
           保留原名（:func:`build_form_field_line` 已处理）。
 
+        每个 property 的 ``description`` / ``example`` / ``examples`` 也被提取并
+        传给 :func:`stoma.openapi.fields.build_form_field_line`，模板按
+        :class:`FieldDecl` 解包渲染字段 docstring（与 dmcg 1:1 对齐）。
+
         :param expanded_schema_dict: jsonref 展开后的 schema 字典，可能为 ``None``。
         :return: :class:`UrlencodedFormRequestBodyFields`。
         """
-        form_text_fields: list[str] = []
+        form_text_fields: list[FieldDecl] = []
         if expanded_schema_dict is None:
             return UrlencodedFormRequestBodyFields(form_text_fields=form_text_fields)
         properties = expanded_schema_dict.get("properties") or {}
@@ -416,7 +422,15 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 py_type = resolve_array_type(prop_schema)
             else:
                 py_type = python_type_name(prop_type)
-            form_text_fields.append(build_form_field_line(prop_name, py_type))
+            form_text_fields.append(
+                build_form_field_line(
+                    prop_name,
+                    py_type,
+                    description=prop_schema.get("description"),
+                    example=prop_schema.get("example"),
+                    examples=prop_schema.get("examples"),
+                )
+            )
 
         return UrlencodedFormRequestBodyFields(form_text_fields=form_text_fields)
 
@@ -428,14 +442,17 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
         遍历 ``properties``：
 
-        - ``format == "binary"`` → ``<name>: UploadFile`` 进入 ``form_file_fields``；
+        - ``format == "binary`` → ``<name>: UploadFile`` 进入 ``form_file_fields``；
         - 其他 primitive → ``<name>: Annotated[T, Form()]`` 进入 ``form_text_fields``。
+
+        每个 property 的 ``description`` / ``example`` / ``examples`` 也被提取并
+        传给对应 builder，模板按 :class:`FieldDecl` 解包渲染字段 docstring。
 
         :param expanded_schema_dict: jsonref 展开后的 schema 字典，可能为 ``None``。
         :return: :class:`MultipartFormRequestBodyFields`（无 content_type，Playwright 自动设置）。
         """
-        form_text_fields: list[str] = []
-        form_file_fields: list[str] = []
+        form_text_fields: list[FieldDecl] = []
+        form_file_fields: list[FieldDecl] = []
         if expanded_schema_dict is None:
             return MultipartFormRequestBodyFields(
                 form_text_fields=form_text_fields,
@@ -447,13 +464,28 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             prop_format = prop_schema.get("schema_format", "") or prop_schema.get("format", "")
             prop_type = prop_schema.get("type", "str")
             if prop_format == "binary":
-                form_file_fields.append(build_upload_file_field_line(prop_name))
+                form_file_fields.append(
+                    build_upload_file_field_line(
+                        prop_name,
+                        description=prop_schema.get("description"),
+                        example=prop_schema.get("example"),
+                        examples=prop_schema.get("examples"),
+                    )
+                )
                 continue
             if prop_type == "array":
                 py_type = resolve_array_type(prop_schema)
             else:
                 py_type = python_type_name(prop_type)
-            form_text_fields.append(build_form_field_line(prop_name, py_type))
+            form_text_fields.append(
+                build_form_field_line(
+                    prop_name,
+                    py_type,
+                    description=prop_schema.get("description"),
+                    example=prop_schema.get("example"),
+                    examples=prop_schema.get("examples"),
+                )
+            )
 
         return MultipartFormRequestBodyFields(
             form_text_fields=form_text_fields,
@@ -472,11 +504,18 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         （由 :class:`BinaryRequestBodyFields` 类型本身表达，:func:`flatten_body_fields`
         拍平时固定为 ``False``）。
 
+        Binary body 的 schema 没有 description / example / examples 字段
+        （OpenAPI 3.0 / 3.1 spec 均未声明——只有 ``string + format=binary``），
+        所以 ``docstring`` 始终为 ``None``，但为保持与其它 body 字段的对齐语义
+        （也通过 builder 派生 :class:`FieldDecl`），仍走
+        :func:`stoma.openapi.fields.build_upload_file_field_line` 包装。
+
         :param media_type: 媒体类型字符串（用于 Content-Type header 派生）。
         :return: :class:`BinaryRequestBodyFields`。
         """
+        binary_file_field = build_upload_file_field_line("body")
         return BinaryRequestBodyFields(
-            binary_file_field="body: UploadFile",
+            binary_file_field=binary_file_field,
             media_type=media_type,
         )
 
@@ -496,6 +535,10 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         ``param_info.media_type`` 派生 Content-Type header——不走 Header field 路径，
         因为 scalar body 用 ``Body()`` 路径而非 ``Header()`` 路径传递 Content-Type。
 
+        schema 的 ``description`` / ``example`` / ``examples`` 也被提取并传入
+        :func:`stoma.openapi.fields.build_scalar_body_line`，由 builder 派生字段
+        docstring（与 dmcg 1:1 对齐）。
+
         :param expanded_schema_dict: 展开后的 schema 字典，可能为 ``None``。
         :param media_type: 媒体类型字符串，嵌入 ``Body(media_type=...)``。
         :return: :class:`ScalarRequestBodyFields`。
@@ -511,7 +554,13 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             )
             raise OpenAPISchemaError(msg)
         py_type = python_type_name(str(schema_type))
-        scalar_field = f"body: Annotated[{py_type}, Body(media_type={media_type!r})]"
+        scalar_field = build_scalar_body_line(
+            py_type,
+            media_type,
+            description=expanded_schema_dict.get("description"),
+            example=expanded_schema_dict.get("example"),
+            examples=expanded_schema_dict.get("examples"),
+        )
         return ScalarRequestBodyFields(scalar_field=scalar_field)
 
     def _get_json_response_types(

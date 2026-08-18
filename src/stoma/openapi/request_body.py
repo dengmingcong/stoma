@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from stoma.openapi.models import (
     BinaryRequestBodyFields,
+    FieldDecl,
     JSONRequestBodyFields,
     MultipartFormRequestBodyFields,
     RequestBodyFields,
@@ -26,6 +27,11 @@ def flatten_body_fields(body_fields: RequestBodyFields | None) -> dict[str, Any]
     """把 body fields 子类拍平为 template 变量字典。
 
     NONE 路径返回空字典（所有 body 块条件不成立，自动跳过）。
+
+    4 种 body 字段（``form_text_fields`` / ``form_file_fields`` / ``scalar_field`` /
+    ``binary_file_field``）的值是 :class:`FieldDecl`（含 ``line`` + 可选
+    ``docstring``），模板按字段解包渲染。NONE 路径返回空 dict 时所有 body 块
+    模板条件跳过，无需任何特殊处理。
 
     ``media_type`` 字段仅在 binary / scalar 子类有值，供
     :func:`src.openapi.parameters.build_content_type_header` 派生 Content-Type
@@ -110,16 +116,20 @@ def is_body_fields_use_field(body_template_vars: dict[str, Any]) -> bool:
     ``uses_field_import`` 决定是否加 import，所以 body-only Field 用法
     需要在 render 阶段显式翻起该标志。
 
+    检测从 ``FieldDecl.line`` 取声明字符串，再判断是否含 ``Field(`` 子串——
+    即使 Phase 2 改用 :class:`FieldDecl` 包装，``uses_field_import`` 逻辑保持
+    语义稳定。
+
     :param body_template_vars: :func:`flatten_body_fields` 输出的字典。
-    :return: 任意 body 字段含 ``Field(`` 子串时返回 ``True``。
+    :return: 任意 body 字段（含 ``Field(`` 子串时返回 ``True``。
     """
     for key in ("form_text_fields", "form_file_fields"):
-        for line in body_template_vars.get(key, []):
-            if "Field(" in line:
+        for decl in body_template_vars.get(key, []):
+            if isinstance(decl, FieldDecl) and "Field(" in decl.line:
                 return True
     for key in ("binary_file_field", "scalar_field"):
         value = body_template_vars.get(key)
-        if isinstance(value, str) and "Field(" in value:
+        if isinstance(value, FieldDecl) and "Field(" in value.line:
             return True
     return False
 
