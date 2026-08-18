@@ -5,8 +5,9 @@ Generated from OpenAPI: get-ip
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import GetIpResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetIpResponse
 
 router = APIRouter()
 

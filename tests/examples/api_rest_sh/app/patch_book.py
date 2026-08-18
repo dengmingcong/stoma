@@ -7,8 +7,11 @@ Partial update operation supporting both JSON Merge Patch & JSON Patch updates.
 from __future__ import annotations
 
 from typing import Annotated
+
 from pydantic import Field
-from stoma import APIRouter, APIRoute, Header
+
+from stoma import APIRoute, APIRouter, Header
+
 from .models import ErrorModel, PatchBookRequest
 
 router = APIRouter()

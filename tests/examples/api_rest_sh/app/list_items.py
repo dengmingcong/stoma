@@ -5,8 +5,9 @@ Generated from OpenAPI: list-items
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import ListItemsResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, ListItemsResponse
 
 router = APIRouter()
 

@@ -5,8 +5,9 @@ Generated from OpenAPI: get-uuid
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import GetUuidResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetUuidResponse
 
 router = APIRouter()
 

@@ -6,8 +6,11 @@ Generated from OpenAPI: post-method
 from __future__ import annotations
 
 from typing import Annotated
+
 from pydantic import Field
-from stoma import APIRouter, APIRoute, Header
+
+from stoma import APIRoute, APIRouter, Header
+
 from .models import EchoModel, ErrorModel
 
 router = APIRouter()

@@ -6,8 +6,11 @@ Generated from OpenAPI: delete-item
 from __future__ import annotations
 
 from typing import Annotated
+
 from pydantic import Field
-from stoma import APIRouter, APIRoute
+
+from stoma import APIRoute, APIRouter
+
 from .models import ErrorModel
 
 router = APIRouter()

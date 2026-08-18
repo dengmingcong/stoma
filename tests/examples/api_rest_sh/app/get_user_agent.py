@@ -5,8 +5,9 @@ Generated from OpenAPI: get-user-agent
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import GetUserAgentResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetUserAgentResponse
 
 router = APIRouter()
 

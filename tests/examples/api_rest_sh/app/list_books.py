@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import ListBooksResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, ListBooksResponse
 
 router = APIRouter()
 

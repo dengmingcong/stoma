@@ -5,8 +5,9 @@ Generated from OpenAPI: get-flaky
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import GetFlakyResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetFlakyResponse
 
 router = APIRouter()
 

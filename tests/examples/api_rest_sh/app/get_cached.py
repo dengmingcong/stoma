@@ -5,7 +5,8 @@ Cached response example
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
 from .models import CachedModel, ErrorModel
 
 router = APIRouter()

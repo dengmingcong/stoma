@@ -6,7 +6,8 @@ Streams simulated server metrics as a [Server-Sent Events](https://developer.moz
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
 from .models import ErrorModel
 
 router = APIRouter()

@@ -5,8 +5,9 @@ Example structured data types
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import TypesModel, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, TypesModel
 
 router = APIRouter()
 

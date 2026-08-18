@@ -5,8 +5,9 @@ Generated from OpenAPI: get-cookies-delete
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import GetCookiesDeleteResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetCookiesDeleteResponse
 
 router = APIRouter()
 

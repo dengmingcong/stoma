@@ -5,8 +5,9 @@ List available images
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import ListImagesResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, ListImagesResponse
 
 router = APIRouter()
 

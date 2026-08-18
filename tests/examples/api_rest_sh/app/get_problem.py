@@ -5,8 +5,9 @@ Generated from OpenAPI: get-problem
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import GetProblemResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetProblemResponse
 
 router = APIRouter()
 

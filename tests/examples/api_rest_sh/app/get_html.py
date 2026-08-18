@@ -5,7 +5,8 @@ Generated from OpenAPI: get-html
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
+from stoma import APIRoute, APIRouter
+
 from .models import ErrorModel
 
 router = APIRouter()

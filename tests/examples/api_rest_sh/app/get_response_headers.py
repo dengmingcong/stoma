@@ -5,8 +5,9 @@ Generated from OpenAPI: get-response-headers
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import GetResponseHeadersResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetResponseHeadersResponse
 
 router = APIRouter()
 

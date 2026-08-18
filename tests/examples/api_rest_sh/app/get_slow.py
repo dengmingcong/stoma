@@ -5,8 +5,9 @@ Generated from OpenAPI: get-slow
 
 from __future__ import annotations
 
-from stoma import APIRouter, APIRoute
-from .models import GetSlowResponse, ErrorModel
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, GetSlowResponse
 
 router = APIRouter()
 

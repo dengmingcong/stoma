@@ -6,9 +6,12 @@ Generated from OpenAPI: get-item
 from __future__ import annotations
 
 from typing import Annotated
+
 from pydantic import Field
-from stoma import APIRouter, APIRoute
-from .models import Item, ErrorModel
+
+from stoma import APIRoute, APIRouter
+
+from .models import ErrorModel, Item
 
 router = APIRouter()
 
