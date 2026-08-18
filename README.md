@@ -36,13 +36,23 @@ stoma make --spec specs/001-generate-api/contracts/openapi.yaml --out src/exampl
 pytest -q
 ```
 
+## 文档
+
+更详细的文档参见 [docs/README.md](./docs/README.md)。
+
 ## 目录结构
 
 ```
 src/
-	example/
-		users/
-			router.py
-			models.py
+	stoma/
+		__init__.py
+		cli.py
+		client.py
+		routing.py
+		param_functions.py
+		params.py
+		exceptions.py
+		dependencies/
+		openapi/
 ```
 
