@@ -6,6 +6,7 @@
 生成代码 ``from stoma import ...`` 直接通过 Python 正常 import 解析。
 
 Fixtures：
+- ``cli_runner``：Typer ``CliRunner`` 实例，供 ``test_codegen.py`` 调用 ``stoma make`` 命令使用。
 - ``_shared_playwright``：session 级，所有 e2e fixtures 共享的 Playwright 实例。
   避免多个 ``sync_playwright().start()`` 在同一 pytest session 内冲突。
 - ``e2e_client_playwright`` / ``e2e_client``：session 级，无 auth headers
@@ -23,13 +24,21 @@ from collections.abc import Generator  # noqa: E402
 
 import pytest  # noqa: E402
 from playwright.sync_api import APIRequestContext, Playwright, sync_playwright  # noqa: E402
+from typer.testing import CliRunner  # noqa: E402
 
 from stoma.client import Client  # noqa: E402
 
 __all__ = [
+    "cli_runner",
     "e2e_client",
     "e2e_client_playwright",
 ]
+
+
+@pytest.fixture
+def cli_runner() -> CliRunner:
+    """Typer ``CliRunner`` 实例，供 CLI 端到端测试使用。"""
+    return CliRunner()
 
 
 @pytest.fixture(scope="session")

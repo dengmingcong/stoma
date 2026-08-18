@@ -1,6 +1,17 @@
-"""tests/examples/api_rest_sh/test_codegen - 验证 codegen 生成的代码结构。
+"""tests/examples/api_rest_sh/test_codegen - 验证 ``stoma make`` 命令端到端可用。
 
-本测试文件不依赖网络连接，仅对生成代码做静态文件检查和 AST 解析验证。
+本测试通过 Typer ``CliRunner`` 直接调用 ``stoma.cli:app``（与单元/集成测试一致），
+不修改仓库内已存在的 ``app/`` 目录（避免污染 e2e 测试所用代码）。
+
+覆盖范围：
+
+- ``stoma make`` 命令退出码 0（无 ``SCHEMA_UNSUPPORTED`` 失败）。
+- 生成 ``models.py``。
+- 生成 71 个 route 文件（与 spec 71 个 operation 一一对应）。
+- 所有生成 ``.py`` 文件通过 ``ast.parse()``。
+- 至少 71 个 ``.py`` 文件包含 ``from stoma import``。
+
+本测试**不依赖网络**，仅验证本地 CLI 流水线。
 """
 
 from __future__ import annotations
@@ -9,65 +20,64 @@ import ast
 import re
 from pathlib import Path
 
-APP_DIR: Path = Path(__file__).parent / "app"
+import pytest
+from typer.testing import CliRunner
 
-TARGET_ROUTE_FILES: list[str] = [
-    "get_method.py",
-    "get_anything_path.py",
-    "post_method.py",
-    "post_login.py",
-    "post_upload.py",
-    "patch_book.py",
-    "delete_book.py",
-    "head_method.py",
-    "options_method.py",
-    "get_bytes.py",
-    "get_accept_image.py",
-    "get_status.py",
-    "get_etag.py",
-]
+pytest.importorskip("typer", reason="CLI 测试需要 typer (stoma[cli])")
+
+from stoma.cli import app  # noqa: E402
+
+SPEC_FILE: Path = Path(__file__).parent / "spec" / "api.rest.sh.json"
+EXPECTED_ROUTE_COUNT: int = 71
 
 
-def test_codegen_produces_all_target_files() -> None:
-    """验证 models.py 和 13 个目标 route 文件均存在。"""
-    models: Path = APP_DIR / "models.py"
-    assert models.exists(), "models.py missing in app/"
+def test_make_command_generates_full_app(cli_runner: CliRunner, tmp_path: Path) -> None:
+    """``stoma make`` 端到端：从 spec 重新生成 app，断言结构与语法符合预期。"""
+    assert SPEC_FILE.exists(), f"spec 文件不存在: {SPEC_FILE}"
 
-    for route_file in TARGET_ROUTE_FILES:
-        path: Path = APP_DIR / route_file
-        assert path.exists(), f"{route_file} missing in app/"
+    out_dir: Path = tmp_path / "generated"
 
+    result = cli_runner.invoke(
+        app,
+        [str(SPEC_FILE), "--out", str(out_dir)],
+    )
 
-def test_all_generated_files_parse_as_valid_python() -> None:
-    """验证 app/ 下所有 .py 文件均可被 ast.parse() 成功解析，无语法错误。"""
-    py_files: list[Path] = list(APP_DIR.glob("*.py"))
-    assert py_files, "app/ 目录下未找到任何 .py 文件"
+    assert result.exit_code == 0, (
+        f"stoma make 失败 (退出码 {result.exit_code})\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
 
+    # 生成失败语义：spec 中存在 stoma 无法生成的端点（SCHEMA_UNSUPPORTED）→ CLI 退出码非 0。
+    # 此处再做一次显式断言，让失败原因更直观。
+    assert "SCHEMA_UNSUPPORTED" not in result.stderr, f"stoma make 报告 spec 不支持:\n{result.stderr}"
+
+    # 1. models.py 必须存在
+    models_path: Path = out_dir / "models.py"
+    assert models_path.exists(), f"models.py 未生成到 {out_dir}"
+
+    # 2. route 文件数 == 71
+    route_files: list[Path] = sorted(out_dir.glob("*.py"))
+    route_files = [p for p in route_files if p.name != "models.py"]
+    assert len(route_files) == EXPECTED_ROUTE_COUNT, (
+        f"期望生成 {EXPECTED_ROUTE_COUNT} 个 route 文件，"
+        f"实际生成 {len(route_files)} 个: {[p.name for p in route_files]}"
+    )
+
+    # 3. 所有 .py 文件可 ast.parse
+    py_files: list[Path] = sorted(out_dir.glob("*.py"))
     syntax_errors: list[tuple[str, str]] = []
     for py_file in py_files:
-        code: str = py_file.read_text(encoding="utf-8")
         try:
-            ast.parse(code)
+            ast.parse(py_file.read_text(encoding="utf-8"))
         except SyntaxError as e:
             syntax_errors.append((py_file.name, str(e)))
-
     assert not syntax_errors, "以下文件存在语法错误:\n" + "\n".join(f"  {name}: {err}" for name, err in syntax_errors)
 
-
-def test_generated_files_use_stoma_import() -> None:
-    """验证生成的文件中至少 71 个 .py 文件包含 ``from stoma import``。"""
-    py_files: list[Path] = list(APP_DIR.glob("*.py"))
-    assert py_files, "app/ 目录下未找到任何 .py 文件"
-
+    # 4. 至少 71 个文件含 ``from stoma import``
     stoma_import_pattern: re.Pattern[str] = re.compile(r"^from stoma import", re.MULTILINE)
-    files_with_stoma_import: list[str] = []
-
-    for py_file in py_files:
-        code: str = py_file.read_text(encoding="utf-8")
-        if stoma_import_pattern.search(code):
-            files_with_stoma_import.append(py_file.name)
-
-    count: int = len(files_with_stoma_import)
-    assert count >= 71, f"期望至少 71 个文件包含 'from stoma import'，实际找到 {count} 个:\n" + "\n".join(
-        f"  {name}" for name in files_with_stoma_import
+    files_with_stoma_import: list[str] = [
+        py_file.name for py_file in py_files if stoma_import_pattern.search(py_file.read_text(encoding="utf-8"))
+    ]
+    assert len(files_with_stoma_import) >= EXPECTED_ROUTE_COUNT, (
+        f"期望至少 {EXPECTED_ROUTE_COUNT} 个文件含 'from stoma import'，"
+        f"实际找到 {len(files_with_stoma_import)} 个: {files_with_stoma_import}"
     )

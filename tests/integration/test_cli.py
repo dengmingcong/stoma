@@ -18,12 +18,12 @@ from __future__ import annotations
 
 import ast
 import importlib.util
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from click.testing import Result
 from playwright.sync_api import sync_playwright
 
 pytest.importorskip("typer", reason="CLI 测试需要 typer (stoma[cli])")
@@ -80,20 +80,15 @@ def _extract_decorators(code: str) -> list[tuple[str, str]]:
 
 @pytest.mark.parametrize("operation_id,snake_name,router_method", HTTP_METHODS)
 def test_codegen_all_methods(
+    cli_runner: CliRunner,
     tmp_path: Path,
     operation_id: str,
     snake_name: str,
     router_method: str,
 ) -> None:
     """验证 8 个 HTTP method 的 codegen 输出正确。"""
-    result = subprocess.run(
-        [sys.executable, "-m", "stoma.cli", str(FIXTURE_PATH_ALL_METHODS), "--out", str(tmp_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd="/Users/dengmingcong/Workspace/stoma",
-    )
-    assert result.returncode == 0, f"CLI 失败:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    result = cli_runner.invoke(app, [str(FIXTURE_PATH_ALL_METHODS), "--out", str(tmp_path)])
+    assert result.exit_code == 0, f"CLI 失败:\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
     route_file = tmp_path / f"{snake_name}.py"
     assert route_file.exists(), f"生成的 {route_file} 不存在"
@@ -316,15 +311,9 @@ def fixtures() -> list[tuple[int, str]]:
     return items
 
 
-def _run_stoma_make(spec_path: Path, out_dir: Path) -> subprocess.CompletedProcess:
-    """运行 ``stoma make`` 并返回结果。"""
-    return subprocess.run(
-        [sys.executable, "-m", "stoma.cli", str(spec_path), "--out", str(out_dir)],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd="/Users/dengmingcong/Workspace/stoma",
-    )
+def _run_stoma_make(cli_runner: CliRunner, spec_path: Path, out_dir: Path) -> Result:
+    """运行 ``stoma make`` 并返回 :class:`click.testing.Result`。"""
+    return cli_runner.invoke(app, [str(spec_path), "--out", str(out_dir)])
 
 
 def _extract_data_fields(code: str) -> set[str]:
@@ -366,6 +355,7 @@ _POC_FIXTURES: list[tuple[int, str]] = [
 
 @pytest.mark.parametrize("fixture_id,fixture_name", _POC_FIXTURES)
 def test_make_produces_working_models(
+    cli_runner: CliRunner,
     tmp_path: Path,
     fixture_id: int,
     fixture_name: str,
@@ -376,9 +366,9 @@ def test_make_produces_working_models(
         pytest.skip(f"fixture 不存在: {spec_path}")
 
     out_dir = tmp_path / "out"
-    result = _run_stoma_make(spec_path, out_dir)
+    result = _run_stoma_make(cli_runner, spec_path, out_dir)
 
-    assert result.returncode == 0, (
+    assert result.exit_code == 0, (
         f"stoma make 失败 (fixture {fixture_id}):\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert (out_dir / "models.py").exists(), f"missing models.py for fixture {fixture_id}"
@@ -387,6 +377,7 @@ def test_make_produces_working_models(
 
 @pytest.mark.parametrize("fixture_id,fixture_name", _POC_FIXTURES)
 def test_models_equivalent_to_datamodel_codegen(
+    cli_runner: CliRunner,
     tmp_path: Path,
     fixture_id: int,
     fixture_name: str,
@@ -398,8 +389,8 @@ def test_models_equivalent_to_datamodel_codegen(
         pytest.skip(f"fixture {fixture_id} 或 reference 不存在")
 
     out_dir = tmp_path / "out"
-    result = _run_stoma_make(spec_path, out_dir)
-    assert result.returncode == 0, f"stoma make 失败: {result.stdout}\n{result.stderr}"
+    result = _run_stoma_make(cli_runner, spec_path, out_dir)
+    assert result.exit_code == 0, f"stoma make 失败: {result.stdout}\n{result.stderr}"
 
     # fixture 10 (嵌套对象) 和 fixture 12 (embed wrapper) 已知与 reference
     # 在结构上有差异：stoma 把嵌套对象扁平化或解开 embed wrapper，reference
