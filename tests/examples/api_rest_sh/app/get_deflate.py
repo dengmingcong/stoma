@@ -5,8 +5,8 @@ Generated from OpenAPI: get-deflate
 
 from __future__ import annotations
 
-from .models import ErrorModel
 from stoma import APIRouter, APIRoute
+from .models import ErrorModel
 
 router = APIRouter()
 

@@ -5,8 +5,8 @@ Generated from OpenAPI: get-auth-api-key-query
 
 from __future__ import annotations
 
-from .models import AuthResponseBody, ErrorModel
 from stoma import APIRouter, APIRoute
+from .models import AuthResponseBody, ErrorModel
 
 router = APIRouter()
 

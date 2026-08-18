@@ -9,6 +9,7 @@
 - :func:`build_upload_file_field_line` — multipart file 字段声明。
 - :func:`build_param_field_line` — query / path / header 参数字段声明（8 种分支形态）。
 - :func:`build_scalar_body_line` — primitive body 字段声明。
+- :func:`build_endpoint_docstring` — endpoint 模块 docstring 和类 docstring 字符串。
 
 所有 builder（``build_*_line``）返回 :class:`stoma.openapi.models.FieldDecl`，
 ``line`` 是字段声明字符串，``docstring`` 是 dmcg 1:1 风格的字段 docstring
@@ -114,6 +115,56 @@ def build_field_docstring(
         escaped = "\n".join(f"{indent}{line}" if line else "" for line in escaped.split("\n"))
         return f'"""\n{escaped}\n{indent}"""'
     return f'"""\n{escaped}\n"""'
+
+
+def build_endpoint_docstring(
+    summary: str | None,
+    description: str | None,
+    *,
+    operation_id: str | None = None,
+) -> str | None:
+    r"""Build endpoint-level docstring (module docstring / class docstring).
+
+    Logic:
+    - Both summary and description present -> single-line summary + blank line +
+      "Generated from OpenAPI: <operation_id>" + multi-line description.
+    - Summary only -> single-line docstring with Chinese period.
+    - Description only -> multi-line docstring, 4-space indent, no extra period.
+    - Neither -> None (template skips rendering).
+
+    operation_id is only rendered as second paragraph when docstring content exists.
+
+    :param summary: OpenAPI summary, may be None.
+    :param description: OpenAPI description, may be None.
+    :param operation_id: OpenAPI operationId, optional (module docstring only).
+    :return: Complete docstring string (with triple quotes); None when no content.
+    """
+    summary_str = summary.strip() if summary else ""
+    description_str = description.strip() if description else ""
+
+    if not summary_str and not description_str:
+        return None
+
+    if summary_str and description_str:
+        op_id_line = f"Generated from OpenAPI: {operation_id}" if operation_id else None
+        if op_id_line:
+            return f'"""{summary_str}。\n\n{op_id_line}\n{description_str}\n"""'
+        return f'"""{summary_str}。\n\n{description_str}\n"""'
+
+    if description_str:
+        op_id_line = f"Generated from OpenAPI: {operation_id}" if operation_id else None
+        if op_id_line:
+            return f'"""\n{op_id_line}\n{description_str}\n"""'
+        return f'"""\n{description_str}\n"""'
+
+    if summary_str:
+        op_id_line = f"Generated from OpenAPI: {operation_id}" if operation_id else None
+        if op_id_line:
+            return f'"""{summary_str}。\n\n{op_id_line}\n"""'
+        return f'"""{summary_str}。"""'
+
+    # No indent — ruff formats `"""\ndesc\n"""` to `"""desc"""` (single-line).
+    return f'"""\n{description_str}\n"""'
 
 
 def _unwrap_example(value: Any) -> Any:
@@ -381,6 +432,7 @@ def build_scalar_body_line(
 
 
 __all__ = [
+    "build_endpoint_docstring",
     "build_field_docstring",
     "build_field_value",
     "build_form_field_line",

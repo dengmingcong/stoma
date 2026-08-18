@@ -5,10 +5,10 @@ Generated from OpenAPI: patch-item
 
 from __future__ import annotations
 
-from .models import Item, ErrorModel, PatchItemRequest
 from typing import Annotated
 from pydantic import Field
-from stoma import APIRouter, APIRoute, Body
+from stoma import APIRouter, APIRoute
+from .models import Item, ErrorModel, PatchItemRequest
 
 router = APIRouter()
 

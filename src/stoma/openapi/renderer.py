@@ -26,6 +26,7 @@ from pydantic.alias_generators import to_snake
 
 from stoma.exceptions import OpenAPISchemaError
 from stoma.openapi.fields import (
+    build_endpoint_docstring,
     build_form_field_line,
     build_scalar_body_line,
     build_upload_file_field_line,
@@ -216,6 +217,19 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         uses_field_import = uses_field_import or is_body_fields_use_field(body_template_vars)
 
         template: Template = self.env.get_template("endpoint.py.jinja2")
+        module_docstring = build_endpoint_docstring(
+            endpoint.summary, endpoint.description, operation_id=endpoint.operation_id
+        )
+        class_docstring = build_endpoint_docstring(endpoint.summary, endpoint.description)
+        has_class_body_content = bool(
+            param_fields
+            or header_fields
+            or body_template_vars.get("import_model")
+            or body_template_vars.get("scalar_field")
+            or body_template_vars.get("binary_file_field")
+            or body_template_vars.get("form_text_fields")
+            or body_template_vars.get("form_file_fields")
+        )
         rendered_code = template.render(
             operation_id=endpoint.operation_id,
             class_name=class_name,
@@ -229,6 +243,9 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             param_fields=param_fields,
             imported_models=imported_models,
             uses_field_import=uses_field_import,
+            module_docstring=module_docstring,
+            class_docstring=class_docstring,
+            has_class_body_content=has_class_body_content,
         )
         return file_name, rendered_code
 
@@ -678,7 +695,7 @@ def render_to_file(
             timeout=30,
         )
         subprocess.run(
-            ["ruff", "check", "--select", "I", "--fix", str(file_path)],
+            ["ruff", "check", "--select", "I,F401", "--fix", str(file_path)],
             check=False,
             capture_output=True,
             timeout=30,

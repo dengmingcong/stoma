@@ -1,22 +1,21 @@
-"""put-types-example。
-
+"""
 Generated from OpenAPI: put-types-example
 Example write for edits
 """
 
 from __future__ import annotations
 
-from .models import EchoModel, ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
+from .models import EchoModel, ErrorModel
 
 router = APIRouter()
 
 
 @router.put("/types")
 class PutTypesExample(APIRoute[EchoModel | ErrorModel]):
-    """put-types-example。
+    """
     Example write for edits
     """
 

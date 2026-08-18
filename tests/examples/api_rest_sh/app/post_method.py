@@ -5,10 +5,10 @@ Generated from OpenAPI: post-method
 
 from __future__ import annotations
 
-from .models import EchoModel, ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
+from .models import EchoModel, ErrorModel
 
 router = APIRouter()
 

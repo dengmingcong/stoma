@@ -5,8 +5,8 @@ Generated from OpenAPI: post-upload
 
 from __future__ import annotations
 
-from .models import UploadResponseBody, ErrorModel
 from stoma import APIRouter, APIRoute
+from .models import UploadResponseBody, ErrorModel
 
 router = APIRouter()
 

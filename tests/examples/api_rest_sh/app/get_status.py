@@ -1,22 +1,21 @@
-"""get-status。
-
+"""
 Generated from OpenAPI: get-status
 Status code example
 """
 
 from __future__ import annotations
 
-from .models import ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute
+from .models import ErrorModel
 
 router = APIRouter()
 
 
 @router.get("/status/{code}")
 class GetStatus(APIRoute[ErrorModel]):
-    """get-status。
+    """
     Status code example
     """
 

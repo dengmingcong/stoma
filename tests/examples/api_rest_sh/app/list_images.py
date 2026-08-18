@@ -1,20 +1,19 @@
-"""list-images。
-
+"""
 Generated from OpenAPI: list-images
 List available images
 """
 
 from __future__ import annotations
 
-from .models import ListImagesResponse, ErrorModel
 from stoma import APIRouter, APIRoute
+from .models import ListImagesResponse, ErrorModel
 
 router = APIRouter()
 
 
 @router.get("/images")
 class ListImages(APIRoute[ListImagesResponse | ErrorModel]):
-    """list-images。
+    """
     List available images
     """
 

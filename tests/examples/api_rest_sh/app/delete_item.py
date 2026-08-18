@@ -5,10 +5,10 @@ Generated from OpenAPI: delete-item
 
 from __future__ import annotations
 
-from .models import ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute
+from .models import ErrorModel
 
 router = APIRouter()
 

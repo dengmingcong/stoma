@@ -1,20 +1,18 @@
-"""{{ summary or operation_id }}。
-
-Generated from OpenAPI: {{ operation_id }}{{ "\n" + description if description else "" }}
-"""
-
+{% if module_docstring %}{{ module_docstring }}
+{% endif %}
 from __future__ import annotations
 
-{% if imported_models -%}
-from .models import {{ imported_models | join(', ') }}
-{% endif -%}
-{% if header_fields or import_model or scalar_field or form_text_fields or uses_field_import -%}
+{% if header_fields or scalar_field or form_text_fields or uses_field_import -%}
 from typing import Annotated
 {% endif -%}
 {% if uses_field_import -%}
 from pydantic import Field
 {% endif %}
-from stoma import APIRouter, APIRoute{% if header_fields %}, Header{% endif %}{% if import_model or scalar_field %}, Body{% endif %}{% if form_text_fields %}, Form{% endif %}{% if form_file_fields or (binary_file_field and not upload_as_multipart) %}, UploadFile{% endif %}
+from stoma import APIRouter, APIRoute{% if header_fields %}, Header{% endif %}{% if scalar_field %}, Body{% endif %}{% if form_text_fields %}, Form{% endif %}{% if form_file_fields or (binary_file_field and not upload_as_multipart) %}, UploadFile{% endif %}
+
+{% if imported_models -%}
+from .models import {{ imported_models | join(', ') }}
+{% endif -%}
 
 
 router = APIRouter()
@@ -22,8 +20,10 @@ router = APIRouter()
 
 @router.{{ method }}("{{ path }}"{% if not upload_as_multipart %}, upload_as_multipart=False{% endif %})
 class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type }}]{% endif %}):
-    """{{ summary or operation_id }}。{{ "\n    " + description if description else "" }}
-    """
+{% if class_docstring %}    {{ class_docstring }}
+{% endif %}
+{% if not class_docstring and not has_class_body_content %}    pass
+{% endif %}
 {% if param_fields %}
 {% for decl in param_fields %}
     {{ decl.line }}

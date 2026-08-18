@@ -1,22 +1,15 @@
-"""put-book。
-
-Generated from OpenAPI: put-book
-"""
-
 from __future__ import annotations
 
-from .models import ErrorModel, Book
 from typing import Annotated
 from pydantic import Field
-from stoma import APIRouter, APIRoute, Header, Body
+from stoma import APIRouter, APIRoute, Header
+from .models import ErrorModel, Book
 
 router = APIRouter()
 
 
 @router.put("/books/{book-id}")
 class PutBook(APIRoute[ErrorModel]):
-    """put-book。"""
-
     book_id: Annotated[str, Field(serialization_alias="book-id")]
     """Book identifier"""
     if_match: Annotated[list[str] | None, Header(), Field(serialization_alias="If-Match")] = None

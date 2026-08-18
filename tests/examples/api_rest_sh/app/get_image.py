@@ -1,20 +1,19 @@
-"""get-image。
-
+"""
 Generated from OpenAPI: get-image
 Get an image
 """
 
 from __future__ import annotations
 
-from .models import ErrorModel
 from stoma import APIRouter, APIRoute
+from .models import ErrorModel
 
 router = APIRouter()
 
 
 @router.get("/images/{type}")
 class GetImage(APIRoute[ErrorModel]):
-    """get-image。
+    """
     Get an image
     """
 

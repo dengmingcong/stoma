@@ -6,8 +6,8 @@ Streams a bounded Server-Sent Events feed with a simple `type`, `user.id`, `mess
 
 from __future__ import annotations
 
-from .models import ErrorModel
 from stoma import APIRouter, APIRoute
+from .models import ErrorModel
 
 router = APIRouter()
 
@@ -15,6 +15,7 @@ router = APIRouter()
 @router.get("/events")
 class GetEvents(APIRoute[ErrorModel]):
     """Stream simple docs events。
+
     Streams a bounded Server-Sent Events feed with a simple `type`, `user.id`, `message`, and `timestamp` shape for documentation examples.
     """
 

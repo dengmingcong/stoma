@@ -5,9 +5,8 @@ Generated from OpenAPI: create-item
 
 from __future__ import annotations
 
+from stoma import APIRouter, APIRoute
 from .models import Item, ErrorModel
-from typing import Annotated
-from stoma import APIRouter, APIRoute, Body
 
 router = APIRouter()
 

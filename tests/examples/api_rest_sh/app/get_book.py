@@ -1,22 +1,15 @@
-"""get-book。
-
-Generated from OpenAPI: get-book
-"""
-
 from __future__ import annotations
 
-from .models import Book, ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
+from .models import Book, ErrorModel
 
 router = APIRouter()
 
 
 @router.get("/books/{book-id}")
 class GetBook(APIRoute[Book | ErrorModel]):
-    """get-book。"""
-
     book_id: Annotated[str, Field(serialization_alias="book-id")]
     """Book identifier"""
     if_match: Annotated[list[str] | None, Header(), Field(serialization_alias="If-Match")] = None

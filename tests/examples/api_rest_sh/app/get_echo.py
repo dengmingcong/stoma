@@ -1,22 +1,15 @@
-"""get-echo。
-
-Generated from OpenAPI: get-echo
-"""
-
 from __future__ import annotations
 
-from .models import EchoModel, ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
+from .models import EchoModel, ErrorModel
 
 router = APIRouter()
 
 
 @router.get("/")
 class GetEcho(APIRoute[EchoModel | ErrorModel]):
-    """get-echo。"""
-
     status: int | None = None
     """Status code to return"""
     if_match: Annotated[list[str] | None, Header(), Field(serialization_alias="If-Match")] = None

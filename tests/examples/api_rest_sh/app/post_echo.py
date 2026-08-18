@@ -1,22 +1,15 @@
-"""post-echo。
-
-Generated from OpenAPI: post-echo
-"""
-
 from __future__ import annotations
 
-from .models import EchoModel, ErrorModel
 from typing import Annotated
 from pydantic import Field
 from stoma import APIRouter, APIRoute, Header
+from .models import EchoModel, ErrorModel
 
 router = APIRouter()
 
 
 @router.post("/")
 class PostEcho(APIRoute[EchoModel | ErrorModel]):
-    """post-echo。"""
-
     status: int | None = None
     """Status code to return"""
     if_match: Annotated[list[str] | None, Header(), Field(serialization_alias="If-Match")] = None

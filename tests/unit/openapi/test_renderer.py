@@ -893,6 +893,80 @@ components:
 
 
 # ============================================================
+# Class Body `pass` Sentinel
+# ============================================================
+
+
+class TestClassBodyPass:
+    """验证 class body `pass` 占位逻辑：仅在 body 完全为空（无 docstring + 无字段）时插入 `pass`。"""
+
+    def test_empty_class_body_inserts_pass(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 endpoint 无 docstring（无 summary/description）、无 requestBody、无 parameters 时 class body 插入 ``pass``。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Empty Body API
+  version: "1.0.0"
+paths:
+  /items:
+    get:
+      operationId: listItems
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "list_items.py").read_text(encoding="utf-8")
+        # body 为空且无 docstring 时应插入 pass 占位
+        assert "\n    pass\n" in content or "\n    pass" in content
+        compile(content, "list_items.py", "exec")
+
+    def test_class_body_with_header_fields_no_pass(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 endpoint 有 header 参数（无 docstring）时 class body 不插入 ``pass``。
+
+        Regression test: Phase 5 secondary bug — ``pass`` 被错误插入到有字段的 class body 开头。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Header Params API
+  version: "1.0.0"
+paths:
+  /profile:
+    get:
+      operationId: getProfile
+      parameters:
+        - name: X-Request-ID
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "get_profile.py").read_text(encoding="utf-8")
+        # class body 有 header 字段时不应有 pass（bug 场景）
+        # pass 应该在 header 字段之前，而不是替代它
+        assert "    pass\n    x_request_id:" not in content
+        assert "x_request_id:" in content
+        compile(content, "get_profile.py", "exec")
+
+
+# ============================================================
 # Request Body — Form / Multipart / Scalar / Binary
 # ============================================================
 
@@ -2989,4 +3063,320 @@ paths:
         assert "这是资源描述" in content, "description 有值时应出现在 docstring 中"
         # 不应有 None 字面量
         assert '"""None' not in content, "summary=None 时不应出现 None 字面量"
+        compile(content, "get_resource.py", "exec")
+
+
+# ============================================================
+# Import Ordering and Unused Import Regression
+# ============================================================
+
+
+class TestImportOrderingAndNoUnused:
+    """import 顺序与 unused import 回归测试。
+
+    修复根因：
+
+    1. 模板条件过宽：``import_model`` 不应触发 ``Annotated`` 或 ``Body`` import。
+       - ``body: ModelName`` 形式不需要 ``Annotated``（无 ``Annotated[...]`` 包装）
+       - ``body: ModelName`` 形式不需要 ``Body(...)``（FastAPI 直接用类名）
+       - ``Annotated`` 只在 param/header/scalar/form 场景需要（``Annotated[T, ...]``）
+       - ``Body`` 只在 scalar body 场景需要（``Body(media_type=...)``）
+
+    2. ``{% if imported_models %}`` 块在 ``from stoma import ...`` 之前，
+       违反 isort 默认顺序（__future__ → stdlib → third-party → first-party → local）。
+
+    3. ``render_to_file`` 的 ruff 命令缺 F401，无法自动清 unused imports。
+
+    覆盖三种场景：
+
+    1. JSON body only（仅 ``import_model``，无 param/header/form/scalar）
+       → 无 ``Annotated`` import + 无 ``Body`` import + ``.models`` 在 ``stoma`` 之后
+    2. JSON body + query param
+       → ``Annotated`` import 存在且被使用
+    3. form body
+       → ``Form`` import + ``Annotated`` import 都存在
+    """
+
+    @staticmethod
+    def _build_spec_with_json_body(path: str, method: str, operation_id: str, add_query_param: bool = False) -> str:
+        """构造仅含 JSON body（``$ref`` 模型引用）的 OpenAPI 3.1 规范。"""
+        query_block = """\
+      parameters:
+        - name: filterBy
+          in: query
+          schema:
+            type: string
+""" if add_query_param else ""
+
+        return f"""\
+openapi: 3.1.0
+info:
+  title: Import Order API
+  version: "1.0.0"
+paths:
+  {path}:
+    {method}:
+      operationId: {operation_id}
+      summary: 测试
+{query_block}      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Item'
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Item:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+"""
+
+    @staticmethod
+    def _build_spec_with_form_body(path: str, method: str, operation_id: str) -> str:
+        """构造 form body（``application/x-www-form-urlencoded``）的 OpenAPI 3.1 规范。"""
+        return f"""\
+openapi: 3.1.0
+info:
+  title: Form Body API
+  version: "1.0.0"
+paths:
+  {path}:
+    {method}:
+      operationId: {operation_id}
+      summary: 测试表单
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                quantity:
+                  type: integer
+      responses:
+        "200":
+          description: ok
+"""
+
+    @staticmethod
+    def _run(cli_runner: Any, spec: str, out_dir: Path, file_name: str) -> str:
+        """运行 CLI 并返回 route 文件内容。"""
+        out_dir.mkdir(parents=True, exist_ok=True)
+        spec_file = out_dir / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
+        assert result.exit_code == 0, result.output
+        return (out_dir / file_name).read_text(encoding="utf-8")
+
+    def test_json_body_only_no_unused_imports(self, cli_runner: Any, tmp_path: Path) -> None:
+        """JSON body only（仅 ``import_model``）→ 无 ``Annotated`` import + 无 ``Body`` import + 正确顺序。
+
+        当 endpoint 只有 JSON body（``$ref`` 引用模型），没有 param/header/form/scalar 时：
+        - 不应导入 ``Annotated``（没有 ``Annotated[...]`` 包装的字段）
+        - 不应导入 ``Body``（``body: ModelName`` 直接用类名，不需要 ``Body(...)``）
+        - ``from .models import ...`` 必须在 ``from stoma import ...`` 之后（isort 默认顺序）
+        """
+        spec = self._build_spec_with_json_body("/items", "post", "createItem")
+        content = self._run(cli_runner, spec, tmp_path / "out", "create_item.py")
+
+        # 验证 import_model 被正确导入
+        assert "from .models import Item" in content
+        # 验证 body 使用模型名形式
+        assert "body: Item" in content
+
+        # JSON body only → 不应有 Annotated import
+        assert "from typing import Annotated" not in content, "JSON body only 不应导入 Annotated"
+
+        # JSON body only → 不应有 Body import（body: ModelName 不需要 Body(...)）
+        # 注意：这里不能简单检查 "Body" 不在 content 中，因为可能是 "APIRoute" 的一部分
+        # 所以检查 "Body" 作为独立 import 存在（后面是逗号、空格、换行等）
+        import_stoma_line = [line for line in content.split("\n") if "from stoma import" in line]
+        if import_stoma_line:
+            assert "Body" not in import_stoma_line[0], "JSON body only 不应导入 Body"
+
+        # 验证 import 顺序：.models 必须在 stoma 之后
+        models_pos = content.index("from .models import")
+        stoma_pos = content.index("from stoma import")
+        assert models_pos > stoma_pos, ".models 必须在 stoma 之后（isort 默认顺序）"
+
+        # 确保代码可编译
+        compile(content, "create_item.py", "exec")
+
+    def test_json_body_with_query_param_has_annotated(self, cli_runner: Any, tmp_path: Path) -> None:
+        """JSON body + query param → ``Annotated`` import 存在且被使用。
+
+        当 endpoint 有 query param 时，param 字段使用 ``Annotated[T, ...]`` 包装，
+        因此必须导入 ``Annotated``。
+        """
+        spec = self._build_spec_with_json_body("/items", "post", "createItem", add_query_param=True)
+        content = self._run(cli_runner, spec, tmp_path / "out", "create_item.py")
+
+        # 验证 Annotated 被导入
+        assert "from typing import Annotated" in content, "有 query param 时应导入 Annotated"
+        # 验证 Annotated 被使用（query param 使用 Annotated）
+        assert "Annotated[" in content, "query param 应使用 Annotated[...]"
+
+        # JSON body 仍不应导入 Body
+        import_stoma_line = [line for line in content.split("\n") if "from stoma import" in line]
+        if import_stoma_line:
+            assert "Body" not in import_stoma_line[0], "有 query param 的 JSON body 不应导入 Body"
+
+        compile(content, "create_item.py", "exec")
+
+    def test_form_body_has_form_and_annotated(self, cli_runner: Any, tmp_path: Path) -> None:
+        """form body → ``Form`` import + ``Annotated`` import 都存在。
+
+        form 字段使用 ``Annotated[T, Form(...)]`` 包装，因此必须导入
+        ``Annotated`` 和 ``Form``。
+        """
+        spec = self._build_spec_with_form_body("/items", "post", "createItem")
+        content = self._run(cli_runner, spec, tmp_path / "out", "create_item.py")
+
+        # 验证 Form 被导入
+        assert "from stoma import" in content
+        import_stoma_line = [line for line in content.split("\n") if "from stoma import" in line]
+        assert any("Form" in line for line in import_stoma_line), "form body 应导入 Form"
+
+        # 验证 Annotated 被导入（Form 使用 Annotated[...] 包装）
+        assert "from typing import Annotated" in content, "form body 应导入 Annotated"
+
+        # 验证 Annotated 和 Form 被使用
+        assert "Annotated[" in content, "form 字段应使用 Annotated[...]"
+        assert "Form()" in content, "form 字段应使用 Form()"
+
+        compile(content, "create_item.py", "exec")
+
+
+# ============================================================
+# Endpoint Docstring — summary/description Conditional Rendering
+# ============================================================
+
+
+class TestEndpointDocstring:
+    """Endpoint 模块 docstring 和类 docstring 的条件渲染回归测试。
+
+    验证 `build_endpoint_docstring` + `endpoint.py.jinja2` 模板的条件渲染逻辑：
+
+    - summary + description 都有 → 两者都渲染
+    - 仅 summary → 单行 docstring
+    - 仅 description → description 内容（单行，ruff 格式化后）
+    - 都没有 → 不渲染 docstring（模块和类），operation_id 字面量不出现
+    """
+
+    @staticmethod
+    def _build_spec(
+        path: str,
+        method: str,
+        operation_id: str,
+        summary: str | None,
+        description: str | None = None,
+    ) -> str:
+        """构造一个 OpenAPI 3.1 规范，summary / description 可为 None。"""
+        summary_line = f"      summary: {summary}" if summary else "      summary:"
+        description_line = f"      description: {description}" if description else ""
+        return f"""\
+openapi: 3.1.0
+info:
+  title: Docstring API
+  version: "1.0.0"
+paths:
+  {path}:
+    {method}:
+      operationId: {operation_id}
+{summary_line}
+{description_line}
+      responses:
+        "200":
+          description: ok
+"""
+
+    @staticmethod
+    def _run(cli_runner: Any, spec: str, out_dir: Path) -> str:
+        """运行 CLI 并返回 route 文件内容。"""
+        out_dir.mkdir(parents=True, exist_ok=True)
+        spec_file = out_dir / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
+        assert result.exit_code == 0, result.output
+        return (out_dir / "get_resource.py").read_text(encoding="utf-8")
+
+    def test_summary_only_renders_single_line_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """仅有 summary 时，模块 docstring 和类 docstring 都是单行。"""
+        spec = self._build_spec(
+            path="/resource",
+            method="get",
+            operation_id="getResource",
+            summary="获取资源",
+            description=None,
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        # 单行 docstring，含 summary 文本 + 中文句号
+        assert '"""获取资源。"""' in content, "summary-only 应生成单行 docstring"
+        # 不应出现 None 字面量或 operation_id 字面量
+        assert '"""None' not in content
+        assert '"""getResource' not in content
+        compile(content, "get_resource.py", "exec")
+
+    def test_description_only_renders_multiline_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """仅有 description 时，docstring 只含 description 内容（无 summary）。"""
+        spec = self._build_spec(
+            path="/resource",
+            method="get",
+            operation_id="getResource",
+            summary=None,
+            description="这是资源描述",
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        # description 出现在 docstring 中
+        assert "这是资源描述" in content, "description-only 应生成含 description 的 docstring"
+        # operation_id 不应出现在 docstring 中
+        assert '"""getResource' not in content, "description-only 时 operation_id 不应出现在 docstring"
+        compile(content, "get_resource.py", "exec")
+
+    def test_summary_and_description_renders_both(self, cli_runner: Any, tmp_path: Path) -> None:
+        """summary 和 description 都有时，两者都渲染到 docstring 中。"""
+        spec = self._build_spec(
+            path="/resource",
+            method="get",
+            operation_id="getResource",
+            summary="获取资源",
+            description="获取指定资源的完整信息。",
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        # 两者都出现
+        assert "获取资源" in content, "summary 应出现"
+        assert "获取指定资源的完整信息。" in content, "description 应出现"
+        # 模块 docstring 有 "Generated from OpenAPI: getResource"
+        assert "Generated from OpenAPI: getResource" in content, "模块 docstring 应含 operation_id 标记"
+        compile(content, "get_resource.py", "exec")
+
+    def test_neither_summary_nor_description_omits_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """summary 和 description 都没有时，模块 docstring 和类 docstring 都不渲染。
+
+        这是核心回归测试：原来 summary or operation_id fallback 会生成
+        "operationId。" 这样的纯 operation_id docstring，
+        现在应该完全不出现 docstring。
+        """
+        spec = self._build_spec(
+            path="/resource",
+            method="get",
+            operation_id="getResource",
+            summary=None,
+            description=None,
+        )
+        content = self._run(cli_runner, spec, tmp_path / "out")
+        # operation_id 不应出现在任何 docstring 中
+        assert '"""getResource' not in content, "无 summary/description 时 operation_id 不应出现在 docstring"
+        # 模块 docstring 不存在（文件以 from __future__ 开头）
+        first_line = content.split("\n")[0]
+        assert first_line.startswith("from __future__"), "无 docstring 时文件第一行应是 import"
         compile(content, "get_resource.py", "exec")
