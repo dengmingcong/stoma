@@ -499,3 +499,233 @@ paths:
 
         assert 'first_name: Annotated[str | None, Field(alias="firstName")] = None' in content
         assert "from typing import Annotated" in content
+
+
+# ===== schema description / examples → docstring =====
+
+
+class TestFieldDescriptionAsDocstring:
+    """验证 schema ``description`` / ``example(s)`` 落到 docstring 而非 ``Field(...)`` kwargs。
+
+    依赖 ``src/openapi/model_generator.py`` 固化的三个 dmcg flag：
+    ``use_field_description=True``、``use_field_description_example=True``、
+    ``use_single_line_docstring=True``。dmcg 默认行为是反过来的 —— description / examples
+    会进 ``Field(...)`` kwargs，``use_field_description`` 的语义是「搬进 docstring」
+    而不是「启用描述」（help 文本："Use schema description to populate field docstring"）。
+    """
+
+    def test_description_becomes_single_line_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """纯短 description → 单行 docstring，且不进 ``Field(description=...)``。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Desc Docstring API
+  version: "1.0.0"
+paths:
+  /items:
+    post:
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: short label
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "models.py").read_text(encoding="utf-8")
+
+        assert 'name: str\n    """short label"""' in content
+        assert "description=" not in content
+        assert "Field(" not in content
+
+    def test_description_with_single_example_emits_multiline_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """``description`` + 单个 ``examples`` → 多行 docstring（dmcg 原生行为）。
+
+        ``use_single_line_docstring=True`` 只在 docstring 只有一个段落时成立；
+        带 ``Example:`` 段落时强制多行。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Desc Example API
+  version: "1.0.0"
+paths:
+  /alerts:
+    post:
+      operationId: createAlert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metric]
+              properties:
+                metric:
+                  type: string
+                  description: Name of the metric that triggered the alert
+                  examples:
+                    - cpu_percent
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "models.py").read_text(encoding="utf-8")
+
+        assert 'description="Name of the metric' not in content
+        assert "Name of the metric that triggered the alert" in content
+        assert "Example: 'cpu_percent'" in content
+        assert 'Field(examples=["cpu_percent"])' in content
+
+    def test_description_with_multiple_examples_uses_bullet_list(self, cli_runner: Any, tmp_path: Path) -> None:
+        """多个 ``examples`` → docstring 用 ``Examples:`` + 项目符号列表。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Multi Example API
+  version: "1.0.0"
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  description: the kind
+                  examples:
+                    - alpha
+                    - beta
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "models.py").read_text(encoding="utf-8")
+
+        assert "Examples:" in content
+        assert "- 'alpha'" in content
+        assert "- 'beta'" in content
+        assert 'description="the kind"' not in content
+
+    def test_examples_only_field_has_example_docstring_no_description(self, cli_runner: Any, tmp_path: Path) -> None:
+        """只有 ``examples`` 没有 ``description`` → docstring 仅含 ``Example:`` 段落。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Example Only API
+  version: "1.0.0"
+paths:
+  /widgets:
+    post:
+      operationId: createWidget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  examples:
+                    - W-1
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "models.py").read_text(encoding="utf-8")
+
+        assert "Example: 'W-1'" in content
+        assert 'Field(examples=["W-1"])' in content
+        assert "description=" not in content
+
+    def test_mixed_fields_each_get_their_own_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """混合字段：每个字段按自身情况渲染 docstring，互不干扰。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Mixed Fields API
+  version: "1.0.0"
+paths:
+  /profiles:
+    post:
+      operationId: createProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [a]
+              properties:
+                a:
+                  type: string
+                  description: first
+                  examples: ["x"]
+                b:
+                  type: string
+                  description: second
+                c:
+                  type: integer
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "models.py").read_text(encoding="utf-8")
+
+        assert "first" in content
+        assert "Example: 'x'" in content
+        assert 'Field(examples=["x"])' in content
+        assert '"""second"""' in content
+        assert "c: int" in content
+        assert "description=" not in content

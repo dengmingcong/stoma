@@ -37,6 +37,16 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
     把类型与默认值揉在同一位置的写法，输出更符合 PEP 593 的习惯，并对
     Pylance / mypy 等静态检查器更友好。
 
+    schema 的 ``description`` 与 ``example(s)`` 走 docstring 而非 ``Field(...)`` kwargs，
+    对应 dmcg 的 ``use_field_description=True`` + ``use_field_description_example=True``。
+    ``use_single_line_docstring=True`` 让纯短描述以单行 docstring 呈现；带 example 的字段
+    因 docstring 段落 > 1 仍会多行（dmcg 原生行为）。
+
+    注意：dmcg 不会从 ``Field(...)`` kwargs 中剥离 ``examples=[...]`` —— ``use_field_description_example``
+    只控制 example 是否**额外**出现在 docstring 中。如果 spec 字段同时有 ``examples``，
+    最终输出仍是 ``Field(examples=[...])``，docstring 里也会有一份。这是 dmcg 的固有行为，
+    与 stoma 的 flag 选择无关。
+
     :param spec_dict: 解析后的 OpenAPI 规范字典。
     :param output_path: ``models.py`` 的输出路径。父目录如不存在会自动创建。
     :raise RuntimeError: ``datamodel-code-generator`` 调用失败且未产出文件。
@@ -58,6 +68,9 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
             use_union_operator=True,
             use_operation_id_as_name=True,
             openapi_scopes=[OpenAPIScope.Schemas, OpenAPIScope.Paths],
+            use_field_description=True,
+            use_field_description_example=True,
+            use_single_line_docstring=True,
         )
     except Exception as e:
         msg = f"datamodel-code-generator 调用失败: {e}"

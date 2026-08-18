@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
@@ -121,7 +122,7 @@ def test_codegen_all_methods(
 
 
 @pytest.fixture
-def api_context(mock_server: Any) -> dict[str, Any]:
+def api_context(mock_server: Any) -> Generator[dict[str, Any], None, None]:
     """创建 Playwright APIRequestContext（使用 ``mock_server`` 提供 base_url）。"""
     playwright = sync_playwright().start()
     context = playwright.request.new_context(base_url=mock_server.base_url)
