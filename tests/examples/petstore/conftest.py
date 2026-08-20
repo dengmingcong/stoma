@@ -2,11 +2,6 @@
 
 为 stoma 演示 examples 提供共享 fixtures，target = Swagger Petstore (https://petstore3.swagger.io/api/v3)。
 
-``stoma`` 包位于标准 ``src/stoma/`` 布局（setuptools 推荐），``import stoma`` 解析到 ``src/stoma/__init__.py``。
-但生成的代码 ``from stoma import ...`` 在 pytest 收集阶段就需要解析，因此必须在 conftest 模块导入时
-（即文件顶层、imports 之前）就把 ``src`` alias 成 ``stoma``。**不能**用 autouse fixture —— fixtures
-在 test 运行时启动，已经晚于生成代码的 module import。
-
 URL 前缀处理：
 - Petstore spec 的 ``servers`` 字段声明 base path 为 ``/api/v3``。
 - 生成代码的 route 路径不带此前缀（如 ``/store/inventory``）。
@@ -30,17 +25,7 @@ playwright.stop()）。
 本文件不启动 mock server，所有请求发往真实 petstore3.swagger.io。
 """
 
-# stoma 模块 patch——必须在任何 `from stoma import ...` 之前完成。
-# fixture body 太晚：generated code 在 test collection 时已经被 import。
-# import src.stoma 会触发 Python import 机制填充 sys.modules["stoma"]，
-# 但该对象在 conftest 时机不正确；直接赋值覆盖为正确的 src.stoma 模块。
 from __future__ import annotations
-
-import sys
-
-import src.stoma as _stoma_module  # noqa: E402
-
-sys.modules["stoma"] = _stoma_module
 
 from collections.abc import Generator  # noqa: E402
 
