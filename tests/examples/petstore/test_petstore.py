@@ -27,10 +27,10 @@
 from __future__ import annotations
 
 from stoma.client import Client
-from tests.examples.petstore.app.get_order_by_id import GetOrderById
-from tests.examples.petstore.app.get_user_by_name import GetUserByName
-from tests.examples.petstore.app.login_user import LoginUser
-from tests.examples.petstore.app.logout_user import LogoutUser
+from tests.examples.petstore.app.endpoints.get_order_by_id import GetOrderById
+from tests.examples.petstore.app.endpoints.get_user_by_name import GetUserByName
+from tests.examples.petstore.app.endpoints.login_user import LoginUser
+from tests.examples.petstore.app.endpoints.logout_user import LogoutUser
 from tests.examples.petstore.app.models import Order, User
 
 
