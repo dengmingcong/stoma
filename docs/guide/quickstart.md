@@ -1,75 +1,79 @@
 # 快速开始
 
-10 分钟跑通一个端到端的接口测试流程。
 
-## 1. 安装
+## 安装
 
-建议使用 Python 3.11：
-
-```bash
-python3 --version
-```
-
-stoma 将接口定义和 Playwright（Python 版）作为核心依赖，并通过 extras 提供可选的功能扩展。
+需要使用 Python 3.12 及以上版本。
 
 ```bash
-# 核心（pydantic + playwright 运行时；可 import stoma + 用 Client）
+# 安装运行时需要的依赖
 pip install stoma
 
-# 加 CLI 工具 stoma make
+# 安装运行时需要的依赖，并增加 CLI 需要的依赖
 pip install stoma[cli]
-
-# 加测试基础设施（pytest + FastAPI mock server）
-pip install stoma[test]
-
-# 开发（全部 + 类型/lint）
-pip install stoma[dev]
 ```
 
-推荐同时安装 CLI 和测试工具：
+## 定义接口
 
-```bash
-pip install stoma[cli,test]
-```
-
-## 2. 第一个 endpoint
-
-用一个最简的 users-CRUD（获取用户列表、创建用户）来演示 stoma 的声明式风格。
-
-首先定义两个 APIRoute（GET + POST），全部从 stoma 公开 API 引入：
+以 Swagger Petstore 接口 [getUserByName](https://petstore.swagger.io/#/user/getUserByName) 为例，说明 Stoma 中如何定义接口。
 
 ```python
-from stoma import APIRoute, APIRouter, Query, Client
+from typing import Annotated
+from pydantic import BaseModel, Field
+from stoma import APIRoute, APIRouter
+
+class User(BaseModel):
+    id: Annotated[int | None, Field(examples=[10])] = None
+    """Example: 10"""
+    username: Annotated[str | None, Field(examples=["theUser"])] = None
+    """Example: 'theUser'"""
+    first_name: Annotated[str | None, Field(alias="firstName", examples=["John"])] = None
+    """Example: 'John'"""
+    last_name: Annotated[str | None, Field(alias="lastName", examples=["James"])] = None
+    """Example: 'James'"""
+    email: Annotated[str | None, Field(examples=["john@email.com"])] = None
+    """Example: 'john@email.com'"""
+    password: Annotated[str | None, Field(examples=["12345"])] = None
+    """Example: '12345'"""
+    phone: Annotated[str | None, Field(examples=["12345"])] = None
+    """Example: '12345'"""
+    user_status: Annotated[int | None, Field(alias="userStatus", examples=[1])] = None
+    """
+    User Status
+
+    Example: 1
+    """
 
 router = APIRouter()
 
+@router.get("/user/{username}")
+class GetUserByName(APIRoute[User]):
+    """Get user by user name.。
 
-@router.get("/users")
-class GetUsers(APIRoute[list[dict]]):
-    """获取用户列表。"""
+    Get user detail based on username.
+    """
 
-    limit: int = 20
+    username: str
+    """The name that needs to be fetched. Use user1 for testing"""
 
-
-@router.post("/users")
-class CreateUser(APIRoute[dict]):
-    """创建用户。"""
-
-    name: str
-    email: str
 ```
 
-stoma 的路由类继承自 `APIRoute`，泛型参数 `T` 指定响应体的类型（这里用 `dict` 简化演示）。类属性直接对应接口参数：`limit` 作为查询参数，`name` 和 `email` 作为请求体。
+* `router = APIRouter()` - 实例化 `APIRouter`。
+* `@router.get("/user/{username}")` - 定义接口的请求方法（`GET`）和路径（`/user/{username}`），其中包含一个路径参数 `username`。
+* `class GetUserByName(APIRoute[User]):` - 定义接口，Stoma 中一个接口必须是 `APIRoute` 子类。
+    - `APIRoute` 是 pydantic `BaseModel` 子类，定义接口和定义 pydantic 模型是相同的书写方式。
+    - `APIRoute` 同时也是泛型，泛型参数是接口的响应类型。当接口响应 Header `Content-Type` 是 JSON（如 `application/json`）时，会使用泛型参数的值去校验响应体并返回对应实例，示例会返回 `User` 实例。
+* `username: str` - Path 参数。如果字段名和路径参数相同，会被识别为 Path 参数。
 
-## 3. 发送请求
 
-准备好一个运行中的 API 服务（假设在 `http://localhost:8000`），然后用 Playwright 的 `request.new_context` 建 context，再交给 Client 发送：
+## 调用接口
+
 
 ```python
-from playwright.sync_api import sync_playwright as pw
+from playwright.sync_api import sync_playwright
 from stoma import Client
 
-with pw() as p:
+with sync_playwright() as p:
     ctx = pw.request.new_context(base_url="http://localhost:8000")
     client = Client(context=ctx)
 
