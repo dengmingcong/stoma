@@ -24,6 +24,7 @@ stoma 是从 OpenAPI 规范生成声明式接口测试代码的框架。给定�
 
 ### 示例
 
+- [Petstore 示例](./docs/examples/petstore.md) — Swagger 官方 Petstore (OpenAPI 3.0.4) 的 stoma 演示
 - [端到端测试](./docs/examples/end-to-end.md) — 从 OpenAPI 文档到完整测试套件的全流程示例，演示完整工作流。涵盖 spec 解析、路由匹配、测试用例生成与断言填写的完整链路
 
 示例部分持续补充，欢迎在仓库中提 issue 反馈你希望看到的场景。
