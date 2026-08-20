@@ -19,14 +19,14 @@ HEAD 空 body 解析 / 畸形 multipart spec）。
 from __future__ import annotations
 
 from stoma.client import Client
-from tests.examples.api_rest_sh.app.delete_book import DeleteBook
-from tests.examples.api_rest_sh.app.get_accept_image import GetAcceptImage
-from tests.examples.api_rest_sh.app.get_bytes import GetBytes
-from tests.examples.api_rest_sh.app.get_method import GetMethod
+from tests.examples.api_rest_sh.app.endpoints.delete_book import DeleteBook
+from tests.examples.api_rest_sh.app.endpoints.get_accept_image import GetAcceptImage
+from tests.examples.api_rest_sh.app.endpoints.get_bytes import GetBytes
+from tests.examples.api_rest_sh.app.endpoints.get_method import GetMethod
+from tests.examples.api_rest_sh.app.endpoints.options_method import OptionsMethod
+from tests.examples.api_rest_sh.app.endpoints.post_login import PostLogin
+from tests.examples.api_rest_sh.app.endpoints.post_method import PostMethod
 from tests.examples.api_rest_sh.app.models import EchoModel, Method, TokenResponseBody
-from tests.examples.api_rest_sh.app.options_method import OptionsMethod
-from tests.examples.api_rest_sh.app.post_login import PostLogin
-from tests.examples.api_rest_sh.app.post_method import PostMethod
 
 
 def test_get_with_query_param_returns_validated(e2e_client: Client) -> None:
