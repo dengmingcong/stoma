@@ -10,9 +10,9 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, APIRouter, Header
+from stoma import APIRoute, Header
 
-router = APIRouter()
+from ..router import router
 
 
 @router.delete("/pet/{petId}")

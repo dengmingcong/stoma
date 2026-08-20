@@ -6,9 +6,9 @@ This can only be done by the logged in user.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-router = APIRouter()
+from ..router import router
 
 
 @router.delete("/user/{username}")

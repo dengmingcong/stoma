@@ -6,11 +6,10 @@ Returns a map of status codes to quantities.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-from .models import GetInventoryResponse
-
-router = APIRouter()
+from ..models import GetInventoryResponse
+from ..router import router
 
 
 @router.get("/store/inventory")

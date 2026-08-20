@@ -10,9 +10,9 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-router = APIRouter()
+from ..router import router
 
 
 @router.delete("/store/order/{orderId}")

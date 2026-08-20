@@ -10,11 +10,10 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-from .models import Order
-
-router = APIRouter()
+from ..models import Order
+from ..router import router
 
 
 @router.get("/store/order/{orderId}")

@@ -10,11 +10,10 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-from .models import Pet
-
-router = APIRouter()
+from ..models import Pet
+from ..router import router
 
 
 @router.post("/pet/{petId}")

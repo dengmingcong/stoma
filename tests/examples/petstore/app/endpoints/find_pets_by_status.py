@@ -6,11 +6,10 @@ Multiple status values can be provided with comma separated strings.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-from .models import FindPetsByStatusResponse
-
-router = APIRouter()
+from ..models import FindPetsByStatusResponse
+from ..router import router
 
 
 @router.get("/pet/findByStatus")

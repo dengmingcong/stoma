@@ -10,11 +10,10 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, APIRouter, Header, UploadFile
+from stoma import APIRoute, Header, UploadFile
 
-from .models import ApiResponse
-
-router = APIRouter()
+from ..models import ApiResponse
+from ..router import router
 
 
 @router.post("/pet/{petId}/uploadImage", upload_as_multipart=False)

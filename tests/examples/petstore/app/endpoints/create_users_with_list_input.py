@@ -6,11 +6,10 @@ Creates list of users with given input array.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-from .models import CreateUsersWithListInputRequest, User
-
-router = APIRouter()
+from ..models import CreateUsersWithListInputRequest, User
+from ..router import router
 
 
 @router.post("/user/createWithList")

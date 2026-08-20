@@ -6,11 +6,10 @@ This can only be done by the logged in user.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-from .models import User
-
-router = APIRouter()
+from ..models import User
+from ..router import router
 
 
 @router.post("/user")

@@ -6,11 +6,10 @@ Place a new order in the store.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-from .models import Order
-
-router = APIRouter()
+from ..models import Order
+from ..router import router
 
 
 @router.post("/store/order")

@@ -6,11 +6,10 @@ Get user detail based on username.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-from .models import User
-
-router = APIRouter()
+from ..models import User
+from ..router import router
 
 
 @router.get("/user/{username}")

@@ -1,16 +1,13 @@
 """tests/examples/petstore/conftest。
 
-为 stoma 演示 examples 提供共享 fixtures，target = Swagger Petstore (https://petstore3.swagger.io/api/v3)。
+为 stoma 演示 examples 提供共享 fixtures，target = Swagger Petstore (https://petstore3.swagger.io)。
 
 URL 前缀处理：
 - Petstore spec 的 ``servers`` 字段声明 base path 为 ``/api/v3``。
-- 生成代码的 route 路径不带此前缀（如 ``/store/inventory``）。
-- Playwright 的 ``base_url`` 拼接遵循 RFC3986：以 ``/`` 开头的路径会**替换** base URL 路径，
-  因此 ``base_url='https://petstore3.swagger.io/api/v3'`` + ``/store/inventory`` 会得到
-  ``https://petstore3.swagger.io/store/inventory``（丢失 ``/api/v3``）。
-- 解决方案：用 ``Petstore3Context`` 装饰器包一层 APIRequestContext，
-  在调用 ``fetch()`` 时主动给 path 加上 ``/api/v3`` 前缀。
-- 这样既不需要修改 ``src/``，也不需要修改生成代码。
+- 生成代码通过 ``APIRouter(prefix="/api/v3")`` 在装饰期注入此前缀，
+  因此每个 endpoint 的 path 已经是 ``/api/v3/...``。
+- Playwright 的 ``base_url`` 设为域名根 ``https://petstore3.swagger.io``，
+  ``request.fetch("/api/v3/...")`` 自动拼接完整 URL。
 
 Fixtures：
 - ``_shared_playwright``：session 级，所有 e2e fixtures 共享的 Playwright 实例。
@@ -27,47 +24,17 @@ playwright.stop()）。
 
 from __future__ import annotations
 
-from collections.abc import Generator  # noqa: E402
+from collections.abc import Generator
 
-import pytest  # noqa: E402
-from playwright.sync_api import APIRequestContext, APIResponse, Playwright, sync_playwright  # noqa: E402
+import pytest
+from playwright.sync_api import APIRequestContext, Playwright, sync_playwright
 
-from stoma.client import Client  # noqa: E402
+from stoma.client import Client
 
 __all__ = [
-    "Petstore3Context",
     "e2e_client",
     "e2e_client_playwright",
 ]
-
-
-class Petstore3Context:
-    """为 ``base_url`` 域名的路径前缀 ``/api/v3`` 补齐。
-
-    Playwright 的 ``APIRequestContext.fetch()`` 遵循 RFC3986 URL 拼接：以 ``/``
-    开头的 path 会替换 base URL 的整个 path 段。Petstore 声明 base path 为
-    ``/api/v3``，但生成的 route 路径不带此前缀，因此需要在 fetch 之前主动
-    给 path 加上 ``/api/v3`` 前缀。
-
-    本类用鸭子类型实现 ``APIRequestContext`` 的最小子集：``fetch`` 与 ``dispose``。
-    """
-
-    BASE_PATH: str = "/api/v3"
-
-    def __init__(self, inner: APIRequestContext) -> None:
-        self._inner = inner
-
-    def fetch(self, path: str, **kwargs: object) -> APIResponse:
-        """转发 fetch 调用并给 path 补上 ``/api/v3`` 前缀。"""
-        if path.startswith("/"):
-            full_path = self.BASE_PATH + path
-        else:
-            full_path = self.BASE_PATH + "/" + path
-        return self._inner.fetch(full_path, **kwargs)
-
-    def dispose(self) -> None:
-        """释放底层 Playwright context。"""
-        self._inner.dispose()
 
 
 @pytest.fixture(scope="session")
@@ -92,29 +59,23 @@ def e2e_client_playwright(
 ) -> Generator[APIRequestContext, None, None]:
     """匿名客户端：no auth headers，base_url 指向 petstore3.swagger.io 域名根。
 
-    返回 :class:`Petstore3Context`（包了一层 APIRequestContext），用于补齐
-    ``/api/v3`` 路径前缀。stoma 的 ``Client`` 只调用 ``fetch`` 与 ``dispose``，
-    鸭子类型即可。
+    每个 endpoint 的 path 由生成代码的 ``APIRouter(prefix="/api/v3")`` 自动拼前缀，
+    因此 ``base_url`` 不需要带 path 段。``fetch()`` 会按 RFC3986 拼接出完整 URL。
     """
     inner: APIRequestContext = _shared_playwright.request.new_context(
         base_url="https://petstore3.swagger.io",
     )
-    wrapper = Petstore3Context(inner)
     try:
-        yield wrapper
+        yield inner
     finally:
-        wrapper.dispose()
+        inner.dispose()
 
 
 @pytest.fixture(scope="session")
 def e2e_client(
     e2e_client_playwright: APIRequestContext,
 ) -> Generator[Client, None, None]:
-    """包装 :class:`stoma.client.Client` 供 e2e 测试使用。
-
-    :class:`Petstore3Context` 的 ``fetch`` 会自动补齐 ``/api/v3`` 前缀，
-    因此 ``Client.send`` 无需任何额外处理。
-    """
+    """包装 :class:`stoma.client.Client` 供 e2e 测试使用。"""
     client = Client(context=e2e_client_playwright)
     try:
         yield client

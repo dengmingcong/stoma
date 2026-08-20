@@ -6,9 +6,9 @@ Log user out of the system.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-router = APIRouter()
+from ..router import router
 
 
 @router.get("/user/logout")

@@ -6,11 +6,10 @@ Update an existing pet by Id.
 
 from __future__ import annotations
 
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute
 
-from .models import Pet
-
-router = APIRouter()
+from ..models import Pet
+from ..router import router
 
 
 @router.put("/pet")
