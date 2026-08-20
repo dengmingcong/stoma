@@ -8,14 +8,13 @@ from typing import Annotated
 {% if uses_field_import -%}
 from pydantic import Field
 {% endif %}
-from stoma import APIRouter, APIRoute{% if header_fields %}, Header{% endif %}{% if scalar_field %}, Body{% endif %}{% if form_text_fields %}, Form{% endif %}{% if form_file_fields or (binary_file_field and not upload_as_multipart) %}, UploadFile{% endif %}
+from stoma import APIRoute{% if header_fields %}, Header{% endif %}{% if scalar_field %}, Body{% endif %}{% if form_text_fields %}, Form{% endif %}{% if form_file_fields or (binary_file_field and not upload_as_multipart) %}, UploadFile{% endif %}
+
+from ..router import router
 
 {% if imported_models -%}
-from .models import {{ imported_models | join(', ') }}
+from ..models import {{ imported_models | join(', ') }}
 {% endif -%}
-
-
-router = APIRouter()
 
 
 @router.{{ method }}("{{ path }}"{% if not upload_as_multipart %}, upload_as_multipart=False{% endif %})

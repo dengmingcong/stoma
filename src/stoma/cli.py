@@ -33,13 +33,16 @@ app = typer.Typer(
 def make(
     spec: Annotated[Path, typer.Argument(help="OpenAPI 规范文件路径（YAML 或 JSON）")],
     out: Annotated[Path, typer.Option("--out", "-o", help="输出目录路径")] = Path("."),
+    prefix: Annotated[str, typer.Option("--prefix", help="路由器前缀（如 ``/api/v3``），空字符串表示无前缀")] = "",
     no_format: Annotated[bool, typer.Option("--no-format", help="跳过 ruff format + isort fix")] = False,
 ) -> None:
     """从 OpenAPI 规范生成接口代码。
 
     读取 OpenAPI 规范文件，生成一份 ``models.py``（由
-    ``datamodel-code-generator`` 产出）+ 每个 endpoint 一份路由文件
-    （引用 ``models.py`` 中的类型）。
+    ``datamodel-code-generator`` 产出）+ 一份 ``router.py``
+    （携带 ``--prefix`` 前缀的 ``APIRouter`` 实例）+ 一份
+    ``endpoints/__init__.py`` 包标记 + 每个 endpoint 一份路由文件
+    （位于 ``endpoints/{snake_case_id}.py``，引用 ``router`` 与 ``models``）。
     """
     # 校验 spec 文件。
     if not spec.exists():
@@ -89,11 +92,29 @@ def make(
         tree = ast.parse(models_path.read_text(encoding="utf-8"))
         renderer.available_models = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
 
+    router_template = renderer.env.get_template("router.py.jinja2")
+    router_code = router_template.render(prefix=prefix)
+    render_to_file(
+        output_dir=out,
+        file_name="router.py",
+        rendered_code=router_code,
+        enable_ruff=not no_format,
+    )
+
+    endpoints_init_template = renderer.env.get_template("endpoints_init.py.jinja2")
+    endpoints_init_code = endpoints_init_template.render()
+    render_to_file(
+        output_dir=out / "endpoints",
+        file_name="__init__.py",
+        rendered_code=endpoints_init_code,
+        enable_ruff=False,
+    )
+
     for endpoint in endpoints:
         try:
             file_name, rendered_code = renderer.render(endpoint)
             file_path = render_to_file(
-                output_dir=out,
+                output_dir=out / "endpoints",
                 file_name=file_name,
                 rendered_code=rendered_code,
                 enable_ruff=not no_format,
