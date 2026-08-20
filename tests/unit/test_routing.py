@@ -1079,6 +1079,44 @@ class TestAPIRouterPrefix:
         assert len(dependant.path_params) == 1
         assert dependant.path_params[0].alias == "id"
 
+    def test_prefix_trailing_slash_normalized(self) -> None:
+        """``prefix`` 尾部 ``/`` 会被构造函数 ``rstrip`` 归一化，避免拼接出 ``//``。"""
+
+        router_with_slash = APIRouter(prefix="/api/v3/")
+
+        @router_with_slash.get("/users")
+        class GetUsersWithSlash(APIRoute[list[UserData]]):
+            pass
+
+        dependant = GetUsersWithSlash._get_dependant()
+
+        assert dependant.path == "/api/v3/users"
+        assert dependant.method == "GET"
+        assert "//" not in dependant.path
+
+    def test_prefix_empty_string_equivalent_to_none(self) -> None:
+        """``prefix=""`` 与 ``prefix=None``（默认值）行为一致：falsy 都不加前缀。"""
+
+        router_empty = APIRouter(prefix="")
+        router_default = APIRouter()
+
+        @router_empty.get("/users")
+        class GetUsersEmpty(APIRoute[list[UserData]]):
+            pass
+
+        @router_default.get("/users")
+        class GetUsersDefault(APIRoute[list[UserData]]):
+            pass
+
+        dep_empty = GetUsersEmpty._get_dependant()
+        dep_default = GetUsersDefault._get_dependant()
+
+        assert router_empty.prefix == ""
+        assert router_default.prefix == ""
+        assert dep_empty.path == "/users"
+        assert dep_default.path == "/users"
+        assert dep_empty.path == dep_default.path
+
 
 # 旧 ``test_client_helpers.py`` 里的 ``TestFillScalarFormField`` 已迁到
 # :mod:`tests.unit.dependencies.test_request` 的 ``_fill_form_data`` 单测下。
