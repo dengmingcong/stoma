@@ -16,16 +16,16 @@
 | 路径 | 说明 |
 |------|------|
 | `spec/openapi.json` | OpenAPI 3.0.4 规范文件（约 17 KB），定义 Petstore 所有端点、鉴权方案和响应 schema |
-| `app/` | stoma make 生成的测试代码目录，包含 `models.py`（Pydantic 模型类）和 18 个 route 文件。**同时作为 e2e 测试的入口代码**，由 conftest.py 提供 session 级 Client fixture，供 `test_app.py` 直接 import 调用 |
+| `app/` | stoma make 生成的测试代码目录，包含 `models.py`（Pydantic 模型类）和 18 个 route 文件。**同时作为 e2e 测试的入口代码**，由 conftest.py 提供 session 级 Client fixture，供 `test_petstore.py` 直接 import 调用 |
 | `conftest.py` | pytest fixtures：1 个 session 级 Client fixture（匿名客户端，发往 petstore3.swagger.io） |
-| `test_app.py` | 匿名端点 e2e 测试（8 个），发往真实 Petstore 端点；当前 2 个 PASS（scenario 3、8），6 个 xfail（见"已知限制"） |
+| `test_petstore.py` | 匿名端点 e2e 测试（8 个），发往真实 Petstore 端点；当前 2 个 PASS（scenario 3、8），6 个 xfail（见"已知限制"） |
 
 ## 运行命令
 
 ### 运行全部测试
 
 ```bash
-pytest tests/examples/petstore/test_app.py -v
+pytest tests/examples/petstore/test_petstore.py -v
 ```
 
 结果：2 passed, 6 xfailed（当前 2/8 场景 PASS，其余 6 个 xfail 原因见"已知限制"）
@@ -39,7 +39,7 @@ stoma make --spec tests/examples/petstore/spec/openapi.json \
 
 ## 覆盖矩阵
 
-### test_app.py（8 个 happy-path）
+### test_petstore.py（8 个 happy-path）
 
 每个场景均为 2xx，刻意避开 stoma 框架已知 bug 边界：
 
