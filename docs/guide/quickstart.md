@@ -3,8 +3,6 @@
 
 ## 安装
 
----
-
 需要使用 Python 3.12 及以上版本。
 
 ```bash
@@ -16,8 +14,6 @@ pip install stoma[cli]
 ```
 
 ## 定义接口
-
----
 
 以 Swagger Petstore 接口 [getUserByName](https://petstore.swagger.io/#/user/getUserByName) 为例，说明 Stoma 中如何定义接口。
 
@@ -72,8 +68,6 @@ class GetUserByName(APIRoute[User]):
 
 ## 调用接口
 
----
-
 ```python
 from playwright.sync_api import sync_playwright
 from stoma import Client
@@ -99,8 +93,6 @@ with sync_playwright() as p:
     ![alt text](../assets/guide/quickstart/ide-autocomplete-response.png)
 
 ## 回顾
-
----
 
 以上涵盖了从安装到写出第一个可运行脚本的全流程。Stoma 的核心用法可以归结为三步：
 
