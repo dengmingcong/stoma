@@ -296,25 +296,20 @@ class APIRouter:
     提供类似 FastAPI 风格的路由装饰器方法（get/post/put/patch/delete/head/options/trace），
     简化接口定义语法。
 
-    :var prefix: 应用于所有路由方法的路径前缀（构造函数 ``__init__`` 时归一化后的值）。
-        - 默认值为 ``None``（在构造函数里被归一化为空字符串 ``""``，表示不添加前缀）。
-        - 显式传入空字符串 ``""`` 与 ``None`` 行为一致（falsy 值都不加前缀）。
-        - 显式传入非空字符串时，构造函数会去除尾部 ``/``，避免拼接出 ``//``。
+    :var prefix: 应用于所有路由方法的路径前缀。默认为 ``None``（falsy 值如 ``None`` / ``""`` 均不加前缀）。
         由该 router 装饰的 endpoint 最终路径为 ``self.prefix + path``，由调用方负责
-        保证传入方法的 ``path`` 以 ``/`` 开头（如 ``/users``），框架不做多余校验。
+        提供合法前缀（如 ``"/api/v3"``），框架不做归一化（如去除尾部斜杠）。
     :vartype prefix: str
 
     Example::
 
-        # 创建路由器（默认 prefix=None → 归一化为 ""）
+        # 创建路由器
         router = APIRouter()
 
         # 使用装饰器定义接口
         @router.get("/users")
         class GetUsers(APIRoute[list[UserData]]):
             limit: int = 20
-
-        # GetUsers._get_dependant().path == "/users"
 
         @router.post("/users")
         class CreateUser(APIRoute[UserData]):
@@ -341,23 +336,15 @@ class APIRouter:
             pass
 
         # GetInventory._get_dependant().path == "/api/v3/store/inventory"
-
-        # prefix 尾部 ``/`` 会被自动归一化：
-        # APIRouter(prefix="/api/v3/").get("/users") → Dependant.path == "/api/v3/users"
     """
 
     def __init__(self, prefix: str | None = None) -> None:
         """初始化路由器。
 
-        :param prefix: 应用于所有路由方法的路径前缀。
-            - 默认为 ``None``，表示不添加前缀。
-            - 若提供字符串，会自动去除尾部 ``/``，避免拼接出 ``//``（如
-              ``prefix="/api/v3/" + path="/users"`` 自动归一化为 ``"/api/v3/users"``）。
-            - 空字符串 ``""`` 与 ``None`` 行为一致（falsy 值都不加前缀）。
-
-            调用方约定：传入方法的 ``path`` 必须以 ``/`` 开头（如 ``/users``）。
+        :param prefix: 应用于所有路由方法的路径前缀。默认为 ``None``（falsy 值如 ``None`` / ``""`` 均不加前缀）。
+            由调用方负责提供合法前缀（如 ``"/api/v3"``），框架不做归一化（如去除尾部斜杠）。
         """
-        self.prefix = prefix.rstrip("/") if prefix else ""
+        self.prefix = prefix or ""
 
     def get[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """GET 请求装饰器。
@@ -382,9 +369,6 @@ class APIRouter:
             @router_v3.get("/users/{user_id}")
             class GetUserV3(APIRoute[UserData]):
                 user_id: Annotated[int, Path()]
-
-            # prefix 尾部 ``/`` 会自动归一化：
-            # APIRouter(prefix="/api/v3/").get("/users") → Dependant.path == "/api/v3/users"
         """
         return api_route_decorator(method="GET", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -413,9 +397,6 @@ class APIRouter:
             class CreateUserV3(APIRoute[UserData]):
                 name: str
                 email: str
-
-            # prefix 尾部 ``/`` 会自动归一化：
-            # APIRouter(prefix="/api/v3/").post("/users") → Dependant.path == "/api/v3/users"
         """
         return api_route_decorator(method="POST", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -449,9 +430,6 @@ class APIRouter:
             class UpdateUserV3(APIRoute[UserData]):
                 user_id: Annotated[int, Path()]
                 name: str
-
-            # prefix 尾部 ``/`` 会自动归一化：
-            # APIRouter(prefix="/api/v3/").put("/users/{user_id}") → Dependant.path == "/api/v3/users/{user_id}"
         """
         return api_route_decorator(method="PUT", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -480,9 +458,6 @@ class APIRouter:
             class PatchUserV3(APIRoute[UserData]):
                 user_id: Annotated[int, Path()]
                 email: str | None = None
-
-            # prefix 尾部 ``/`` 会自动归一化：
-            # APIRouter(prefix="/api/v3/").patch("/users/{user_id}") → Dependant.path == "/api/v3/users/{user_id}"
         """
         return api_route_decorator(method="PATCH", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -509,9 +484,6 @@ class APIRouter:
             @router_v3.delete("/users/{user_id}")
             class DeleteUserV3(APIRoute[dict[str, str]]):
                 user_id: Annotated[int, Path()]
-
-            # prefix 尾部 ``/`` 会自动归一化：
-            # APIRouter(prefix="/api/v3/").delete("/users/{user_id}") → Dependant.path == "/api/v3/users/{user_id}"
         """
         return api_route_decorator(method="DELETE", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -538,9 +510,6 @@ class APIRouter:
             @router_v3.head("/users")
             class HeadUsersV3(APIRoute[dict]):
                 pass
-
-            # prefix 尾部 ``/`` 会自动归一化：
-            # APIRouter(prefix="/api/v3/").head("/users") → Dependant.path == "/api/v3/users"
         """
         return api_route_decorator(method="HEAD", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -567,9 +536,6 @@ class APIRouter:
             @router_v3.options("/users")
             class OptionsUsersV3(APIRoute[dict]):
                 pass
-
-            # prefix 尾部 ``/`` 会自动归一化：
-            # APIRouter(prefix="/api/v3/").options("/users") → Dependant.path == "/api/v3/users"
         """
         return api_route_decorator(method="OPTIONS", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -596,8 +562,5 @@ class APIRouter:
             @router_v3.trace("/users")
             class TraceUsersV3(APIRoute[dict]):
                 pass
-
-            # prefix 尾部 ``/`` 会自动归一化：
-            # APIRouter(prefix="/api/v3/").trace("/users") → Dependant.path == "/api/v3/users"
         """
         return api_route_decorator(method="TRACE", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
