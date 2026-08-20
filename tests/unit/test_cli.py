@@ -94,9 +94,9 @@ class TestMakeSuccess:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "list_users.py").exists()
-        assert (out_dir / "get_user.py").exists()
-        assert (out_dir / "delete_user.py").exists()
+        assert (out_dir / "endpoints" / "list_users.py").exists()
+        assert (out_dir / "endpoints" / "get_user.py").exists()
+        assert (out_dir / "endpoints" / "delete_user.py").exists()
 
     def test_generates_valid_python_syntax(
         self, cli_runner: CliRunner, tmp_path: Path, valid_spec: tuple[Path, Path]
@@ -107,7 +107,7 @@ class TestMakeSuccess:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        for generated in out_dir.glob("*.py"):
+        for generated in (out_dir / "endpoints").glob("*.py"):
             ast.parse(generated.read_text(encoding="utf-8"))
 
     def test_creates_output_dir_if_missing(
@@ -132,7 +132,8 @@ class TestMakeSuccess:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert list(out_dir.glob("*.py")) == []
+        endpoint_files = [f for f in (out_dir / "endpoints").glob("*.py") if f.name != "__init__.py"]
+        assert endpoint_files == []
 
     def test_output_message_lists_generated_files(self, cli_runner: CliRunner, valid_spec: tuple[Path, Path]) -> None:
         """验证输出信息包含生成的文件名（snake_case）。"""
