@@ -44,7 +44,7 @@ class User(BaseModel):
     Example: 1
     """
 
-router = APIRouter()
+router = APIRouter(prefix="/v2")
 
 @router.get("/user/{username}")
 class GetUserByName(APIRoute[User]):
@@ -58,7 +58,7 @@ class GetUserByName(APIRoute[User]):
 
 ```
 
-* `router = APIRouter()` - 实例化 `APIRouter`。
+* `router = APIRouter(prefix="/v2")` - 实例化 `APIRouter`，并为所有关联接口设置公共的路径前缀 `/v2`。
 * `@router.get("/user/{username}")` - 定义接口的请求方法（`GET`）和路径（`/user/{username}`），其中包含一个路径参数 `username`。
 * `class GetUserByName(APIRoute[User]):` - 定义接口，Stoma 中一个接口必须是 `APIRoute` 子类。
     - `APIRoute` 是 pydantic `BaseModel` 子类，定义接口和定义 pydantic 模型是相同的书写方式。
