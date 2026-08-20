@@ -296,6 +296,11 @@ class APIRouter:
     提供类似 FastAPI 风格的路由装饰器方法（get/post/put/patch/delete/head/options/trace），
     简化接口定义语法。
 
+    :var prefix: 应用于所有路由方法的路径前缀。默认为空字符串 ``""``，表示不添加前缀。
+        由该 router 装饰的 endpoint 最终路径为 ``self.prefix + path``，由调用方负责
+        提供合法前缀（如 ``"/api/v3"``），框架不做归一化。
+    :vartype prefix: str
+
     Example::
 
         # 创建路由器
@@ -322,12 +327,30 @@ class APIRouter:
         @router.trace("/users")
         class TraceUsers(APIRoute[dict]):
             pass
+
+        # 创建带前缀的路由器：endpoint 实际路径为 prefix + 方法传入的 path
+        router_v3 = APIRouter(prefix="/api/v3")
+
+        @router_v3.get("/store/inventory")
+        class GetInventory(APIRoute[dict]):
+            pass
+
+        # GetInventory._get_dependant().path == "/api/v3/store/inventory"
     """
+
+    def __init__(self, prefix: str = "") -> None:
+        """初始化路由器。
+
+        :param prefix: 应用于所有路由方法的路径前缀。默认为空字符串 ``""``，表示不添加前缀。
+            由调用方负责提供合法前缀（如 ``"/api/v3"``），框架不做归一化（如去除尾部斜杠）。
+        """
+        self.prefix = prefix
 
     def get[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """GET 请求装饰器。
 
-        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :param path: 接口路径，支持路径参数占位符（如 ``/users/{user_id}``）。
+            实际注入到 ``Dependant.path`` 的路径为 ``self.prefix + path``。
         :type path: str
         :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
         :type upload_as_multipart: bool
@@ -336,16 +359,23 @@ class APIRouter:
 
         Example::
 
+            # 无前缀：实际路径为 /users
             @router.get("/users")
             class GetUsers(APIRoute[list[UserData]]):
                 limit: int = 20
+
+            # 带前缀：实际路径为 /api/v3/users/{user_id}
+            @router_v3.get("/users/{user_id}")
+            class GetUserV3(APIRoute[UserData]):
+                user_id: Annotated[int, Path()]
         """
-        return api_route_decorator(method="GET", path=path, upload_as_multipart=upload_as_multipart)
+        return api_route_decorator(method="GET", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
     def post[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """POST 请求装饰器。
 
-        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :param path: 接口路径，支持路径参数占位符（如 ``/users/{user_id}``）。
+            实际注入到 ``Dependant.path`` 的路径为 ``self.prefix + path``。
         :type path: str
         :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
         :type upload_as_multipart: bool
@@ -354,12 +384,19 @@ class APIRouter:
 
         Example::
 
+            # 无前缀
             @router.post("/users")
             class CreateUser(APIRoute[UserData]):
                 name: str
                 email: str
+
+            # 带前缀：实际路径为 /api/v3/users
+            @router_v3.post("/users")
+            class CreateUserV3(APIRoute[UserData]):
+                name: str
+                email: str
         """
-        return api_route_decorator(method="POST", path=path, upload_as_multipart=upload_as_multipart)
+        return api_route_decorator(method="POST", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
     def put[T: APIRoute](
         self,
@@ -369,7 +406,8 @@ class APIRouter:
     ) -> Callable[[type[T]], type[T]]:
         """PUT 请求装饰器。
 
-        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :param path: 接口路径，支持路径参数占位符（如 ``/users/{user_id}``）。
+            实际注入到 ``Dependant.path`` 的路径为 ``self.prefix + path``。
         :type path: str
         :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
         :type upload_as_multipart: bool
@@ -378,17 +416,25 @@ class APIRouter:
 
         Example::
 
+            # 无前缀
             @router.put("/users/{user_id}")
             class UpdateUser(APIRoute[UserData]):
                 user_id: Annotated[int, Path()]
                 name: str
+
+            # 带前缀：实际路径为 /api/v3/users/{user_id}
+            @router_v3.put("/users/{user_id}")
+            class UpdateUserV3(APIRoute[UserData]):
+                user_id: Annotated[int, Path()]
+                name: str
         """
-        return api_route_decorator(method="PUT", path=path, upload_as_multipart=upload_as_multipart)
+        return api_route_decorator(method="PUT", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
     def patch[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """PATCH 请求装饰器。
 
-        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :param path: 接口路径，支持路径参数占位符（如 ``/users/{user_id}``）。
+            实际注入到 ``Dependant.path`` 的路径为 ``self.prefix + path``。
         :type path: str
         :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
         :type upload_as_multipart: bool
@@ -397,17 +443,25 @@ class APIRouter:
 
         Example::
 
+            # 无前缀
             @router.patch("/users/{user_id}")
             class PatchUser(APIRoute[UserData]):
                 user_id: Annotated[int, Path()]
                 email: str | None = None
+
+            # 带前缀：实际路径为 /api/v3/users/{user_id}
+            @router_v3.patch("/users/{user_id}")
+            class PatchUserV3(APIRoute[UserData]):
+                user_id: Annotated[int, Path()]
+                email: str | None = None
         """
-        return api_route_decorator(method="PATCH", path=path, upload_as_multipart=upload_as_multipart)
+        return api_route_decorator(method="PATCH", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
     def delete[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """DELETE 请求装饰器。
 
-        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :param path: 接口路径，支持路径参数占位符（如 ``/users/{user_id}``）。
+            实际注入到 ``Dependant.path`` 的路径为 ``self.prefix + path``。
         :type path: str
         :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
         :type upload_as_multipart: bool
@@ -416,16 +470,23 @@ class APIRouter:
 
         Example::
 
+            # 无前缀
             @router.delete("/users/{user_id}")
             class DeleteUser(APIRoute[dict[str, str]]):
                 user_id: Annotated[int, Path()]
+
+            # 带前缀：实际路径为 /api/v3/users/{user_id}
+            @router_v3.delete("/users/{user_id}")
+            class DeleteUserV3(APIRoute[dict[str, str]]):
+                user_id: Annotated[int, Path()]
         """
-        return api_route_decorator(method="DELETE", path=path, upload_as_multipart=upload_as_multipart)
+        return api_route_decorator(method="DELETE", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
     def head[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """HEAD 请求装饰器。
 
-        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :param path: 接口路径，支持路径参数占位符（如 ``/users/{user_id}``）。
+            实际注入到 ``Dependant.path`` 的路径为 ``self.prefix + path``。
         :type path: str
         :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
         :type upload_as_multipart: bool
@@ -434,16 +495,23 @@ class APIRouter:
 
         Example::
 
+            # 无前缀
             @router.head("/users")
             class HeadUsers(APIRoute[dict]):
                 pass
+
+            # 带前缀：实际路径为 /api/v3/users
+            @router_v3.head("/users")
+            class HeadUsersV3(APIRoute[dict]):
+                pass
         """
-        return api_route_decorator(method="HEAD", path=path, upload_as_multipart=upload_as_multipart)
+        return api_route_decorator(method="HEAD", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
     def options[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """OPTIONS 请求装饰器。
 
-        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :param path: 接口路径，支持路径参数占位符（如 ``/users/{user_id}``）。
+            实际注入到 ``Dependant.path`` 的路径为 ``self.prefix + path``。
         :type path: str
         :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
         :type upload_as_multipart: bool
@@ -452,16 +520,23 @@ class APIRouter:
 
         Example::
 
+            # 无前缀
             @router.options("/users")
             class OptionsUsers(APIRoute[dict]):
                 pass
+
+            # 带前缀：实际路径为 /api/v3/users
+            @router_v3.options("/users")
+            class OptionsUsersV3(APIRoute[dict]):
+                pass
         """
-        return api_route_decorator(method="OPTIONS", path=path, upload_as_multipart=upload_as_multipart)
+        return api_route_decorator(method="OPTIONS", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
     def trace[T: APIRoute](self, path: str, *, upload_as_multipart: bool = True) -> Callable[[type[T]], type[T]]:
         """TRACE 请求装饰器。
 
-        :param path: 接口路径，支持路径参数占位符（如 /users/{user_id}）。
+        :param path: 接口路径，支持路径参数占位符（如 ``/users/{user_id}``）。
+            实际注入到 ``Dependant.path`` 的路径为 ``self.prefix + path``。
         :type path: str
         :param upload_as_multipart: 是否将请求作为 multipart/form-data 解析。默认为 True。
         :type upload_as_multipart: bool
@@ -470,8 +545,14 @@ class APIRouter:
 
         Example::
 
+            # 无前缀
             @router.trace("/users")
             class TraceUsers(APIRoute[dict]):
                 pass
+
+            # 带前缀：实际路径为 /api/v3/users
+            @router_v3.trace("/users")
+            class TraceUsersV3(APIRoute[dict]):
+                pass
         """
-        return api_route_decorator(method="TRACE", path=path, upload_as_multipart=upload_as_multipart)
+        return api_route_decorator(method="TRACE", path=self.prefix + path, upload_as_multipart=upload_as_multipart)

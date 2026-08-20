@@ -1005,5 +1005,80 @@ def test_request_body_field_names() -> None:
     assert "binary_body" not in RequestBody.__dataclass_fields__
 
 
+# ===== APIRouter.prefix 支持 =====
+
+
+class TestAPIRouterPrefix:
+    """APIRouter.prefix 构造参数 + 8 个方法自动 prepend 前缀的契约测试。"""
+
+    def test_default_empty_prefix_unchanged(self) -> None:
+        """默认构造（``prefix=""``）时，endpoint 路径不被改写。"""
+
+        router_no_prefix = APIRouter()
+
+        @router_no_prefix.get("/users")
+        class GetUsers(APIRoute[list[UserData]]):
+            limit: Annotated[int, Query()] = 20
+
+        dependant = GetUsers._get_dependant()
+
+        assert dependant.path == "/users"
+        assert dependant.method == "GET"
+
+    def test_prefix_prepended_to_path(self) -> None:
+        """``APIRouter(prefix="/api/v3")`` 会把 prefix 拼到 path 前面。"""
+
+        router_v3 = APIRouter(prefix="/api/v3")
+
+        @router_v3.get("/store/inventory")
+        class GetInventory(APIRoute[dict]):
+            pass
+
+        dependant = GetInventory._get_dependant()
+
+        assert dependant.path == "/api/v3/store/inventory"
+        assert dependant.method == "GET"
+
+    def test_two_routers_different_prefixes_isolated(self) -> None:
+        """两个不同 prefix 的 router 装饰不同 endpoint，路径互不污染。"""
+
+        router_v1 = APIRouter(prefix="/api/v1")
+        router_v2 = APIRouter(prefix="/api/v2")
+
+        @router_v1.get("/users")
+        class GetUsersV1(APIRoute[list[UserData]]):
+            pass
+
+        @router_v2.post("/users")
+        class CreateUserV2(APIRoute[UserData]):
+            name: str
+            email: str
+
+        dep_v1 = GetUsersV1._get_dependant()
+        dep_v2 = CreateUserV2._get_dependant()
+
+        assert dep_v1.path == "/api/v1/users"
+        assert dep_v1.method == "GET"
+        assert dep_v2.path == "/api/v2/users"
+        assert dep_v2.method == "POST"
+        assert dep_v1 is not dep_v2
+
+    def test_prefix_with_path_param(self) -> None:
+        """prefix 与路径参数共存：``path`` 完整拼接 + ``path_params`` 仍识别 ``{id}``。"""
+
+        router_v3 = APIRouter(prefix="/api/v3")
+
+        @router_v3.get("/users/{id}")
+        class GetUserById(APIRoute[UserData]):
+            id: int
+
+        dependant = GetUserById._get_dependant()
+
+        assert dependant.path == "/api/v3/users/{id}"
+        assert dependant.method == "GET"
+        assert len(dependant.path_params) == 1
+        assert dependant.path_params[0].alias == "id"
+
+
 # 旧 ``test_client_helpers.py`` 里的 ``TestFillScalarFormField`` 已迁到
 # :mod:`tests.unit.dependencies.test_request` 的 ``_fill_form_data`` 单测下。
