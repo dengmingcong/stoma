@@ -33,8 +33,7 @@ app = typer.Typer(
 def make(
     spec: Annotated[Path, typer.Argument(help="OpenAPI 规范文件路径（YAML 或 JSON）")],
     out: Annotated[Path, typer.Option("--out", "-o", help="输出目录路径")] = Path("."),
-    prefix: Annotated[str, typer.Option("--prefix", help="路由器前缀（如 ``/api/v3``），空字符串表示无前缀")] = "",
-    no_format: Annotated[bool, typer.Option("--no-format", help="跳过 ruff format + isort fix")] = False,
+    prefix: Annotated[str | None, typer.Option("--prefix", help="路由器前缀（如 ``/api/v3``），不传或传空字符串表示无前缀")] = None,
 ) -> None:
     """从 OpenAPI 规范生成接口代码。
 
@@ -73,7 +72,7 @@ def make(
         schemas = (raw_spec.get("components") or {}).get("schemas") or {}
         if schemas or has_json_payloads:
             generate_models(raw_spec, out / "models.py")
-            if not no_format and shutil.which("ruff") is not None:
+            if shutil.which("ruff") is not None:
                 subprocess.run(
                     ["ruff", "format", str(out / "models.py")],
                     check=False,
@@ -93,22 +92,17 @@ def make(
         renderer.available_models = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
 
     router_template = renderer.env.get_template("router.py.jinja2")
-    router_code = router_template.render(prefix=prefix)
+    router_code = router_template.render(prefix=prefix or "")
     render_to_file(
         output_dir=out,
         file_name="router.py",
         rendered_code=router_code,
-        enable_ruff=not no_format,
+        enable_ruff=True,
     )
 
-    endpoints_init_template = renderer.env.get_template("endpoints_init.py.jinja2")
-    endpoints_init_code = endpoints_init_template.render()
-    render_to_file(
-        output_dir=out / "endpoints",
-        file_name="__init__.py",
-        rendered_code=endpoints_init_code,
-        enable_ruff=False,
-    )
+    endpoints_init_path = out / "endpoints" / "__init__.py"
+    endpoints_init_path.parent.mkdir(parents=True, exist_ok=True)
+    endpoints_init_path.write_text("# endpoints package marker\n", encoding="utf-8")
 
     for endpoint in endpoints:
         try:
@@ -117,7 +111,7 @@ def make(
                 output_dir=out / "endpoints",
                 file_name=file_name,
                 rendered_code=rendered_code,
-                enable_ruff=not no_format,
+                enable_ruff=True,
             )
             generated_files.append(file_path)
         except OpenAPISchemaError as e:
