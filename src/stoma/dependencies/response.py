@@ -93,7 +93,13 @@ def build_response[T](api_route: APIRoute[T], api_response: APIResponse) -> Resp
     except Exception:
         pass
 
-    # 3. 仅当 content-type 为 JSON 时才解析并填充 validated
+    # 3. 无 json_response_schema 时直接退出，不进入 is_json_media_type 分支
+    # 否则会触发裸字符串响应体（application/json + 非 JSON body）的 ParseError。
+    # 仅当 schema 存在时才有必要解析 JSON 并填充 validated。
+    if dependant.json_response_schema is None:
+        return Response[T](raw=api_response, validated=None)
+
+    # 4. 仅当 content-type 为 JSON 时才解析并填充 validated
     if is_json_media_type(media_type):
         try:
             payload: Any = api_response.json()
@@ -105,9 +111,6 @@ def build_response[T](api_route: APIRoute[T], api_response: APIResponse) -> Resp
                 pass
             msg = f"响应 JSON 解析失败: {e}"
             raise ParseError(msg, response_text=fallback_text) from e
-
-        if dependant.json_response_schema is None:
-            return Response[T](raw=api_response, validated=None)
 
         assert dependant.json_response_schema_adapter is not None
         try:
@@ -122,7 +125,7 @@ def build_response[T](api_route: APIRoute[T], api_response: APIResponse) -> Resp
 
         return Response[T](raw=api_response, validated=validated)
 
-    # 4. 非 JSON 响应：validated = None
+    # 5. 非 JSON 响应 + 有 schema：无法校验，validated = None
     return Response[T](raw=api_response, validated=None)
 
 
