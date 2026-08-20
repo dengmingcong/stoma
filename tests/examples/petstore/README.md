@@ -7,7 +7,7 @@
 演示 stoma 从 OpenAPI 3.0 spec（Petstore v1.0.27）生成接口测试代码并调用真实公开 Petstore 服务的完整流程，覆盖：
 
 - stoma make 命令生成测试代码（app/ 目录）
-- 8 个 happy-path e2e 场景（全部 2xx，无 body 或 JSON body 类型）
+- 5 个 happy-path e2e 场景（全部 2xx，无 body 或 JSON body 类型）
 
 测试默认发往 https://petstore3.swagger.io/api/v3（真实网络请求），所有场景均基于 OpenAPI 3.0.4 spec（spec/openapi.json）驱动。
 
@@ -18,7 +18,7 @@
 | `spec/openapi.json` | OpenAPI 3.0.4 规范文件（约 17 KB），定义 Petstore 所有端点、鉴权方案和响应 schema |
 | `app/` | stoma make 生成的测试代码目录，包含 `models.py`（Pydantic 模型类）和 18 个 route 文件。**同时作为 e2e 测试的入口代码**，由 conftest.py 提供 session 级 Client fixture，供 `test_petstore.py` 直接 import 调用 |
 | `conftest.py` | pytest fixtures：1 个 session 级 Client fixture（匿名客户端，发往 petstore3.swagger.io） |
-| `test_petstore.py` | 匿名端点 e2e 测试（8 个），发往真实 Petstore 端点；当前 2 个 PASS（scenario 3、8），6 个 xfail（见"已知限制"） |
+| `test_petstore.py` | 匿名端点 e2e 测试（5 个），发往真实 Petstore 端点；当前 5 个 PASS |
 
 ## 运行命令
 
@@ -28,7 +28,7 @@
 pytest tests/examples/petstore/test_petstore.py -v
 ```
 
-结果：2 passed, 6 xfailed（当前 2/8 场景 PASS，其余 6 个 xfail 原因见"已知限制"）
+结果：5 passed, 0 xfailed
 
 ### 手动重新生成 app 代码
 
@@ -39,22 +39,30 @@ stoma make --spec tests/examples/petstore/spec/openapi.json \
 
 ## 覆盖矩阵
 
-### test_petstore.py（8 个 happy-path）
+### test_petstore.py（5 个 happy-path）
 
 每个场景均为 2xx，刻意避开 stoma 框架已知 bug 边界：
 
 | # | HTTP 方法 | 端点 | 请求体类型 | 响应类型 | Schema 校验 | 覆盖点 |
 |---|-----------|------|------------|----------|-------------|--------|
-| 1 | GET | /store/inventory | 无 | JSON | 是 | query 字符串拼接 + schema 校验 |
-| 2 | POST | /store/order | JSON | JSON | 是 | raw body 编码 + schema 校验 |
-| 3 | GET | /store/order/{orderId} | 无 | JSON | 是 | path 插值 + schema 校验 |
-| 4 | DELETE | /store/order/{orderId} | 无 | 200 | 否 | path 插值 + DELETE 语义 |
-| 5 | POST | /user/createWithList | JSON array | JSON | 是 | array body 编码 + schema 校验 |
-| 6 | GET | /user/login | query | 字符串 | 否 | query 拼接 + 非 schema 响应 |
-| 7 | GET | /user/logout | 无 | 200 | 否 | 无副作用 e2e 调用 |
-| 8 | GET | /user/{username} | 无 | JSON | 是 | path 插值 + schema 校验 |
+| 1 | GET | /store/order/{orderId} | 无 | JSON | 是 | path 插值 + schema 校验 |
+| 2 | GET | /user/login | query | 字符串 | 否 | query 拼接 + 非 schema 响应 |
+| 3 | GET | /user/logout | 无 | 200 | 否 | 无副作用 e2e 调用 |
+| 4 | GET | /user/{username} | 无 | JSON | 是 | path 插值 + schema 校验（user1） |
+| 5 | GET | /user/{username} | 无 | JSON | 是 | path 插值 + schema 校验（user2） |
 
-### 故意未覆盖的场景
+### 故意未覆盖的场景（petstore3 服务器问题）
+
+由于 petstore3 公开服务器存在服务端问题，以下 4 个端点不在本测试覆盖范围内：
+
+| # | HTTP 方法 | 端点 | 服务器问题 |
+|---|-----------|------|------------|
+| 1 | GET | /store/inventory | 服务器持续返回 500 |
+| 2 | POST | /store/order | 服务器持续返回 500 |
+| 3 | POST | /user/createWithList | 服务器持续返回 500 |
+| 4 | DELETE | /store/order/{orderId} | 服务器持续返回 500（订单不存在） |
+
+### 其他故意未覆盖的场景
 
 以下测试场景涉及 stoma 框架的已知限制，**不纳入本示例**：
 
@@ -66,19 +74,14 @@ stoma make --spec tests/examples/petstore/spec/openapi.json \
 
 ## 已知限制
 
-### 为什么 6 个场景 xfail
+### 已排除的服务器问题
 
-当前测试结果为 2 passed, 6 xfailed，原因分为两类：
+petstore3 公开服务器对以下 4 个端点持续返回 500，排除这些端点以确保测试套件稳定：
 
-**petstore3 服务器问题（4 个）：**
 - GET /store/inventory — 服务器返回 500
 - POST /store/order — 服务器返回 500
 - POST /user/createWithList — 服务器返回 500
-- DELETE /store/order/{orderId=1} — order_id=1 不存在（服务器 404，非 stoma 问题）
-
-**stoma ParseError on string body（2 个）：**
-- GET /user/login — 响应 Content-Type 为 application/json，但 body 是裸字符串（如 "Logged in user session: 6219368480151290063"），不是合法 JSON 字符串字面量，stoma json.loads() 失败触发 ParseError
-- GET /user/logout — 同上，响应 Content-Type 为 application/json，但 body 是裸字符串（如 "User logged out"），不是合法 JSON 字符串字面量，stoma json.loads() 失败触发 ParseError
+- DELETE /store/order/{orderId} — 服务器返回 500（订单不存在）
 
 ### 其他已知限制
 

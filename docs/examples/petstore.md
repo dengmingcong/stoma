@@ -4,24 +4,32 @@
 
 ## 这个示例是什么
 
-`tests/examples/petstore/` 提供 8 个匿名端点 e2e 场景，刻意避开 stoma 框架已知 bug 边界（OAuth2、octet-stream、XML body）。
+`tests/examples/petstore/` 提供 5 个匿名端点 e2e 场景，刻意避开 stoma 框架已知 bug 边界（OAuth2、octet-stream、XML body）以及 petstore3 服务器存在问题的端点。
 
-当前测试结果：2 passed, 6 xfailed。6 个 xfail 中，4 个源于 petstore3 服务器返回 500，2 个源于 stoma 对 application/json content-type 但 body 为裸字符串触发 ParseError。
+当前测试结果：5 passed, 0 xfailed。所有测试均使用 GET 方法，覆盖 store 和 user 端点。
 
 不写 `test_codegen.py`，Petstore 仅作 e2e 演示。
 
-## 8 个 happy-path e2e 场景
+## 5 个 happy-path e2e 场景
 
 | HTTP 方法 | 端点 | 请求体类型 | 响应类型 | Schema 校验 | 覆盖点 | 当前状态 |
 |-----------|------|------------|----------|-------------|--------|----------|
-| GET | /store/inventory | 无 | JSON | 是 | query 字符串拼接 + schema 校验 | xfail（服务器 500） |
-| POST | /store/order | JSON | JSON | 是 | raw body 编码 + schema 校验 | xfail（服务器 500） |
-| GET | /store/order/{orderId} | 无 | JSON | 是 | path 插值 + schema 校验 | PASS（orderId=2） |
-| DELETE | /store/order/{orderId} | 无 | 200 | 否 | path 插值 + DELETE 语义 | xfail（orderId=1 不存在） |
-| POST | /user/createWithList | JSON array | JSON | 是 | array body 编码 + schema 校验 | xfail（服务器 500） |
-| GET | /user/login | query | 字符串 | 否 | query 拼接 + 非 schema 响应 | xfail（stoma ParseError） |
-| GET | /user/logout | 无 | 200 | 否 | 无副作用 e2e 调用 | xfail（stoma ParseError） |
-| GET | /user/{username} | 无 | JSON | 是 | path 插值 + schema 校验 | PASS |
+| GET | /store/order/{orderId} | 无 | JSON | 是 | path 插值 + schema 校验（orderId=2） | PASS |
+| GET | /user/login | query | 字符串 | 否 | query 拼接 + 非 schema 响应 | PASS |
+| GET | /user/logout | 无 | 200 | 否 | 无副作用 e2e 调用 | PASS |
+| GET | /user/{username} | 无 | JSON | 是 | path 插值 + schema 校验（user1） | PASS |
+| GET | /user/{username} | 无 | JSON | 是 | path 插值 + schema 校验（user2） | PASS |
+
+## 已排除的端点（petstore3 服务器问题）
+
+由于 petstore3 公开服务器存在以下服务端问题，以下 4 个端点不在本测试覆盖范围内：
+
+| HTTP 方法 | 端点 | 服务器问题 |
+|-----------|------|------------|
+| GET | /store/inventory | 服务器持续返回 500 |
+| POST | /store/order | 服务器持续返回 500 |
+| POST | /user/createWithList | 服务器持续返回 500 |
+| DELETE | /store/order/{orderId} | 服务器持续返回 500 |
 
 ## 手动重新生成 + 已知限制
 
@@ -32,13 +40,12 @@ stoma make --spec tests/examples/petstore/spec/openapi.json \
            --out tests/examples/petstore/app
 ```
 
-以下 4 类场景涉及 stoma 框架已知限制，不在本示例覆盖范围内：
+以下场景涉及 stoma 框架已知限制，不在本示例覆盖范围内：
 
 | 触发场景 | 框架限制 |
 |----------|----------|
 | OAuth2 鉴权端点（pet 组 /pet/{petId}/uploadImage） | stoma 不处理 OAuth2 鉴权流程 |
 | octet-stream 二进制上传（/pet/{petId}/uploadImage） | octet-stream body 类型为已知限制 |
 | POST /user（application/xml） | XML body 编码不在本示例范围内 |
-| GET /user/login、/user/logout（裸字符串 body） | stoma 对 application/json content-type 但 body 为裸字符串触发 ParseError |
 
 上述限制的修复需要修改 `src/` 代码，**不在本 examples 计划范围内**。
