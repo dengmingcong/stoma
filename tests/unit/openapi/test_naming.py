@@ -24,9 +24,9 @@ class TestMakeFileNaming:
 
         assert result.exit_code == 0, result.output
         # listUsers → list_users.py
-        assert (out_dir / "list_users.py").exists()
-        assert (out_dir / "get_user.py").exists()
-        assert (out_dir / "delete_user.py").exists()
+        assert (out_dir / "endpoints" / "list_users.py").exists()
+        assert (out_dir / "endpoints" / "get_user.py").exists()
+        assert (out_dir / "endpoints" / "delete_user.py").exists()
 
     def test_snake_case_operation_id(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 snake_case 的 operationId 直接用作文件名。"""
@@ -53,7 +53,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "list_items.py").exists()
+        assert (out_dir / "endpoints" / "list_items.py").exists()
 
     def test_pascalcase_operation_id_becomes_snake_case(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 PascalCase 的 operationId 转为 snake_case 文件名。"""
@@ -80,7 +80,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "list_items.py").exists()
+        assert (out_dir / "endpoints" / "list_items.py").exists()
 
     def test_class_name_in_file_is_pascal_case(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证文件名是 snake_case 但类名是 PascalCase。"""
@@ -108,7 +108,7 @@ paths:
 
         assert result.exit_code == 0, result.output
         # 文件名是 snake_case。
-        assert (out_dir / "list_users.py").exists()
+        assert (out_dir / "endpoints" / "list_users.py").exists()
         # 类名是 PascalCase。
-        content = (out_dir / "list_users.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "list_users.py").read_text(encoding="utf-8")
         assert "class ListUsers" in content

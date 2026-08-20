@@ -90,10 +90,10 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "create_user.py").exists()
-        content = (out_dir / "create_user.py").read_text(encoding="utf-8")
+        assert (out_dir / "endpoints" / "create_user.py").exists()
+        content = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
         # 生成的代码应该从 .models 导入 User（不再内联模型）。
-        assert "from .models import User" in content
+        assert "from ..models import User" in content
         # $ref 指向的 schema 有 title，render 为 case 1：body: <title>
         assert "body: User" in content
 
@@ -111,7 +111,7 @@ components:
         renderer = make_endpoint_renderer(parser.spec_version)
         create_user = next(ep for ep in endpoints if ep.operation_id == "createUser")
         _file_name, code = renderer.render(create_user)
-        assert "from .models import User" in code
+        assert "from ..models import User" in code
         assert "body: User" in code
 
     def test_request_body_with_inline_object_schema(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -141,12 +141,12 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "create_item.py").exists()
-        content = (out_dir / "create_item.py").read_text(encoding="utf-8")
+        assert (out_dir / "endpoints" / "create_item.py").exists()
+        content = (out_dir / "endpoints" / "create_item.py").read_text(encoding="utf-8")
         assert "@router.post" in content
         # 内联对象生成 CreateItemRequest 模型（operationId 派生，
         # ``createItem`` → ``CreateItemRequest``），由 ``use_operation_id_as_name=True`` 触发。
-        assert "from .models import CreateItemRequest" in content
+        assert "from ..models import CreateItemRequest" in content
         assert "body: CreateItemRequest" in content
 
     def test_request_body_with_nested_object_schema(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -190,7 +190,7 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "create_order.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "create_order.py").read_text(encoding="utf-8")
         # 嵌套对象可以正常生成。
         assert "createOrder" in content or "create_order" in content
         assert "@router.post" in content
@@ -226,7 +226,7 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "create_batch.py").exists()
+        assert (out_dir / "endpoints" / "create_batch.py").exists()
 
     def test_request_body_with_no_body(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 endpoint 没有 requestBody 时不报错。"""
@@ -251,7 +251,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "health.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "health.py").read_text(encoding="utf-8")
         assert "@router.get" in content
 
     def test_request_body_with_embed_true(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -289,15 +289,15 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "create_user_embed.py").exists()
-        content = (out_dir / "create_user_embed.py").read_text(encoding="utf-8")
+        assert (out_dir / "endpoints" / "create_user_embed.py").exists()
+        content = (out_dir / "endpoints" / "create_user_embed.py").read_text(encoding="utf-8")
         # 按 operationId 派生（``createUserEmbed`` → ``CreateUserEmbedRequest``），
         # 由 ``use_operation_id_as_name=True`` 触发。
         # body 形态由 spec 决定。
         assert "body: CreateUserEmbedRequest" in content
-        assert "from .models import CreateUserEmbedRequest" in content
+        assert "from ..models import CreateUserEmbedRequest" in content
         # JSON body 由 Playwright 自动派生 Content-Type，renderer 不注入 Header
-        assert "from stoma import APIRouter, APIRoute, Body" in content
+        assert "from stoma import APIRoute" in content
 
     def test_request_body_with_non_pascalcase_ref(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 ``$ref`` 末段（``components.schemas`` 的 key）非 PascalCase 时被 PascalCase 化。
@@ -343,11 +343,11 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "create_profile.py").exists()
-        content = (out_dir / "create_profile.py").read_text(encoding="utf-8")
+        assert (out_dir / "endpoints" / "create_profile.py").exists()
+        content = (out_dir / "endpoints" / "create_profile.py").read_text(encoding="utf-8")
         # ref 末段 ``user-profile`` 必须 PascalCase 为 ``UserProfile``，与
         # ``datamodel-code-generator`` 对 ``components.schemas`` key 的处理对齐。
-        assert "from .models import UserProfile" in content
+        assert "from ..models import UserProfile" in content
         assert "body: UserProfile" in content
 
     def test_request_body_with_kebab_case_schema_name(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -396,15 +396,15 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "create_user.py").exists()
+        assert (out_dir / "endpoints" / "create_user.py").exists()
         assert (out_dir / "models.py").exists()
 
         models_content = (out_dir / "models.py").read_text(encoding="utf-8")
         assert "class UserProfile(BaseModel):" in models_content
         assert "class user-profile" not in models_content
 
-        route_content = (out_dir / "create_user.py").read_text(encoding="utf-8")
-        assert "from .models import UserProfile" in route_content
+        route_content = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
+        assert "from ..models import UserProfile" in route_content
         assert "body: UserProfile" in route_content
 
     def test_request_body_with_discriminator_union(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -472,12 +472,12 @@ components:
 
         assert result.exit_code == 0, result.output
         models = (out_dir / "models.py").read_text(encoding="utf-8")
-        route = (out_dir / "create_pet.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "create_pet.py").read_text(encoding="utf-8")
         assert "class Pet(RootModel[Cat | Dog])" in models
         assert "class Cat(PetBase)" in models
         assert "class Dog(PetBase)" in models
         assert 'Annotated[Cat | Dog, Field(discriminator="pet_type")]' in models
-        assert "from .models import Pet" in route
+        assert "from ..models import Pet" in route
         assert "body: Pet" in route
 
     def test_request_body_without_operation_id_errors(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -696,15 +696,15 @@ components:
 
         assert result.exit_code == 0, result.output
         assert (out_dir / "models.py").exists()
-        assert (out_dir / "create_entity.py").exists()
+        assert (out_dir / "endpoints" / "create_entity.py").exists()
 
         models_content = (out_dir / "models.py").read_text(encoding="utf-8")
         # dmcg 生成 RootModel[TypeA | TypeB]，验证 TypeA | TypeB 存在。
         assert "TypeA | TypeB" in models_content
 
-        route_content = (out_dir / "create_entity.py").read_text(encoding="utf-8")
+        route_content = (out_dir / "endpoints" / "create_entity.py").read_text(encoding="utf-8")
         # route.py 应从 models 导入 body 类型。
-        assert "from .models import" in route_content
+        assert "from ..models import" in route_content
         assert "body:" in route_content
 
     def test_request_body_with_anyof_union(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -754,15 +754,15 @@ components:
 
         assert result.exit_code == 0, result.output
         assert (out_dir / "models.py").exists()
-        assert (out_dir / "create_record.py").exists()
+        assert (out_dir / "endpoints" / "create_record.py").exists()
 
         models_content = (out_dir / "models.py").read_text(encoding="utf-8")
         # dmcg 生成 RootModel[TypeA | TypeB]，验证 TypeA | TypeB 存在。
         assert "TypeA | TypeB" in models_content
 
-        route_content = (out_dir / "create_record.py").read_text(encoding="utf-8")
+        route_content = (out_dir / "endpoints" / "create_record.py").read_text(encoding="utf-8")
         # route.py 应从 models 导入 body 类型。
-        assert "from .models import" in route_content
+        assert "from ..models import" in route_content
         assert "body:" in route_content
 
     def test_request_body_with_allof_merge(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -816,7 +816,7 @@ components:
 
         assert result.exit_code == 0, result.output
         assert (out_dir / "models.py").exists()
-        assert (out_dir / "create_order.py").exists()
+        assert (out_dir / "endpoints" / "create_order.py").exists()
 
         models = (out_dir / "models.py").read_text(encoding="utf-8")
         # ``createOrder`` 经 ``use_operation_id_as_name=True`` 派生出合并类型
@@ -829,9 +829,9 @@ components:
         # 父类的 ``id`` 字段在 ``models.py`` 中触达（transitively via inheritance）。
         assert "id: str" in models
 
-        route = (out_dir / "create_order.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "create_order.py").read_text(encoding="utf-8")
         # route 引用合并后的 ``CreateOrderRequest``，请求体验证覆盖父类 + 内联字段。
-        assert "from .models import CreateOrderRequest" in route
+        assert "from ..models import CreateOrderRequest" in route
         assert "body: CreateOrderRequest" in route
 
     def test_request_and_response_share_model_dedupes_import(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -883,11 +883,11 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        route_content = (out_dir / "create_user.py").read_text(encoding="utf-8")
+        route_content = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
         # 导入了 User（存在至少一次）。
-        assert "from .models import User" in route_content
+        assert "from ..models import User" in route_content
         # 不应该出现重复的 ``User, User``。
-        assert "from .models import User, User" not in route_content
+        assert "from ..models import User, User" not in route_content
         # 文件必须是语法正确的 Python。
         compile(route_content, "create_user.py", "exec")
 
@@ -922,7 +922,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "list_items.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "list_items.py").read_text(encoding="utf-8")
         # body 为空且无 docstring 时应插入 pass 占位
         assert "\n    pass\n" in content or "\n    pass" in content
         compile(content, "list_items.py", "exec")
@@ -958,7 +958,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "get_profile.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "get_profile.py").read_text(encoding="utf-8")
         # class body 有 header 字段时不应有 pass（bug 场景）
         # pass 应该在 header 字段之前，而不是替代它
         assert "    pass\n    x_request_id:" not in content
@@ -1040,10 +1040,10 @@ class TestMakeRequestBodyFormMultipart:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "login_user.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "login_user.py").read_text(encoding="utf-8")
         assert "username: Annotated[str, Form()]" in content
         assert "password: Annotated[str, Form()]" in content
-        assert "from stoma import APIRouter, APIRoute, Form" in content
+        assert "from stoma import APIRoute, Form" in content
         # 无 auto Content-Type，Playwright 自己设置
         assert "content_type" not in content
         compile(content, "login_user.py", "exec")
@@ -1074,10 +1074,10 @@ class TestMakeRequestBodyFormMultipart:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "add_tags.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "add_tags.py").read_text(encoding="utf-8")
         # 数组字段从 items.type 派生 list[T];与 runtime Annotated[list[str], Form()] 一致
         assert "tags: Annotated[list[str], Form()]" in content
-        assert "from stoma import APIRouter, APIRoute, Form" in content
+        assert "from stoma import APIRoute, Form" in content
         assert "content_type" not in content
         compile(content, "add_tags.py", "exec")
 
@@ -1107,10 +1107,10 @@ class TestMakeRequestBodyFormMultipart:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "add_scores.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "add_scores.py").read_text(encoding="utf-8")
         # items.type=integer → list[int]
         assert "scores: Annotated[list[int], Form()]" in content
-        assert "from stoma import APIRouter, APIRoute, Form" in content
+        assert "from stoma import APIRoute, Form" in content
         assert "content_type" not in content
         compile(content, "add_scores.py", "exec")
 
@@ -1142,9 +1142,9 @@ class TestMakeRequestBodyFormMultipart:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "upload_avatar.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "upload_avatar.py").read_text(encoding="utf-8")
         assert "avatar: UploadFile" in content
-        assert "from stoma import APIRouter, APIRoute, UploadFile" in content
+        assert "from stoma import APIRoute, UploadFile" in content
         # 无 auto Content-Type，Playwright 自己设置
         assert "content_type" not in content
         # multipart 文件场景不应导入 Form
@@ -1181,10 +1181,10 @@ class TestMakeRequestBodyFormMultipart:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "upload_with_form.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "upload_with_form.py").read_text(encoding="utf-8")
         assert "username: Annotated[str, Form()]" in content
         assert "avatar: UploadFile" in content
-        assert "from stoma import APIRouter, APIRoute, Form, UploadFile" in content
+        assert "from stoma import APIRoute, Form, UploadFile" in content
         assert "content_type" not in content
         compile(content, "upload_with_form.py", "exec")
 
@@ -1223,10 +1223,10 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "set_importance.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "set_importance.py").read_text(encoding="utf-8")
         # scalar body 字段名固定 body，media_type 嵌入 Body(media_type=...)
-        assert "body: Annotated[int, Body(media_type='application/json')]" in content
-        assert "from stoma import APIRouter, APIRoute, Body" in content
+        assert 'body: Annotated[int, Body(media_type="application/json")]' in content
+        assert "from stoma import APIRoute, Body" in content
         # scalar 走 Body(media_type=...) 路径，不生成 Content-Type Header field
         assert "content_type" not in content
         compile(content, "set_importance.py", "exec")
@@ -1265,9 +1265,9 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "post_scalar.py").read_text(encoding="utf-8")
-        assert "body: Annotated[str, Body(media_type='application/json')]" in content
-        assert "from stoma import APIRouter, APIRoute, Body" in content
+        content = (out_dir / "endpoints" / "post_scalar.py").read_text(encoding="utf-8")
+        assert 'body: Annotated[str, Body(media_type="application/json")]' in content
+        assert "from stoma import APIRoute, Body" in content
         # scalar 走 Body(media_type=...) 路径，不生成 Content-Type Header field
         assert "content_type" not in content
         compile(content, "post_scalar.py", "exec")
@@ -1297,12 +1297,12 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "upload_raw.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "upload_raw.py").read_text(encoding="utf-8")
         assert "body: UploadFile" in content
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
-        assert "from stoma import APIRouter, APIRoute, Header, UploadFile" in content
+        assert "from stoma import APIRoute, Header, UploadFile" in content
         assert _content_type_line("application/octet-stream") in content
         compile(content, "upload_raw.py", "exec")
 
@@ -1331,12 +1331,12 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "upload_image.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "upload_image.py").read_text(encoding="utf-8")
         assert "body: UploadFile" in content
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
-        assert "from stoma import APIRouter, APIRoute, Header, UploadFile" in content
+        assert "from stoma import APIRoute, Header, UploadFile" in content
         assert _content_type_line("image/png") in content
         compile(content, "upload_image.py", "exec")
 
@@ -1366,10 +1366,10 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "submit_form.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "submit_form.py").read_text(encoding="utf-8")
         # 非 snake_case 字段自动加 serialization_alias 保留原名
-        assert "user_name: Annotated[str, Form(), Field(serialization_alias='user-name')]" in content
-        assert "x_api_key: Annotated[str, Form(), Field(serialization_alias='X-API-Key')]" in content
+        assert 'user_name: Annotated[str, Form(), Field(serialization_alias="user-name")]' in content
+        assert 'x_api_key: Annotated[str, Form(), Field(serialization_alias="X-API-Key")]' in content
         compile(content, "submit_form.py", "exec")
 
     def test_multipart_form_non_snake_case_field(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -1399,9 +1399,9 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "upload_with_attrs.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "upload_with_attrs.py").read_text(encoding="utf-8")
         # multipart 标量字段非 snake_case 时加 alias
-        assert "user_name: Annotated[str, Form(), Field(serialization_alias='user-name')]" in content
+        assert 'user_name: Annotated[str, Form(), Field(serialization_alias="user-name")]' in content
         # file 字段保持裸 UploadFile（无 alias）
         assert "file: UploadFile" in content
         compile(content, "upload_with_attrs.py", "exec")
@@ -1435,7 +1435,7 @@ components:
 
         # CLI 仍正常退出，form 字段被渲染
         assert result.exit_code == 0, result.output
-        content = (out_dir / "submit_mixed.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "submit_mixed.py").read_text(encoding="utf-8")
         assert "username: Annotated[str, Form()]" in content
         # urlencoded binary 字段退化为 form 标量（不再引发额外 side-effect）
         assert "avatar: Annotated[str, Form()]" in content
@@ -1477,7 +1477,7 @@ components:
         assert result.exit_code == 0, result.output
         assert "多个 media type" in result.stderr or "multiple media type" in result.stderr.lower()
         assert "POST /ambiguous" in result.stderr
-        route_file = out_dir / "ambiguous_body.py"
+        route_file = out_dir / "endpoints" / "ambiguous_body.py"
         assert route_file.exists(), f"route 文件未生成: {route_file}"
         content = route_file.read_text(encoding="utf-8")
         assert "AmbiguousBodyRequest" in content
@@ -1512,10 +1512,10 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "upload_non_snake.py").read_text(encoding="utf-8")
-        assert "avatar_file: Annotated[UploadFile, Field(serialization_alias='avatar-file')]" in content
+        content = (out_dir / "endpoints" / "upload_non_snake.py").read_text(encoding="utf-8")
+        assert 'avatar_file: Annotated[UploadFile, Field(serialization_alias="avatar-file")]' in content
         assert "from pydantic import Field" in content
-        assert "from stoma import APIRouter, APIRoute, UploadFile" in content
+        assert "from stoma import APIRoute, UploadFile" in content
         assert "content_type" not in content
         compile(content, "upload_non_snake.py", "exec")
 
@@ -1546,12 +1546,12 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "upload_file.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "upload_file.py").read_text(encoding="utf-8")
         assert "body: UploadFile" in content
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
-        assert "from stoma import APIRouter, APIRoute, Header, UploadFile" in content
+        assert "from stoma import APIRoute, Header, UploadFile" in content
         compile(content, "upload_file.py", "exec")
 
 
@@ -1610,10 +1610,10 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
         # response 类型为 User，从 .models 导入。
         assert "APIRoute[User]" in content
-        assert "from .models import User" in content
+        assert "from ..models import User" in content
 
     def test_response_body_v30_ref_detection(self, valid_v30_spec: Path) -> None:
         """验证 OpenAPI 3.0.x ``responses[200].content.application/json.schema.$ref`` 被 renderer 正确识别。
@@ -1629,7 +1629,7 @@ components:
         renderer = make_endpoint_renderer(parser.spec_version)
         get_user = next(ep for ep in endpoints if ep.operation_id == "getUser")
         _file_name, code = renderer.render(get_user)
-        assert "from .models import User" in code
+        assert "from ..models import User" in code
         assert "APIRoute[User]" in code
 
     def test_response_with_array_of_ref(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -1671,12 +1671,12 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "list_users.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "list_users.py").read_text(encoding="utf-8")
         # datamodel-codegen 包装 array-of-ref response 时按 operationId 派生
         # （``listUsers`` → ``ListUsersResponse``），renderer 同步引用同名，
         # 由 ``use_operation_id_as_name=True`` 触发。
         assert "APIRoute[ListUsersResponse]" in content
-        assert "from .models import ListUsersResponse" in content
+        assert "from ..models import ListUsersResponse" in content
 
     def test_response_with_nested_object_schema(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 response 为嵌套对象时能正常生成。"""
@@ -1722,12 +1722,12 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "get_profile.py").exists()
-        content = (out_dir / "get_profile.py").read_text(encoding="utf-8")
+        assert (out_dir / "endpoints" / "get_profile.py").exists()
+        content = (out_dir / "endpoints" / "get_profile.py").read_text(encoding="utf-8")
         assert "@router.get" in content
         # 嵌套对象响应也按 operationId 派生模型名（``getProfile`` → ``GetProfileResponse``），
         # 从 .models 导入，由 ``use_operation_id_as_name=True`` 触发。
-        assert "from .models import GetProfileResponse" in content
+        assert "from ..models import GetProfileResponse" in content
         assert "APIRoute[GetProfileResponse]" in content
 
     def test_response_201_uses_201_status(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -1765,7 +1765,7 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "create_user.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
         assert "APIRoute[User]" in content
 
     def test_response_without_content(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -1797,7 +1797,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "delete_item.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "delete_item.py").read_text(encoding="utf-8")
         # 无 content-type 为 json 的响应，不生成泛型参数。
         assert "APIRoute)" in content
 
@@ -1976,7 +1976,7 @@ components:
 
         assert result.exit_code == 0, result.output
         models = (out_dir / "models.py").read_text(encoding="utf-8")
-        route = (out_dir / "get_entity.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "get_entity.py").read_text(encoding="utf-8")
         # dmcg 将 oneOf 包装为 RootModel[TypeA | TypeB]。
         assert "TypeA | TypeB" in models
         # 由 use_operation_id_as_name 派生响应包装类。
@@ -1984,7 +1984,7 @@ components:
         assert "RootModel[TypeA | TypeB]" in models
         # route.py 正确引用包装类。
         assert "APIRoute[GetEntityResponse]" in route
-        assert "from .models import GetEntityResponse" in route
+        assert "from ..models import GetEntityResponse" in route
 
     def test_response_with_anyof_union(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 response 使用 ``anyOf`` 引用多个 schema 时生成 union 类型。
@@ -2039,7 +2039,7 @@ components:
 
         assert result.exit_code == 0, result.output
         models = (out_dir / "models.py").read_text(encoding="utf-8")
-        route = (out_dir / "get_record.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "get_record.py").read_text(encoding="utf-8")
         # dmcg 将 anyOf 包装为 RootModel[TypeA | TypeB]。
         assert "TypeA | TypeB" in models
         # 由 use_operation_id_as_name 派生响应包装类。
@@ -2047,7 +2047,7 @@ components:
         assert "RootModel[TypeA | TypeB]" in models
         # route.py 正确引用包装类。
         assert "APIRoute[GetRecordResponse]" in route
-        assert "from .models import GetRecordResponse" in route
+        assert "from ..models import GetRecordResponse" in route
 
     def test_response_with_multiple_status_codes_union(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 200 ``$ref: User`` + 404 ``$ref: Error`` 时 route 泛型合并成 Union。
@@ -2110,11 +2110,11 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        route = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
         # 泛型拼接为 PEP 604 union，按 spec 顺序 ``User`` 在 ``Error`` 前。
         assert "APIRoute[User | Error]" in route
-        # import 行包含两个模型名（顺序亦对齐 spec 出现顺序）。
-        assert "from .models import User, Error" in route
+        # import 行包含两个模型名（isort 排序后 ``Error, User``）。
+        assert "from ..models import Error, User" in route
         # 防御：当前实现若把 ``response_type`` 当字符串迭代（``U | s | e | r`` 之类）
         # 而不是真正的 Union，会被这两个断言同时挡下。
         assert "U | s | e | r" not in route
@@ -2167,13 +2167,13 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        route = (out_dir / "create_user.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
         # 单一 ``User`` 泛型，不出现 ``User | User``。
         assert "APIRoute[User]" in route
         assert "APIRoute[User | User]" not in route
         # import 行 ``User`` 只出现一次：先验整行，再验逐项计数。
-        assert "from .models import User" in route
-        assert route.count("from .models import User") == 1
+        assert "from ..models import User" in route
+        assert route.count("from ..models import User") == 1
         # 防御：import 行不冗余成 ``User, User``。
         assert "import User, User" not in route
 
@@ -2227,13 +2227,13 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        route = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
         # 400 没有 JSON content，被跳过，泛型保持单元素 ``User``。
         assert "APIRoute[User]" in route
         # 不应出现 ``User | None`` 或别的拼接污染。
         assert "User | None" not in route
         assert "User | " not in route
-        assert "from .models import User" in route
+        assert "from ..models import User" in route
 
     def test_response_with_only_non_json_status_codes(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证所有 status 都只有 description、无 ``application/json`` 时，route 保持裸 ``APIRoute)``。
@@ -2267,13 +2267,13 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        route = (out_dir / "health_check.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "health_check.py").read_text(encoding="utf-8")
         # 裸 ``APIRoute)``，无泛型参数。
         assert "APIRoute)" in route
         # 不输出 ``APIRoute[...]`` 形式。
         assert "APIRoute[" not in route
         # 没有响应模型可 import，不应有 ``from .models import ...`` 行。
-        assert "from .models import" not in route
+        assert "from ..models import" not in route
 
     def test_response_with_three_status_codes_union(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 200 + 400 + 500 三个 ``$ref`` 都参与 Union，且 import 行三个都列出。
@@ -2347,11 +2347,11 @@ components:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        route = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
         # 三个模型按 spec 顺序 pipe-union。
         assert "APIRoute[User | Error | ServerError]" in route
-        # import 行同时列出全部三个，且顺序与泛型一致。
-        assert "from .models import User, Error, ServerError" in route
+        # import 行同时列出全部三个（isort 排序后 ``Error, ServerError, User``）。
+        assert "from ..models import Error, ServerError, User" in route
 
     def test_response_with_inline_multi_status_uses_counter_suffix(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证多个 inline 响应用 dmcg 计数器后缀（``GetXResponse`` / ``GetXResponse1``）。
@@ -2412,7 +2412,7 @@ paths:
 
         assert result.exit_code == 0, result.output
         models = (out_dir / "models.py").read_text(encoding="utf-8")
-        route = (out_dir / "get_x.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "get_x.py").read_text(encoding="utf-8")
         # dmcg 已经按计数器命名生成两个 model：第一个 ``GetXResponse``,
         # 第二个 ``GetXResponse1``（不是 ``GetXResponse2``,不是 ``GetXErrorResponse``）。
         assert "class GetXResponse" in models
@@ -2422,7 +2422,7 @@ paths:
         # route.py 同时引用两个 inline 模型，顺序与 spec 一致。
         assert "APIRoute[GetXResponse | GetXResponse1]" in route
         # import 行同时列出两者。
-        assert "from .models import GetXResponse, GetXResponse1" in route
+        assert "from ..models import GetXResponse, GetXResponse1" in route
 
     def test_response_with_mixed_ref_and_inline_multi_status(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 200 ``$ref User`` + 400/500 inline 时 ``$ref`` 不消耗 inline 计数器。
@@ -2495,7 +2495,7 @@ components:
 
         assert result.exit_code == 0, result.output
         models = (out_dir / "models.py").read_text(encoding="utf-8")
-        route = (out_dir / "get_x.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "get_x.py").read_text(encoding="utf-8")
         # dmcg 行为：$ref 不消耗计数器，所以 inline 仍从 ``GetXResponse`` 开始。
         assert "class GetXResponse" in models
         assert "class GetXResponse1" in models
@@ -2505,8 +2505,8 @@ components:
         # route.py 按 spec 顺序拼接：
         # ``User`` ($ref 200) → ``GetXResponse`` (inline 400) → ``GetXResponse1`` (inline 500)。
         assert "APIRoute[User | GetXResponse | GetXResponse1]" in route
-        # import 行同步列出全部三个，顺序与泛型一致。
-        assert "from .models import User, GetXResponse, GetXResponse1" in route
+        # import 行同步列出全部三个（isort 排序后 ``GetXResponse, GetXResponse1, User``）。
+        assert "from ..models import GetXResponse, GetXResponse1, User" in route
 
     def test_response_with_only_error_status_codes_generates_models(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证仅有 4xx/5xx JSON 响应（无 200/201）时仍生成 ``models.py`` 与对应 route import。
@@ -2582,9 +2582,9 @@ paths:
         assert "class Error" in models
         assert "class ServerError" in models
         # route.py 引用两个错误模型(顺序对齐 spec 出现顺序:Error 在前,ServerError 在后)。
-        route = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
         assert "APIRoute[Error | ServerError]" in route
-        assert "from .models import Error, ServerError" in route
+        assert "from ..models import Error, ServerError" in route
 
     def test_parser_has_json_payloads_true_when_only_error_responses(self, cli_runner: Any, tmp_path: Path) -> None:
         """直接走 parser 探测 ``has_json_payloads``，验证错误响应纳入判定。
@@ -2702,7 +2702,7 @@ paths:
         spec_file.write_text(spec, encoding="utf-8")
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
         assert result.exit_code == 0, result.output
-        return (out_dir / "post_resource.py").read_text(encoding="utf-8")
+        return (out_dir / "endpoints" / "post_resource.py").read_text(encoding="utf-8")
 
     @pytest.mark.parametrize(
         ("media_type", "fields_block", "field_token", "docstring_token"),
@@ -2945,7 +2945,7 @@ paths:
         spec_file.write_text(spec_yaml, encoding="utf-8")
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
         assert result.exit_code == 0, result.output
-        content = (out_dir / "upload_file.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "upload_file.py").read_text(encoding="utf-8")
         assert "body: UploadFile" in content
         assert "upload_as_multipart=False" in content
         compile(content, "upload_file.py", "exec")
@@ -3009,7 +3009,7 @@ paths:
         spec_file.write_text(spec, encoding="utf-8")
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
         assert result.exit_code == 0, result.output
-        return (out_dir / "get_resource.py").read_text(encoding="utf-8")
+        return (out_dir / "endpoints" / "get_resource.py").read_text(encoding="utf-8")
 
     def test_summary_none_no_literal_none_in_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
         """summary=None 时，class docstring 不含 ``None`` 字面量（回退到 operation_id）。
@@ -3027,8 +3027,8 @@ paths:
         # module docstring（第 1 行）不应出现 "None" 字面量
         assert '"""None' not in content, "模块 docstring 不应出现 None 字面量"
         # class docstring（第 25 行附近）也不应出现 "None" 字面量
-        # operation_id 回退值 "getResource" 应该出现
-        assert "getResource" in content, "summary=None 时应回退到 operation_id"
+        # 1a42663 之后：summary/description 都为空时不渲染 docstring，operation_id 仅出现在 class 名。
+        assert "class GetResource(APIRoute):" in content
         compile(content, "get_resource.py", "exec")
 
     def test_summary_provided_uses_summary_text(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -3175,7 +3175,7 @@ paths:
         spec_file.write_text(spec, encoding="utf-8")
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
         assert result.exit_code == 0, result.output
-        return (out_dir / file_name).read_text(encoding="utf-8")
+        return (out_dir / "endpoints" / file_name).read_text(encoding="utf-8")
 
     def test_json_body_only_no_unused_imports(self, cli_runner: Any, tmp_path: Path) -> None:
         """JSON body only（仅 ``import_model``）→ 无 ``Annotated`` import + 无 ``Body`` import + 正确顺序。
@@ -3189,7 +3189,7 @@ paths:
         content = self._run(cli_runner, spec, tmp_path / "out", "create_item.py")
 
         # 验证 import_model 被正确导入
-        assert "from .models import Item" in content
+        assert "from ..models import Item" in content
         # 验证 body 使用模型名形式
         assert "body: Item" in content
 
@@ -3204,7 +3204,7 @@ paths:
             assert "Body" not in import_stoma_line[0], "JSON body only 不应导入 Body"
 
         # 验证 import 顺序：.models 必须在 stoma 之后
-        models_pos = content.index("from .models import")
+        models_pos = content.index("from ..models import")
         stoma_pos = content.index("from stoma import")
         assert models_pos > stoma_pos, ".models 必须在 stoma 之后（isort 默认顺序）"
 
@@ -3307,7 +3307,7 @@ paths:
         spec_file.write_text(spec, encoding="utf-8")
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
         assert result.exit_code == 0, result.output
-        return (out_dir / "get_resource.py").read_text(encoding="utf-8")
+        return (out_dir / "endpoints" / "get_resource.py").read_text(encoding="utf-8")
 
     def test_summary_only_renders_single_line_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
         """仅有 summary 时，模块 docstring 和类 docstring 都是单行。"""

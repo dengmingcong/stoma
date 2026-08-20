@@ -57,7 +57,7 @@ class TestMakeOpenAPIValidation:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "ping.py").exists()
+        assert (out_dir / "endpoints" / "ping.py").exists()
 
     def test_parser_loads_v30_spec(self, valid_v30_spec: Path) -> None:
         """验证 ``make_openapi_parser`` 能识别 OpenAPI 3.0.x 规范。

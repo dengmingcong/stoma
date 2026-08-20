@@ -67,7 +67,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "search.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "search.py").read_text(encoding="utf-8")
         # Python 类型映射正确。
         assert "q: str" in content
         assert "limit: int | None = None" in content
@@ -112,17 +112,18 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "check_auth.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "check_auth.py").read_text(encoding="utf-8")
         # header 参数使用 ``Annotated[..., Header(...)]`` 标记。
-        assert "from stoma import APIRouter, APIRoute, Header" in content
+        assert "from stoma import APIRoute, Header" in content
         # models 来自 .models 导入，所以这里只需要 Field（不再内联 BaseModel 定义）。
         assert "from pydantic import Field" in content
         assert "from typing import Annotated" in content
         # required header 参数：转为 snake_case + Annotated[..., Header(), Field(serialization_alias=...)]
-        assert "authorization: Annotated[str, Header(), Field(serialization_alias='Authorization')]" in content
+        assert 'authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]' in content
         # non-required header 参数：转为 snake_case + Annotated[..., Header(), Field(serialization_alias=...)] = None
         assert (
-            "x_request_id: Annotated[str | None, Header(), Field(serialization_alias='X-Request-ID')] = None" in content
+            'x_request_id: Annotated[str | None, Header(), Field(serialization_alias="X-Request-ID")] = None'
+            in content
         )
 
     def test_required_vs_optional_path_param(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -154,7 +155,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "get_item.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "get_item.py").read_text(encoding="utf-8")
         assert "item_id: str" in content
         # required 参数不应有 = None 默认值。
         assert "item_id: str = None" not in content
@@ -190,7 +191,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "list_items.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "list_items.py").read_text(encoding="utf-8")
         assert "page: int | None = None" in content
 
     def test_parameter_v30_ref_detection(self, cli_runner: Any, valid_v30_spec: Path) -> None:
@@ -204,7 +205,7 @@ paths:
         result = cli_runner.invoke(app, [str(valid_v30_spec), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "get_user.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
         assert "user_id: str" in content
         assert "user_id: UserIdParam" not in content
 
@@ -243,7 +244,7 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "list_items.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "list_items.py").read_text(encoding="utf-8")
         assert "page: int | None = None" in content
 
     def test_parameter_cycle_raises(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -413,13 +414,14 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "list_items.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "list_items.py").read_text(encoding="utf-8")
         # 1. operation 级覆盖 path_item 级 X-Tenant-ID（required=False）
         assert (
-            "x_tenant_id: Annotated[str | None, Header(), Field(serialization_alias='X-Tenant-ID')] = None" in content
+            'x_tenant_id: Annotated[str | None, Header(), Field(serialization_alias="X-Tenant-ID")] = None'
+            in content
         )
         # 2. path_item 级 Authorization 被 operation 继承（required=True）
-        assert "authorization: Annotated[str, Header(), Field(serialization_alias='Authorization')]" in content
+        assert 'authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]' in content
         # 3. operation 级独有的 q
         assert "q: str | None = None" in content
 
@@ -455,9 +457,9 @@ paths:
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
 
         assert result.exit_code == 0, result.output
-        content = (out_dir / "list_items.py").read_text(encoding="utf-8")
+        content = (out_dir / "endpoints" / "list_items.py").read_text(encoding="utf-8")
         # 继承 path_item 级，required=True → str（无 | None，无 default）
-        assert "x_tenant_id: Annotated[str, Header(), Field(serialization_alias='X-Tenant-ID')]" in content
+        assert 'x_tenant_id: Annotated[str, Header(), Field(serialization_alias="X-Tenant-ID")]' in content
 
 
 class TestParamFieldDocstring:
@@ -501,7 +503,7 @@ paths:
         spec_file.write_text(spec, encoding="utf-8")
         result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir), "--no-format"])
         assert result.exit_code == 0, result.output
-        return (out_dir / "get_item.py").read_text(encoding="utf-8")
+        return (out_dir / "endpoints" / "get_item.py").read_text(encoding="utf-8")
 
     @pytest.mark.parametrize(
         ("field_block", "field_docstring_token"),
