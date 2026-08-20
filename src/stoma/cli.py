@@ -33,7 +33,9 @@ app = typer.Typer(
 def make(
     spec: Annotated[Path, typer.Argument(help="OpenAPI 规范文件路径（YAML 或 JSON）")],
     out: Annotated[Path, typer.Option("--out", "-o", help="输出目录路径")] = Path("."),
-    prefix: Annotated[str | None, typer.Option("--prefix", help="路由器前缀（如 ``/api/v3``），不传或传空字符串表示无前缀")] = None,
+    prefix: Annotated[
+        str | None, typer.Option("--prefix", help="路由器前缀（如 ``/api/v3``），不传或传空字符串表示无前缀")
+    ] = None,
 ) -> None:
     """从 OpenAPI 规范生成接口代码。
 
