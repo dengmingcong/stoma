@@ -91,7 +91,7 @@ def test_codegen_all_methods(
     result = cli_runner.invoke(app, [str(FIXTURE_PATH_ALL_METHODS), "--out", str(tmp_path)])
     assert result.exit_code == 0, f"CLI 失败:\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
-    route_file = tmp_path / f"{snake_name}.py"
+    route_file = tmp_path / "endpoints" / f"{snake_name}.py"
     assert route_file.exists(), f"生成的 {route_file} 不存在"
 
     route_code = route_file.read_text(encoding="utf-8")
@@ -110,9 +110,12 @@ def test_codegen_all_methods(
         f"文件内容:\n{route_code}"
     )
 
-    # 验证 import 语句包含 stoma
-    assert "from stoma import APIRoute, APIRouter" in route_code, (
-        f"生成的 route.py 缺少 'from stoma import APIRoute, APIRouter'\n实际内容:\n{route_code}"
+    # 验证 import 语句包含 stoma 与父 router
+    assert "from stoma import APIRoute" in route_code, (
+        f"生成的 route.py 缺少 'from stoma import APIRoute'\n实际内容:\n{route_code}"
+    )
+    assert "from ..router import router" in route_code, (
+        f"生成的 route.py 缺少 'from ..router import router'\n实际内容:\n{route_code}"
     )
 
 
@@ -145,22 +148,85 @@ def _patch_stoma_module() -> None:
         sys.modules["stoma"] = sys.modules["src"]
 
 
+def _register_package_tree(tmp_path: Path) -> str:
+    """将 ``tmp_path`` 注册为 package，并按需加载其同级 ``router`` / ``models`` 与
+    子包 ``endpoints``，使生成端点模块中的 ``from ..router import router`` 等相对
+    import 可解析。
+
+    :param tmp_path: CLI 已生成 ``router.py`` / ``models.py`` / ``endpoints/`` 的目录。
+    :return: 注册时使用的顶层包名（``_stoma_test_pkg_<hex>``）。
+    """
+    pkg_name = f"_stoma_test_pkg_{id(tmp_path):x}"
+
+    package_init = tmp_path / "__init__.py"
+    if not package_init.exists():
+        # ``from ..router import router`` 要求 ``tmp_path`` 是 package；CLI 只创建
+        # ``router.py`` 与 ``endpoints/__init__.py``，需要补一个空的顶层 ``__init__``。
+        package_init.write_text("", encoding="utf-8")
+
+    if pkg_name not in sys.modules:
+        pkg_spec = importlib.util.spec_from_file_location(
+            pkg_name, package_init, submodule_search_locations=[str(tmp_path)]
+        )
+        assert pkg_spec is not None and pkg_spec.loader is not None
+        pkg_module = importlib.util.module_from_spec(pkg_spec)
+        sys.modules[pkg_name] = pkg_module
+        pkg_spec.loader.exec_module(pkg_module)
+
+    for sibling_name in ("router", "models"):
+        sibling_file = tmp_path / f"{sibling_name}.py"
+        if not sibling_file.exists():
+            continue
+        full_name = f"{pkg_name}.{sibling_name}"
+        if full_name not in sys.modules:
+            spec = importlib.util.spec_from_file_location(full_name, sibling_file)
+            assert spec is not None and spec.loader is not None
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[full_name] = mod
+            spec.loader.exec_module(mod)
+
+    endpoints_init = tmp_path / "endpoints" / "__init__.py"
+    endpoints_pkg = f"{pkg_name}.endpoints"
+    if endpoints_init.exists() and endpoints_pkg not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            endpoints_pkg,
+            endpoints_init,
+            submodule_search_locations=[str(tmp_path / "endpoints")],
+        )
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[endpoints_pkg] = mod
+        spec.loader.exec_module(mod)
+
+    return pkg_name
+
+
 def _load_module(tmp_path: Path, snake_name: str) -> Any:
     """动态加载生成路由模块。
 
     生成代码含 ``from __future__ import annotations``，导致 Pydantic 将注解存为
     ForwardRef，routing 阶段的 ``annotation is UploadFile`` 身份比较失败。
     临时去掉该 import，让注解在定义时求值为真实类型对象。
+
+    新布局（``endpoints/`` 子目录 + ``router.py``）下，端点模块使用
+    ``from ..router import router`` 与 ``from ..models import ...`` 等相对 import，
+    因此先把 ``tmp_path`` 注册为 package，再以 ``<pkg>.endpoints.<snake_name>`` 形式
+    加载。
     """
     _patch_stoma_module()
-    route_file = tmp_path / f"{snake_name}.py"
+    pkg_name = _register_package_tree(tmp_path)
+
+    route_file = tmp_path / "endpoints" / f"{snake_name}.py"
     original_code = route_file.read_text(encoding="utf-8")
     patched_code = original_code.replace("from __future__ import annotations\n\n", "", 1)
-    patched_file = tmp_path / f"{snake_name}_patched.py"
+    patched_file = tmp_path / "endpoints" / f"{snake_name}_patched.py"
     patched_file.write_text(patched_code, encoding="utf-8")
-    spec = importlib.util.spec_from_file_location(snake_name, patched_file)
+
+    full_name = f"{pkg_name}.endpoints.{snake_name}"
+    spec = importlib.util.spec_from_file_location(full_name, patched_file)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[full_name] = module
     spec.loader.exec_module(module)
     return module
 

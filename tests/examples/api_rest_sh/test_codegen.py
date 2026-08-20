@@ -6,10 +6,10 @@
 覆盖范围：
 
 - ``stoma make`` 命令退出码 0（无 ``SCHEMA_UNSUPPORTED`` 失败）。
-- 生成 ``models.py``。
-- 生成 71 个 route 文件（与 spec 71 个 operation 一一对应）。
+- 生成 ``models.py`` + ``router.py`` + ``endpoints/__init__.py``。
+- ``endpoints/`` 下生成 71 个 route 文件（与 spec 71 个 operation 一一对应）。
 - 所有生成 ``.py`` 文件通过 ``ast.parse()``。
-- 至少 71 个 ``.py`` 文件包含 ``from stoma import``。
+- 至少 71 个端点文件含 ``from ..router import router``。
 
 本测试**不依赖网络**，仅验证本地 CLI 流水线。
 """
@@ -54,16 +54,18 @@ def test_make_command_generates_full_app(cli_runner: CliRunner, tmp_path: Path) 
     models_path: Path = out_dir / "models.py"
     assert models_path.exists(), f"models.py 未生成到 {out_dir}"
 
-    # 2. route 文件数 == 71
-    route_files: list[Path] = sorted(out_dir.glob("*.py"))
-    route_files = [p for p in route_files if p.name != "models.py"]
+    # 2. endpoints/ 路由文件数 == 71（不含 __init__.py）
+    endpoints_dir: Path = out_dir / "endpoints"
+    assert endpoints_dir.is_dir(), f"endpoints 子目录未生成到 {out_dir}"
+    route_files: list[Path] = sorted((out_dir / "endpoints").glob("*.py"))
+    route_files = [p for p in route_files if p.name != "__init__.py"]
     assert len(route_files) == EXPECTED_ROUTE_COUNT, (
         f"期望生成 {EXPECTED_ROUTE_COUNT} 个 route 文件，"
         f"实际生成 {len(route_files)} 个: {[p.name for p in route_files]}"
     )
 
-    # 3. 所有 .py 文件可 ast.parse
-    py_files: list[Path] = sorted(out_dir.glob("*.py"))
+    # 3. 所有 .py 文件可 ast.parse（含 router.py、models.py、endpoints/__init__.py 与 71 个端点）
+    py_files: list[Path] = sorted(out_dir.rglob("*.py"))
     syntax_errors: list[tuple[str, str]] = []
     for py_file in py_files:
         try:
@@ -72,12 +74,12 @@ def test_make_command_generates_full_app(cli_runner: CliRunner, tmp_path: Path) 
             syntax_errors.append((py_file.name, str(e)))
     assert not syntax_errors, "以下文件存在语法错误:\n" + "\n".join(f"  {name}: {err}" for name, err in syntax_errors)
 
-    # 4. 至少 71 个文件含 ``from stoma import``
-    stoma_import_pattern: re.Pattern[str] = re.compile(r"^from stoma import", re.MULTILINE)
-    files_with_stoma_import: list[str] = [
-        py_file.name for py_file in py_files if stoma_import_pattern.search(py_file.read_text(encoding="utf-8"))
+    # 4. 至少 71 个端点文件含 ``from ..router import router``
+    router_import_pattern: re.Pattern[str] = re.compile(r"^from \.\.router import router", re.MULTILINE)
+    files_with_router_import: list[str] = [
+        py_file.name for py_file in route_files if router_import_pattern.search(py_file.read_text(encoding="utf-8"))
     ]
-    assert len(files_with_stoma_import) >= EXPECTED_ROUTE_COUNT, (
-        f"期望至少 {EXPECTED_ROUTE_COUNT} 个文件含 'from stoma import'，"
-        f"实际找到 {len(files_with_stoma_import)} 个: {files_with_stoma_import}"
+    assert len(files_with_router_import) >= EXPECTED_ROUTE_COUNT, (
+        f"期望至少 {EXPECTED_ROUTE_COUNT} 个端点文件含 'from ..router import router'，"
+        f"实际找到 {len(files_with_router_import)} 个: {files_with_router_import}"
     )
