@@ -7,7 +7,7 @@ Stoma 是一个接口自动化和接口自动化测试工具，尝试实现「�
 
 ## 指南
 
-- [快速开始](./docs/guide/quickstart.md) — 安装并以实际接口介绍用法。
+- [快速开始](./docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
 - [定义路由](./docs/guide/defining-routes.md) — 在测试中声明接口路由、HTTP 方法与路径参数的写法。包括路由前缀、路径参数解析与多方法路由的注册方式
 - [客户端与认证](./docs/guide/client-and-auth.md) — 配置测试客户端、注入 Token、处理鉴权头的常用模式。涵盖 Bearer Token、API Key 与自定义请求头的注入策略
 - [参数与请求体](./docs/guide/parameters.md) — 发送 Query、Header、Body 参数的声明式写法与最佳实践。支持必填校验、默认值与参数类型转换
