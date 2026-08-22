@@ -22,14 +22,23 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 
 from stoma.cli import app
+from stoma.openapi.models import Endpoint
 from stoma.openapi.parser import make_openapi_parser
-from stoma.openapi.renderer import make_endpoint_renderer
+from stoma.openapi.renderer import (
+    GenerationErrorKind,
+    ResponseSpecDecl,
+    make_endpoint_renderer,
+    make_range_matcher,
+)
+from stoma.openapi.version import Reference31
 
 # ============================================================
 # Request Body
@@ -3380,3 +3389,302 @@ paths:
         first_line = content.split("\n")[0]
         assert first_line.startswith("from __future__"), "无 docstring 时文件第一行应是 import"
         compile(content, "get_resource.py", "exec")
+
+
+@dataclass
+class _FakeMediaType:
+    """测试夹具：OpenAPI MediaType 对象的最小化替身，仅暴露 ``media_type_schema``。"""
+
+    media_type_schema: Any = None
+
+
+class _FakeResponse(BaseModel):
+    """测试夹具：OpenAPI Response 对象的最小化 BaseModel。
+
+    ``content`` 字段使用 ``arbitrary_types_allowed`` 以接受 ``_FakeMediaType`` 实例
+    作为值——``_extract_response_specs`` 只用 ``getattr(..., "media_type_schema", None)``
+    读取 schema，不需要真实的 openapi-pydantic 模型。
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    description: str | None = None
+    content: dict[str, _FakeMediaType] = {}
+
+
+def _make_ref(name: str) -> Reference31:
+    """构造一个 ``Reference31`` 实例，ref 指向 ``#/components/schemas/<name>``。"""
+    return Reference31(ref=f"#/components/schemas/{name}")
+
+
+def _make_endpoint(
+    responses: dict[str, _FakeResponse] | None,
+    operation_id: str = "getUser",
+) -> Endpoint[Any, Any, _FakeResponse]:
+    """构造仅含 ``operation_id`` + ``responses`` 字段的最小 :class:`Endpoint`。
+
+    :param responses: responses 字典，None 表示无响应。
+    :param operation_id: 派生 ``Class name`` 与 inline 模型名前缀。
+    :return: 可直接传给 :meth:`EndpointRenderer._extract_response_specs` 的 Endpoint。
+    """
+    return Endpoint[Any, Any, _FakeResponse](
+        operation_id=operation_id,
+        method="GET",
+        path="/test",
+        summary=None,
+        description=None,
+        parameters=[],
+        request_body=None,
+        responses=responses,
+        spec_version="3.1",
+    )
+
+
+class _DuplicateItemResponses(dict):
+    """测试夹具：dict 子类，``items()`` 重复 yield 两次。
+
+    模拟罕见但理论上可能的「同 ``(status, media_type)`` 多次出现」场景——
+    规范 ``dict`` 自身不允许 key 重复，但允许 dict 子类返回重复 items；
+    :meth:`EndpointRenderer._extract_response_specs` 的去重逻辑应在此场景下触发
+    :attr:`GenerationErrorKind.DUPLICATE_RESPONSE_SPEC` 警告。
+    """
+
+    def items(self) -> Any:
+        for key in list(dict.keys(self)):
+            yield key, dict.__getitem__(self, key)
+        for key in list(dict.keys(self)):
+            yield key, dict.__getitem__(self, key)
+
+
+class TestExtractResponseSpecs:
+    """验证 :meth:`EndpointRenderer._extract_response_specs` 的逐 status + 逐 media_type 提取行为。"""
+
+    def test_extract_single_media(self) -> None:
+        """200 + 单 JSON media → 1 条 decl，attr_name=``on_200``。
+
+        基准场景：单 status、单 media type、最常见的 happy path。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        decl = decls[0]
+        assert decl == ResponseSpecDecl(
+            attr_name="on_200",
+            status_code=200,
+            status_matcher=200,
+            media_type="application/json",
+            model_name="User",
+            is_json=True,
+        )
+        assert renderer.errors == []
+
+    def test_extract_multi_media(self) -> None:
+        """200 + JSON + text/xml → 2 条 decl，attrs 按 sanitize 后的 media_type 消歧。
+
+        验证多 media type 时 attr_name 必须加后缀消歧——避免两个 decl
+        都用 ``on_200`` 引发「duplicate attribute」语法错误。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "application/json": _FakeMediaType(media_type_schema=_make_ref("User")),
+                        "text/xml": _FakeMediaType(media_type_schema=None),
+                    },
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 2
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200_application_json",
+            status_code=200,
+            status_matcher=200,
+            media_type="application/json",
+            model_name="User",
+            is_json=True,
+        )
+        assert decls[1] == ResponseSpecDecl(
+            attr_name="on_200_text_xml",
+            status_code=200,
+            status_matcher=200,
+            media_type="text/xml",
+            model_name=None,
+            is_json=False,
+        )
+        assert renderer.errors == []
+
+    def test_extract_default(self) -> None:
+        """``default`` 响应 → 1 条 decl，attr_name=``on_default``、matcher 接受所有 status。
+
+        验证 OpenAPI ``default`` 通配符被转换为 ``lambda s: True`` 谓词，
+        attr_name 不含数字而是字面 ``on_default``。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "default": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("Error"))},
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        decl = decls[0]
+        assert decl.attr_name == "on_default"
+        assert decl.status_code == "default"
+        assert decl.status_matcher(200)
+        assert decl.status_matcher(404)
+        assert decl.status_matcher(500)
+        assert decl.media_type == "application/json"
+        assert decl.model_name == "Error"
+        assert decl.is_json is True
+
+    def test_extract_4xx_wildcard(self) -> None:
+        """``4XX`` 通配符 → 1 条 decl，attr_name=``on_4xx``、matcher 覆盖 ``400 <= s < 500``。
+
+        验证 OpenAPI 范围通配符被转换为 :func:`make_range_matcher` 生成的谓词。
+        attr_name 全小写 ``on_4xx``，status_code 保留原始大写 ``"4XX"`` 字符串。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "4XX": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("Error"))},
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        decl = decls[0]
+        assert decl.attr_name == "on_4xx"
+        assert decl.status_code == "4XX"
+        assert decl.status_matcher(400)
+        assert decl.status_matcher(404)
+        assert decl.status_matcher(499)
+        assert not decl.status_matcher(500)
+        assert not decl.status_matcher(399)
+        assert decl.is_json is True
+
+    def test_extract_multi_json_media_types(self) -> None:
+        """200 + ``application/json`` + ``application/problem+json`` → 2 条 decl。
+
+        验证本 refactor 的核心修复——旧 :meth:`_get_json_response_types` 只取
+        第一个 JSON media type，新方法必须遍历所有 JSON 家族 media type
+        （含 RFC 6839 ``+json`` structured syntax suffix）。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "application/json": _FakeMediaType(media_type_schema=_make_ref("User")),
+                        "application/problem+json": _FakeMediaType(media_type_schema=_make_ref("Problem")),
+                    },
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 2
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200_application_json",
+            status_code=200,
+            status_matcher=200,
+            media_type="application/json",
+            model_name="User",
+            is_json=True,
+        )
+        assert decls[1] == ResponseSpecDecl(
+            attr_name="on_200_application_problem_plus_json",
+            status_code=200,
+            status_matcher=200,
+            media_type="application/problem+json",
+            model_name="Problem",
+            is_json=True,
+        )
+        assert renderer.errors == []
+
+    def test_extract_duplicate_skipped_with_warning(self) -> None:
+        """``_DuplicateItemResponses`` 模拟重复 ``(status, media_type)`` → 第二次跳过 + DUPLICATE_RESPONSE_SPEC 警告。
+
+        验证去重保护逻辑：使用 ``_DuplicateItemResponses``（dict 子类，
+        ``items()`` 重复 yield）模拟罕见但需处理的「同 ``(status, media_type)``
+        多次出现」场景，第二次出现应被跳过并 emit
+        :attr:`GenerationErrorKind.DUPLICATE_RESPONSE_SPEC` 警告。
+
+        直接把 ``_DuplicateItemResponses`` 实例传给 ``_extract_response_specs``
+        而不绕道 ``Endpoint(...)``——Pydantic 验证会把 dict 子类 normalize 回
+        普通 dict，子类的重复 ``items()`` 行为会丢失。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(None)
+        responses = _DuplicateItemResponses(
+            {
+                "200": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(responses, endpoint)
+        assert len(decls) == 1
+        assert decls[0].attr_name == "on_200"
+        assert decls[0].model_name == "User"
+        duplicate_errors = [e for e in renderer.errors if e.kind == GenerationErrorKind.DUPLICATE_RESPONSE_SPEC]
+        assert len(duplicate_errors) == 1
+        assert "200" in duplicate_errors[0].message
+        assert "application/json" in duplicate_errors[0].message
+        assert duplicate_errors[0].location == "GET /test"
+
+    def test_extract_returns_empty_when_responses_is_none(self) -> None:
+        """``responses=None`` 时返回空列表——与旧 :meth:`_get_json_response_types` 行为一致。"""
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(None)
+        assert renderer._extract_response_specs(endpoint.responses, endpoint) == []
+        assert renderer.errors == []
+
+    def test_extract_returns_empty_when_content_is_empty(self) -> None:
+        """responses 含但 ``content`` 为空 → 返回空列表（无 media type 可声明）。"""
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint({"200": _FakeResponse(content={})})
+        assert renderer._extract_response_specs(endpoint.responses, endpoint) == []
+
+    def test_make_range_matcher_inclusive_start_exclusive_end(self) -> None:
+        """``make_range_matcher(start, end)`` 满足 ``start <= s < end`` 半开区间语义。
+
+        与 Python ``range(start, end)`` 一致——含 start、不含 end。
+        """
+        m = make_range_matcher(400, 500)
+        assert m(400)
+        assert m(404)
+        assert m(499)
+        assert not m(500)
+        assert not m(399)
+        m5xx = make_range_matcher(500, 600)
+        assert m5xx(500) and m5xx(599)
+        assert not m5xx(499) and not m5xx(600)
+
+    def test_parse_status_key_supports_all_wildcards(self) -> None:
+        """``_parse_status_key`` 对 ``1XX`` / ``2XX`` / ``3XX`` / ``4XX`` / ``5XX`` 全覆盖。"""
+        renderer = make_endpoint_renderer("3.1")
+        for digit, base in [(1, 100), (2, 200), (3, 300), (4, 400), (5, 500)]:
+            attr, code, matcher = renderer._parse_status_key(f"{digit}XX")
+            assert attr == f"on_{digit}xx"
+            assert code == f"{digit}XX"
+            assert matcher(base)
+            assert matcher(base + 99)
+            assert not matcher(base - 1)
+            assert not matcher(base + 100)
+
+    def test_parse_status_key_default_uses_true_predicate(self) -> None:
+        """``default`` 解析为 ``lambda s: True`` 谓词，所有 status 均匹配。"""
+        renderer = make_endpoint_renderer("3.1")
+        _attr, _code, matcher = renderer._parse_status_key("default")
+        assert matcher(100) and matcher(404) and matcher(500) and matcher(999)

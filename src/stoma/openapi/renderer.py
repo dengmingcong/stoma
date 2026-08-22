@@ -15,10 +15,11 @@ from __future__ import annotations
 import shutil
 import subprocess
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 
 from jinja2 import Environment, FileSystemLoader, Template
 from pydantic import BaseModel
@@ -32,7 +33,7 @@ from stoma.openapi.fields import (
     build_upload_file_field_line,
     resolve_array_type,
 )
-from stoma.openapi.media_type import is_json_media_type
+from stoma.openapi.media_type import is_json_media_type, sanitize_media_type
 from stoma.openapi.models import (
     BinaryRequestBodyFields,
     Endpoint,
@@ -82,11 +83,14 @@ class GenerationErrorKind(str, Enum):  # noqa: UP042
     :vartype MISSING_RESPONSE_MODEL: str
     :var SCHEMA_UNSUPPORTED: spec 形态不被 stoma 当前实现支持，已跳过该 endpoint。
     :vartype SCHEMA_UNSUPPORTED: str
+    :var DUPLICATE_RESPONSE_SPEC: 同一 ``(status, media_type)`` 在 responses 中重复出现，已跳过重复项。
+    :vartype DUPLICATE_RESPONSE_SPEC: str
     """
 
     MULTI_MEDIA_TYPE = "multi_media_type"
     MISSING_RESPONSE_MODEL = "missing_response_model"
     SCHEMA_UNSUPPORTED = "schema_unsupported"
+    DUPLICATE_RESPONSE_SPEC = "duplicate_response_spec"
 
 
 @dataclass(frozen=True)
@@ -112,6 +116,54 @@ class GenerationError:
     def location(self) -> str:
         """定位字符串，``"<METHOD> <PATH>"`` 形式。"""
         return f"{self.method} {self.path}"
+
+
+class ResponseSpecDecl(NamedTuple):
+    """单条响应声明（按 ``status_code + media_type`` 唯一）的渲染产物。
+
+    由 :meth:`EndpointRenderer._extract_response_specs` 生成，
+    供模板按 ``on_<attr_name>: ClassVar = ...`` 形式输出。
+    ``is_json=True`` 对应 :class:`stoma.JSONResponseSpec`，
+    ``False`` 对应 :class:`stoma.RawResponseSpec`。
+
+    :var attr_name: 类属性名（如 ``on_200`` / ``on_4xx`` / ``on_200_application_json``）。
+    :vartype attr_name: str
+    :var status_code: 状态码显示值——精确匹配为 ``int``，通配符为原始 OpenAPI 字符串
+        （``"default"`` / ``"4XX"`` / ``"5XX"`` / ``"1XX"`` / ``"2XX"`` / ``"3XX"``）。
+    :vartype status_code: int | str
+    :var status_matcher: 运行时校验谓词——精确匹配为 ``int``，
+        通配符为 :func:`make_range_matcher` 生成的 ``Callable[[int], bool]``，
+        ``default`` 为 ``lambda s: True``。
+    :vartype status_matcher: int | Callable[[int], bool]
+    :var media_type: 期望的 media type 字符串（如 ``application/json``）。
+    :vartype media_type: str
+    :var model_name: 引用的 model 类名（JSON 路径含 ``$ref`` 或 inline）；
+        Raw 响应（non-JSON media type）为 ``None``。
+    :vartype model_name: str | None
+    :var is_json: ``True`` → :class:`stoma.JSONResponseSpec`；``False`` → :class:`stoma.RawResponseSpec`。
+    :vartype is_json: bool
+    """
+
+    attr_name: str
+    status_code: int | str
+    status_matcher: int | Callable[[int], bool]
+    media_type: str
+    model_name: str | None
+    is_json: bool
+
+
+def make_range_matcher(start: int, end: int) -> Callable[[int], bool]:
+    """构造一个状态码范围谓词。
+
+    返回的谓词 ``f`` 满足 ``f(s) == True`` 当且仅当 ``start <= s < end``。
+    用于将 OpenAPI 通配符状态码（``4XX`` / ``5XX`` / ``1XX`` / ``2XX`` / ``3XX``）
+    转换为 :class:`BaseResponseSpec` 子类可消费的 ``Callable[[int], bool]``。
+
+    :param start: 范围起始（含）。
+    :param end: 范围结束（不含）。
+    :return: 谓词函数 ``lambda s: start <= s < end``。
+    """
+    return lambda s: start <= s < end
 
 
 class EndpointRenderer[ReferenceT: _ReferenceLike]:
@@ -641,6 +693,147 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             ordered_names.append(name)
 
         return list(dict.fromkeys(ordered_names))
+
+    @staticmethod
+    def _parse_status_key(
+        status_key: str,
+    ) -> tuple[str, int | str, int | Callable[[int], bool]]:
+        """解析 OpenAPI 状态码 key 为 ``(attr_base, status_code, matcher)``。
+
+        状态码分三类：
+
+        - ``"default"`` → ``attr_base="on_default"``、``status_code="default"``、
+          ``matcher=lambda s: True``。
+        - 通配符 ``"1XX"`` / ``"2XX"`` / ``"3XX"`` / ``"4XX"`` / ``"5XX"``
+          （大小写不敏感）→ ``attr_base="on_4xx"`` 等（小写）、
+          ``status_code="4XX"`` 等（保留大写原始键）、``matcher=make_range_matcher(400, 500)``。
+        - 3 位数字（``"200"`` / ``"404"`` / ``"201"`` 等）→ ``attr_base="on_200"``、
+          ``status_code=200``、``matcher=200``。
+
+        :param status_key: OpenAPI responses 字典的 key 字符串。
+        :return: 三元组 ``(attr_base, status_code, status_matcher)``。
+        :raise ValueError: 状态码既非 ``default``、也不在通配符集合、也不是 3 位数字。
+        """
+        if status_key == "default":
+            return "on_default", "default", (lambda s: True)
+        upper = status_key.upper()
+        if len(upper) == 3 and upper[1:] == "XX" and upper[0] in "12345":
+            digit = int(upper[0])
+            return f"on_{digit}xx", upper, make_range_matcher(digit * 100, digit * 100 + 100)
+        code = int(status_key)
+        return f"on_{code}", code, code
+
+    def _extract_response_specs(
+        self,
+        responses: dict[str, Any] | None,
+        endpoint: Endpoint[Any, Any, Any],
+    ) -> list[ResponseSpecDecl]:
+        """按 ``status_code + media_type`` 提取响应声明列表。
+
+        与旧 :meth:`_get_json_response_types` 的关键差异：
+
+        - **遍历所有 media type**，而非只取每个 status 的第一个 JSON 家族 media type。
+          200 同时声明 ``application/json`` + ``application/problem+json`` 时会生成 2 条 decl。
+        - 每条 decl 同时携带 ``is_json`` 标志与 ``model_name``（Raw 响应 ``model_name=None``），
+          模板按此分别渲染 :class:`stoma.JSONResponseSpec` 与
+          :class:`stoma.RawResponseSpec`。
+        - ``attr_name`` 按该 response 的 media type 数量决定：
+          单 media → ``on_<status>``；多 media → ``on_<status>_<sanitized_media>`` 消歧。
+        - OpenAPI 通配符状态码（``default`` / ``4XX`` / ``5XX``）由
+          :meth:`_parse_status_key` 转换为 ``Callable[[int], bool]`` 谓词或 lambda。
+        - **去重保护**：同一 ``(status_key, media_type)`` 重复出现时跳过第二条并 emit
+          :attr:`GenerationErrorKind.DUPLICATE_RESPONSE_SPEC` 警告
+          （罕见但需处理，规范 dict 本身不允许 key 重复，但允许 dict 子类返回重复 items）。
+
+        inline 对象命名沿用旧规则：第一个 ``{PascalOpId}Response``，第二个起
+        ``{PascalOpId}Response1`` / ``{PascalOpId}Response2`` 等。
+        ``$ref`` 取末段 PascalCase，与 :func:`to_pascal_case` 转换对齐 dmcg
+        对 ``components.schemas`` key 的归一化。
+        ``available_models`` 校验与 :attr:`GenerationErrorKind.MISSING_RESPONSE_MODEL`
+        错误收集保留——仅对 JSON 路径生效。
+
+        :param responses: OpenAPI 响应字典（状态码字符串 → Response 对象），可为 ``None`` 或空。
+        :param endpoint: 当前 :class:`Endpoint` IR 对象。
+        :return: :class:`ResponseSpecDecl` 列表，顺序与 OpenAPI spec 中 status 出现顺序一致；
+            每个 status 内按 content 字典迭代顺序遍历 media type；无任何可声明响应时返回空列表。
+        """
+        if not responses:
+            return []
+
+        operation_id_pascal = to_pascal_case(endpoint.operation_id)
+        inline_counter = 0
+        decls: list[ResponseSpecDecl] = []
+        seen: set[tuple[str, str]] = set()
+
+        for status_key, response in responses.items():
+            content = getattr(response, "content", None) or {}
+            if not content:
+                continue
+            attr_base, status_code, status_matcher = self._parse_status_key(status_key)
+            media_type_keys = list(content.keys())
+            multi_media = len(media_type_keys) > 1
+
+            for media_type, media_type_obj in content.items():
+                dedup_key = (status_key, media_type)
+                if dedup_key in seen:
+                    self.errors.append(
+                        GenerationError(
+                            method=endpoint.method,
+                            path=endpoint.path,
+                            kind=GenerationErrorKind.DUPLICATE_RESPONSE_SPEC,
+                            message=(f"重复响应声明 status={status_key!r}, media_type={media_type!r}，已跳过"),
+                        )
+                    )
+                    continue
+                seen.add(dedup_key)
+
+                is_json = is_json_media_type(media_type)
+                if multi_media:
+                    attr_name = f"{attr_base}_{sanitize_media_type(media_type)}"
+                else:
+                    attr_name = attr_base
+
+                schema = getattr(media_type_obj, "media_type_schema", None)
+                model_name: str | None
+                if isinstance(schema, self.Reference):
+                    model_name = to_pascal_case(schema.ref.rsplit("/", 1)[-1])
+                elif is_json:
+                    inline_counter += 1
+                    if inline_counter == 1:
+                        model_name = f"{operation_id_pascal}Response"
+                    else:
+                        model_name = f"{operation_id_pascal}Response{inline_counter - 1}"
+                else:
+                    model_name = None
+
+                if (
+                    is_json
+                    and model_name is not None
+                    and self.available_models is not None
+                    and model_name not in self.available_models
+                ):
+                    self.errors.append(
+                        GenerationError(
+                            method=endpoint.method,
+                            path=endpoint.path,
+                            kind=GenerationErrorKind.MISSING_RESPONSE_MODEL,
+                            message=f"缺少 Response 模型 {model_name!r}（已跳过 import + generic）",
+                        )
+                    )
+                    continue
+
+                decls.append(
+                    ResponseSpecDecl(
+                        attr_name=attr_name,
+                        status_code=status_code,
+                        status_matcher=status_matcher,
+                        media_type=media_type,
+                        model_name=model_name,
+                        is_json=is_json,
+                    )
+                )
+
+        return decls
 
 
 def make_endpoint_renderer(spec_version: SpecVersion) -> EndpointRenderer[Any]:
