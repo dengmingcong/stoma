@@ -13,15 +13,17 @@ Stoma 定义了 `Path()`、`Query()`、`Header()`、`Body()`、`Form()`、`Uploa
 `Path()` 用于声明路径参数，用于替换路径中的占位符。
 
 ```python
-from typing import Annotated
-from stoma import APIRoute, APIRouter, Path
+from typing import Annotated, ClassVar
+from stoma import APIRoute, APIRouter, JSONResponseSpec, Path
 
 router = APIRouter()
 
+
 @router.get("/users/{user_id}")
-class GetUserById(APIRoute[dict]):
+class GetUserById(APIRoute):
     """根据 ID 获取用户。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
     user_id: Annotated[int, Path()]
 ```
 
@@ -33,15 +35,17 @@ class GetUserById(APIRoute[dict]):
 `Query()` 用于声明查询参数。
 
 ```python
-from typing import Annotated
-from stoma import APIRoute, APIRouter, Query
+from typing import Annotated, ClassVar
+from stoma import APIRoute, APIRouter, JSONResponseSpec, Query
 
 router = APIRouter()
 
+
 @router.get("/users")
-class GetUsers(APIRoute[list[dict]]):
+class GetUsers(APIRoute):
     """获取用户列表，支持分页。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[dict])
     limit: Annotated[int, Query()] = 20
     offset: Annotated[int, Query()] = 0
 ```
@@ -54,16 +58,18 @@ class GetUsers(APIRoute[list[dict]]):
 `Header()` 用于声明请求头参数，常见场景是传递认证令牌。
 
 ```python
-from typing import Annotated
+from typing import Annotated, ClassVar
 from pydantic import Field
-from stoma import APIRoute, APIRouter, Header
+from stoma import APIRoute, APIRouter, Header, JSONResponseSpec
 
 router = APIRouter()
 
+
 @router.get("/users")
-class GetUsers(APIRoute[list[dict]]):
+class GetUsers(APIRoute):
     """获取用户列表，需要认证。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[dict])
     authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")] = "Bearer token"
 ```
 
@@ -83,20 +89,24 @@ class GetUsers(APIRoute[list[dict]]):
 #### Pydantic 模型
 
 ```python
-from typing import Annotated
+from typing import Annotated, ClassVar
 from pydantic import BaseModel
-from stoma import APIRoute, APIRouter, Body
+from stoma import APIRoute, APIRouter, Body, JSONResponseSpec
+
 
 class UserCreateRequest(BaseModel):
     name: str
     email: str
 
+
 router = APIRouter()
 
+
 @router.post("/users")
-class CreateUser(APIRoute[dict]):
+class CreateUser(APIRoute):
     """创建用户。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     body: Annotated[UserCreateRequest, Body()]
 ```
 
@@ -113,9 +123,10 @@ class CreateUser(APIRoute[dict]):
 
 ```python
 @router.post("/users")
-class CreateUser(APIRoute[dict]):
+class CreateUser(APIRoute):
     """创建用户。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     body: Annotated[UserCreateRequest, Body(embed=True)]
 ```
 
@@ -133,15 +144,17 @@ class CreateUser(APIRoute[dict]):
 #### 标量
 
 ```python
-from typing import Annotated
-from stoma import APIRoute, APIRouter, Body
+from typing import Annotated, ClassVar
+from stoma import APIRoute, APIRouter, Body, JSONResponseSpec
 
 router = APIRouter()
 
+
 @router.post("/text-body")
-class SendText(APIRoute[dict]):
+class SendText(APIRoute):
     """发送纯文本请求体。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     content: Annotated[str, Body()] = "some text"
 ```
 
@@ -155,9 +168,10 @@ some text
 
 ```python
 @router.post("/text-body")
-class SendText(APIRoute[dict]):
+class SendText(APIRoute):
     """发送纯文本请求体。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     content: Annotated[str, Body(media_type="text/plain")] = "some text"
 ```
 
@@ -167,9 +181,10 @@ class SendText(APIRoute[dict]):
 
 ```python
 @router.post("/text-body")
-class SendText(APIRoute[dict]):
+class SendText(APIRoute):
     """发送纯文本请求体。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     content: Annotated[str, Body(embed=True)] = "some text"
 ```
 
@@ -192,20 +207,24 @@ class SendText(APIRoute[dict]):
 ### 多个 Body 参数
 
 ```python
-from typing import Annotated
+from typing import Annotated, ClassVar
 from pydantic import BaseModel
-from stoma import APIRoute, APIRouter, Body
+from stoma import APIRoute, APIRouter, Body, JSONResponseSpec
+
 
 class UserCreateRequest(BaseModel):
     name: str
     email: str
 
+
 router = APIRouter()
 
+
 @router.post("/users")
-class CreateUser(APIRoute[dict]):
+class CreateUser(APIRoute):
     """创建用户。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     data: Annotated[UserCreateRequest, Body()]
     phone: Annotated[str, Body()]
 ```
@@ -227,15 +246,17 @@ class CreateUser(APIRoute[dict]):
 `Form()` 标记用于声明表单数据，只能与标量类型或标量列表一起使用。
 
 ```python
-from typing import Annotated
-from stoma import APIRoute, APIRouter, Form
+from typing import Annotated, ClassVar
+from stoma import APIRoute, APIRouter, Form, JSONResponseSpec
 
 router = APIRouter()
 
+
 @router.post("/login")
-class Login(APIRoute[dict]):
+class Login(APIRoute):
     """用户登录，支持标签。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     username: Annotated[str, Form()]
     tags: Annotated[list[str], Form()] = []
 ```
@@ -250,14 +271,18 @@ Stoma 会将 `Form()` 字段的值填充到 Playwright [FormData](https://playwr
 UploadFile 用于声明文件上传字段。
 
 ```python
-from stoma import APIRoute, APIRouter, UploadFile
+from typing import ClassVar
+
+from stoma import APIRoute, APIRouter, JSONResponseSpec, UploadFile
 
 router = APIRouter()
 
+
 @router.post("/upload")
-class UploadAvatar(APIRoute[dict]):
+class UploadAvatar(APIRoute):
     """上传用户头像。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     avatar: UploadFile
 ```
 
@@ -269,15 +294,17 @@ class UploadAvatar(APIRoute[dict]):
 
 ```python
 import pathlib
-from typing import Annotated
-from stoma import APIRoute, APIRouter, Form, UploadFile
+from typing import Annotated, ClassVar
+from stoma import APIRoute, APIRouter, Form, JSONResponseSpec, UploadFile
 
 router = APIRouter()
 
+
 @router.post("/upload-mix")
-class UploadWithForm(APIRoute[dict]):
+class UploadWithForm(APIRoute):
     """同时发送表单字段和文件。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     username: Annotated[str, Form()]
     avatar: UploadFile
 ```
@@ -292,14 +319,18 @@ Stoma 使用 `upload_as_multipart=False` 支持这种情况，请求体会被替
 
 ```python
 import pathlib
-from stoma import APIRoute, APIRouter, UploadFile
+from typing import ClassVar
+
+from stoma import APIRoute, APIRouter, JSONResponseSpec, UploadFile
 
 router = APIRouter()
 
+
 @router.post("/raw-upload", upload_as_multipart=False)
-class RawUpload(APIRoute[dict]):
+class RawUpload(APIRoute):
     """裸字节上传。"""
 
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict)
     file: UploadFile
 ```
 
@@ -315,9 +346,10 @@ class RawUpload(APIRoute[dict]):
 
 ```python
 @router.get("/users/{user_id}")
-class GetUserById(APIRoute[dict]):
+class GetUserById(APIRoute):
     """根据 ID 获取用户。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
     user_id: int
 ```
 
@@ -325,9 +357,10 @@ class GetUserById(APIRoute[dict]):
 
 ```python
 @router.get("/users/{userId}")
-class GetUserById(APIRoute[dict]):
+class GetUserById(APIRoute):
     """根据 ID 获取用户。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
     user_id: Annotated[int, Field(serialization_alias="userId")]
 ```
 

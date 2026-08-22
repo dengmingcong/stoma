@@ -370,10 +370,6 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
            一条 decl 存在即添加，按 JSON → Raw 顺序。
         4. ``uses_classvar_import`` 任意 decl 存在时为 True，供模板按需注入
            ``from typing import ClassVar``。
-        5. ``response_type``（Union 字符串）从 decls 的 ``model_name`` 派生，
-           保留供 Wave 6.4 前模板的 ``APIRoute[T]`` 泛型语法使用；Wave 6.4 会
-           把模板切换到 ``on_<status>: ClassVar = ...`` 形式，``response_type``
-           随之退役。
 
         :param endpoint: :class:`Endpoint` IR 对象，类型参数用 ``Any``
             表达（renderer 不依赖具体 spec 版本类型）。
@@ -411,12 +407,6 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
         # 任意响应声明存在 → 模板按需导入 ``from typing import ClassVar``。
         uses_classvar_import = bool(response_spec_decls)
-
-        # ``response_type`` 临时保留：Wave 6.4 前模板仍消费 ``APIRoute[T]`` 泛型语法。
-        # 由 decls 的 ``model_name`` 去重拼接（同一 model 出现多个 status 时去重），
-        # 与旧 ``_get_json_response_types`` 在既有 spec 集上等价；Wave 6.4 模板切换后此变量退役。
-        response_type_models = list(dict.fromkeys(decl.model_name for decl in response_spec_decls if decl.model_name))
-        response_type = " | ".join(response_type_models) if response_type_models else ""
 
         # 把 body fields 子类拍平为 template 变量。
         # NONE 路径返回空字典时模板所有 body 块跳过。
@@ -458,7 +448,6 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             path=endpoint.path,
             summary=endpoint.summary,
             description=endpoint.description,
-            response_type=response_type,
             **body_template_vars,
             header_fields=header_fields,
             param_fields=param_fields,

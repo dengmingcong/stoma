@@ -288,8 +288,13 @@ def api_route_decorator[T: APIRoute](
 
     Example::
 
+        from typing import ClassVar
+
+        from stoma import JSONResponseSpec
+
         @api_route_decorator(method="GET", path="/users/{user_id}")
-        class GetUserById(APIRoute[UserData]):
+        class GetUserById(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
             user_id: Annotated[int, Path()]
 
         # 验证元数据已注入
@@ -326,36 +331,46 @@ class APIRouter:
 
     Example::
 
+        from typing import ClassVar
+
+        from stoma import JSONResponseSpec
+
         # 创建路由器
         router = APIRouter()
 
         # 使用装饰器定义接口
         @router.get("/users")
-        class GetUsers(APIRoute[list[UserData]]):
+        class GetUsers(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
             limit: int = 20
 
         @router.post("/users")
-        class CreateUser(APIRoute[UserData]):
+        class CreateUser(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", UserData)
             name: str
             email: str
 
         @router.head("/users")
-        class HeadUsers(APIRoute[dict]):
+        class HeadUsers(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
             pass
 
         @router.options("/users")
-        class OptionsUsers(APIRoute[dict]):
+        class OptionsUsers(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
             pass
 
         @router.trace("/users")
-        class TraceUsers(APIRoute[dict]):
+        class TraceUsers(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
             pass
 
         # 创建带前缀的路由器：endpoint 实际路径为 prefix + 方法传入的 path
         router_v3 = APIRouter(prefix="/api/v3")
 
         @router_v3.get("/store/inventory")
-        class GetInventory(APIRoute[dict]):
+        class GetInventory(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
             pass
 
         # GetInventory._get_dependant().path == "/api/v3/store/inventory"
@@ -383,14 +398,20 @@ class APIRouter:
 
         Example::
 
+            from typing import ClassVar
+
+            from stoma import JSONResponseSpec
+
             # 无前缀：实际路径为 /users
             @router.get("/users")
-            class GetUsers(APIRoute[list[UserData]]):
+            class GetUsers(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
                 limit: int = 20
 
             # 带前缀：实际路径为 /api/v3/users/{user_id}
             @router_v3.get("/users/{user_id}")
-            class GetUserV3(APIRoute[UserData]):
+            class GetUserV3(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
                 user_id: Annotated[int, Path()]
         """
         return api_route_decorator(method="GET", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
@@ -409,15 +430,21 @@ class APIRouter:
 
         Example::
 
+            from typing import ClassVar
+
+            from stoma import JSONResponseSpec
+
             # 无前缀
             @router.post("/users")
-            class CreateUser(APIRoute[UserData]):
+            class CreateUser(APIRoute):
+                on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", UserData)
                 name: str
                 email: str
 
             # 带前缀：实际路径为 /api/v3/users
             @router_v3.post("/users")
-            class CreateUserV3(APIRoute[UserData]):
+            class CreateUserV3(APIRoute):
+                on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", UserData)
                 name: str
                 email: str
         """
@@ -442,15 +469,21 @@ class APIRouter:
 
         Example::
 
+            from typing import ClassVar
+
+            from stoma import JSONResponseSpec
+
             # 无前缀
             @router.put("/users/{user_id}")
-            class UpdateUser(APIRoute[UserData]):
+            class UpdateUser(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
                 user_id: Annotated[int, Path()]
                 name: str
 
             # 带前缀：实际路径为 /api/v3/users/{user_id}
             @router_v3.put("/users/{user_id}")
-            class UpdateUserV3(APIRoute[UserData]):
+            class UpdateUserV3(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
                 user_id: Annotated[int, Path()]
                 name: str
         """
@@ -470,15 +503,21 @@ class APIRouter:
 
         Example::
 
+            from typing import ClassVar
+
+            from stoma import JSONResponseSpec
+
             # 无前缀
             @router.patch("/users/{user_id}")
-            class PatchUser(APIRoute[UserData]):
+            class PatchUser(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
                 user_id: Annotated[int, Path()]
                 email: str | None = None
 
             # 带前缀：实际路径为 /api/v3/users/{user_id}
             @router_v3.patch("/users/{user_id}")
-            class PatchUserV3(APIRoute[UserData]):
+            class PatchUserV3(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
                 user_id: Annotated[int, Path()]
                 email: str | None = None
         """
@@ -498,14 +537,20 @@ class APIRouter:
 
         Example::
 
+            from typing import ClassVar
+
+            from stoma import JSONResponseSpec
+
             # 无前缀
             @router.delete("/users/{user_id}")
-            class DeleteUser(APIRoute[dict[str, str]]):
+            class DeleteUser(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
                 user_id: Annotated[int, Path()]
 
             # 带前缀：实际路径为 /api/v3/users/{user_id}
             @router_v3.delete("/users/{user_id}")
-            class DeleteUserV3(APIRoute[dict[str, str]]):
+            class DeleteUserV3(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
                 user_id: Annotated[int, Path()]
         """
         return api_route_decorator(method="DELETE", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
@@ -524,14 +569,20 @@ class APIRouter:
 
         Example::
 
+            from typing import ClassVar
+
+            from stoma import JSONResponseSpec
+
             # 无前缀
             @router.head("/users")
-            class HeadUsers(APIRoute[dict]):
+            class HeadUsers(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
                 pass
 
             # 带前缀：实际路径为 /api/v3/users
             @router_v3.head("/users")
-            class HeadUsersV3(APIRoute[dict]):
+            class HeadUsersV3(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
                 pass
         """
         return api_route_decorator(method="HEAD", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
@@ -550,14 +601,20 @@ class APIRouter:
 
         Example::
 
+            from typing import ClassVar
+
+            from stoma import JSONResponseSpec
+
             # 无前缀
             @router.options("/users")
-            class OptionsUsers(APIRoute[dict]):
+            class OptionsUsers(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
                 pass
 
             # 带前缀：实际路径为 /api/v3/users
             @router_v3.options("/users")
-            class OptionsUsersV3(APIRoute[dict]):
+            class OptionsUsersV3(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
                 pass
         """
         return api_route_decorator(method="OPTIONS", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
@@ -576,14 +633,20 @@ class APIRouter:
 
         Example::
 
+            from typing import ClassVar
+
+            from stoma import JSONResponseSpec
+
             # 无前缀
             @router.trace("/users")
-            class TraceUsers(APIRoute[dict]):
+            class TraceUsers(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
                 pass
 
             # 带前缀：实际路径为 /api/v3/users
             @router_v3.trace("/users")
-            class TraceUsersV3(APIRoute[dict]):
+            class TraceUsersV3(APIRoute):
+                on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
                 pass
         """
         return api_route_decorator(method="TRACE", path=self.prefix + path, upload_as_multipart=upload_as_multipart)

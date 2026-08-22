@@ -250,10 +250,10 @@ class JSONResponseSpec[T](BaseResponseSpec[T]):
             errors: list[dict[str, Any]] = []
             # Pydantic 的 ValidationError 才有 .errors() 方法。
             if hasattr(e, "errors"):
-                errors = list(e.errors())  # type: ignore[no-any-return]
+                errors = list(e.errors())
             raise ValidationError(msg, errors=errors) from e
 
-        return validated  # type: ignore[no-any-return]
+        return validated
 
 
 class RawResponseSpec[T](BaseResponseSpec[T]):

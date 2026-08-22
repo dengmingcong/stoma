@@ -3906,11 +3906,11 @@ class TestRenderPassesResponseSpecDecls:
         assert kwargs["imported_models"] == ["User"]
         assert None not in kwargs["imported_models"]
 
-    def test_render_response_type_kept_for_template_backward_compat(self) -> None:
-        """``response_type``（Union 字符串）由 decls 的 ``model_name`` 派生，保留到 Wave 6.4。
+    def test_render_response_spec_decls_with_repeated_model(self) -> None:
+        """多个 status 引用同一 model 时 ``response_spec_decls`` 保留所有 decl（不过滤重复）。
 
-        验证：现有模板仍消费 ``APIRoute[T]`` 泛型语法，所以 ``render()`` 仍计算
-        ``response_type``；多 status + 重复 model 时按 spec 顺序去重。
+        验证 ``response_spec_decls`` 包含所有声明的响应声明（按 spec 顺序），
+        即使同一 model 在多个 status 中出现（如 User 在 200 和 201 中都出现）。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
@@ -3927,15 +3927,22 @@ class TestRenderPassesResponseSpecDecls:
             },
         )
         kwargs = _capture_render_kwargs(renderer, endpoint)
-        # 三个 JSON decl，User 出现两次（200 + 201），去重后 "User | Error"（按首次出现顺序）。
-        assert kwargs["response_type"] == "User | Error"
+        decls = kwargs["response_spec_decls"]
+        # 三个 JSON decl（200 User, 404 Error, 201 User）
+        assert len(decls) == 3
+        assert decls[0].model_name == "User"
+        assert decls[0].status_code == 200
+        assert decls[1].model_name == "Error"
+        assert decls[1].status_code == 404
+        assert decls[2].model_name == "User"
+        assert decls[2].status_code == 201
 
-    def test_render_response_type_empty_when_no_json_decls(self) -> None:
-        """无任何 decl → ``response_type == ""``（模板 ``{% if response_type %}`` 跳过）。"""
+    def test_render_response_spec_decls_empty_when_no_json_decls(self) -> None:
+        """无任何响应声明时 ``response_spec_decls`` 为空列表。"""
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(None)
         kwargs = _capture_render_kwargs(renderer, endpoint)
-        assert kwargs["response_type"] == ""
+        assert kwargs["response_spec_decls"] == []
 
 
 class TestTemplateEmitsClassVarDeclarations:

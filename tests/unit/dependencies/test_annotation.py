@@ -13,12 +13,12 @@ namespace package 巧合解析，统一改为 ``from src.dependencies.annotation
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any, ClassVar, Optional, Union
 
 import pytest
 from pydantic import BaseModel
 
-from stoma import UploadFile
+from stoma import JSONResponseSpec, UploadFile
 from stoma.dependencies.annotation import (
     field_annotation_is_complex,
     validate_binary_body_annotation,
@@ -40,7 +40,7 @@ class TestValidateBinaryBodyAnnotation:
 
     def test_typing_optional_uploadfile_passes(self) -> None:
         """``Optional[UploadFile]`` 通过校验。"""
-        assert validate_binary_body_annotation(Optional[UploadFile], field_name="f") is None
+        assert validate_binary_body_annotation(Optional[UploadFile], field_name="f") is None  # noqa: UP045
 
     def test_list_uploadfile_raises_with_substring_and_field_name(self) -> None:
         """``list[UploadFile]`` 抛 ``ValueError``，消息含 ``不能是 list/Form 包装`` 和字段名。"""
@@ -59,7 +59,7 @@ class TestValidateBinaryBodyAnnotation:
     def test_union_with_other_type_raises(self) -> None:
         """``Union[UploadFile, int]`` 抛 ``ValueError``。"""
         with pytest.raises(ValueError):
-            validate_binary_body_annotation(Union[UploadFile, int], field_name="x")
+            validate_binary_body_annotation(Union[UploadFile, int], field_name="x")  # noqa: UP007
 
 
 class TestBinaryBodySerialization:
@@ -70,7 +70,8 @@ class TestBinaryBodySerialization:
         router = APIRouter()
 
         @router.post("/upload-raw", upload_as_multipart=False)
-        class R(APIRoute[dict[str, Any]]):
+        class R(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             file: UploadFile
 
         return R
@@ -79,7 +80,7 @@ class TestBinaryBodySerialization:
         """``.txt`` 文件 → ``FilePayload`` 含 name / mimeType / buffer。"""
         path = tmp_path / "note.txt"
         path.write_bytes(b"hi")
-        R = self._route()
+        R = self._route()  # noqa: N806
         body = _serialize_body_params(
             R(file=UploadFile(path=path)),
             R._get_dependant(method="POST", path="/upload-raw", upload_as_multipart=False),
@@ -95,7 +96,7 @@ class TestBinaryBodySerialization:
         """``mimetypes.guess_type`` 返回 None 时回退到 ``application/octet-stream``。"""
         path = tmp_path / "data.unknownext"
         path.write_bytes(b"raw bytes")
-        R = self._route()
+        R = self._route()  # noqa: N806
         body = _serialize_body_params(
             R(file=UploadFile(path=path)),
             R._get_dependant(method="POST", path="/upload-raw", upload_as_multipart=False),
@@ -110,7 +111,8 @@ class TestBinaryBodySerialization:
         router = APIRouter()
 
         @router.post("/upload-raw-opt", upload_as_multipart=False)
-        class R(APIRoute[dict[str, Any]]):
+        class R(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             file: UploadFile | None = None
 
         body = _serialize_body_params(
