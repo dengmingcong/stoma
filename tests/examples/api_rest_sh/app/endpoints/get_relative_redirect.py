@@ -5,15 +5,20 @@ Generated from OpenAPI: get-relative-redirect
 
 from __future__ import annotations
 
-from stoma import APIRoute
+from typing import ClassVar
+
+from stoma import APIRoute, JSONResponseSpec
 
 from ..models import ErrorModel
 from ..router import router
 
 
 @router.get("/relative-redirect/{n}")
-class GetRelativeRedirect(APIRoute[ErrorModel]):
+class GetRelativeRedirect(APIRoute):
     """Redirect a configurable number of times。"""
 
+    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
+    )
     n: int
     """Number of redirects to follow before reaching /get"""

@@ -5,20 +5,26 @@ Generated from OpenAPI: get-anything-path
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from pydantic import Field
 
-from stoma import APIRoute, Header
+from stoma import APIRoute, Header, JSONResponseSpec
 
 from ..models import EchoModel, ErrorModel
 from ..router import router
 
 
 @router.get("/anything/{path}")
-class GetAnythingPath(APIRoute[EchoModel | ErrorModel]):
+class GetAnythingPath(APIRoute):
     """Echo request data。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        status_code=200, media_type="application/json", model=EchoModel
+    )
+    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
+    )
     path: str
     """Path suffix to echo"""
     status: int | None = None

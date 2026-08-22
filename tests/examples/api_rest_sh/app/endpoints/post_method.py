@@ -5,20 +5,26 @@ Generated from OpenAPI: post-method
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from pydantic import Field
 
-from stoma import APIRoute, Header
+from stoma import APIRoute, Header, JSONResponseSpec
 
 from ..models import EchoModel, ErrorModel
 from ..router import router
 
 
 @router.post("/post")
-class PostMethod(APIRoute[EchoModel | ErrorModel]):
+class PostMethod(APIRoute):
     """Echo request data。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        status_code=200, media_type="application/json", model=EchoModel
+    )
+    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
+    )
     status: int | None = None
     """Status code to return"""
     if_match: Annotated[list[str] | None, Header(), Field(serialization_alias="If-Match")] = None

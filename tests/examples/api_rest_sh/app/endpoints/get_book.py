@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from pydantic import Field
 
-from stoma import APIRoute, Header
+from stoma import APIRoute, Header, JSONResponseSpec
 
 from ..models import Book, ErrorModel
 from ..router import router
 
 
 @router.get("/books/{book-id}")
-class GetBook(APIRoute[Book | ErrorModel]):
+class GetBook(APIRoute):
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(status_code=200, media_type="application/json", model=Book)
+    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
+    )
     book_id: Annotated[str, Field(serialization_alias="book-id")]
     """Book identifier"""
     if_match: Annotated[list[str] | None, Header(), Field(serialization_alias="If-Match")] = None

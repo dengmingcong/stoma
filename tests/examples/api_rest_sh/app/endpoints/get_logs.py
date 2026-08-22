@@ -5,15 +5,20 @@ Generated from OpenAPI: get-logs
 
 from __future__ import annotations
 
-from stoma import APIRoute
+from typing import ClassVar
+
+from stoma import APIRoute, JSONResponseSpec
 
 from ..models import ErrorModel
 from ..router import router
 
 
 @router.get("/logs")
-class GetLogs(APIRoute[ErrorModel]):
+class GetLogs(APIRoute):
     """Stream newline-delimited JSON logs。"""
 
+    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
+    )
     count: int | None = None
     """Number of log lines to emit"""

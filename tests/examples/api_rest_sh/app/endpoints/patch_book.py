@@ -6,23 +6,26 @@ Partial update operation supporting both JSON Merge Patch & JSON Patch updates.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from pydantic import Field
 
-from stoma import APIRoute, Header
+from stoma import APIRoute, Header, JSONResponseSpec
 
 from ..models import ErrorModel, PatchBookRequest
 from ..router import router
 
 
 @router.patch("/books/{book-id}")
-class PatchBook(APIRoute[ErrorModel]):
+class PatchBook(APIRoute):
     """Patch book。
 
     Partial update operation supporting both JSON Merge Patch & JSON Patch updates.
     """
 
+    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
+    )
     book_id: Annotated[str, Field(serialization_alias="book-id")]
     """Book identifier"""
     if_match: Annotated[list[str] | None, Header(), Field(serialization_alias="If-Match")] = None

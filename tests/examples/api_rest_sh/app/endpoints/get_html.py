@@ -5,12 +5,18 @@ Generated from OpenAPI: get-html
 
 from __future__ import annotations
 
-from stoma import APIRoute
+from typing import ClassVar
+
+from stoma import APIRoute, JSONResponseSpec
 
 from ..models import ErrorModel
 from ..router import router
 
 
 @router.get("/html")
-class GetHtml(APIRoute[ErrorModel]):
+class GetHtml(APIRoute):
     """Return HTML。"""
+
+    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
+    )
