@@ -231,7 +231,7 @@ flowchart TD
 - 灰色节点（raw scalar）：兜底 RAW 路径，覆盖 `text/plain` 等非 JSON / 非 form / 非 binary 媒体类型。
 - 红色节点（schema_unsupported）：顶层组合子不被支持，抛出异常，CLI exit 1。
 
-## 响应声明属性命名规则
+## 响应声明属性渲染规则
 
 `_extract_response_specs`（`renderer.py` 第 836-960 行）在生成响应声明时，按 `status_code + media_type` 组合生成唯一的属性名。命名规则由 `sanitize_media_type`（`media_type.py` 第 100-127 行）实现。
 
@@ -240,11 +240,14 @@ flowchart TD
 某个状态码只有一个 media type 时，属性名直接使用 `on_<status>` 形式：
 
 ```python
-on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-    status_code=200,
-    media_type="application/json",
-    model=BookResponse,
-)
+class GetBookById(APIRoute):
+    @property
+    def on_200(self) -> JSONResponseSpec[BookResponse]:
+        return JSONResponseSpec(
+            status_code=200,
+            media_type="application/json",
+            model=BookResponse,
+        )
 ```
 
 ### 多 media type
@@ -252,16 +255,22 @@ on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
 某个状态码有多个 media type 时，属性名后缀经过 `sanitize_media_type` 清洗，确保生成合法的 Python 标识符：
 
 ```python
-on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-    status_code=200,
-    media_type="application/json",
-    model=BookResponse,
-)
-on_200_application_problem_plus_json: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-    status_code=200,
-    media_type="application/problem+json",
-    model=ErrorResponse,
-)
+class GetBookById(APIRoute):
+    @property
+    def on_200(self) -> JSONResponseSpec[BookResponse]:
+        return JSONResponseSpec(
+            status_code=200,
+            media_type="application/json",
+            model=BookResponse,
+        )
+
+    @property
+    def on_200_application_problem_plus_json(self) -> JSONResponseSpec[ErrorResponse]:
+        return JSONResponseSpec(
+            status_code=200,
+            media_type="application/problem+json",
+            model=ErrorResponse,
+        )
 ```
 
 `sanitize_media_type` 执行以下链式替换：
@@ -275,27 +284,34 @@ on_200_application_problem_plus_json: ClassVar[JSONResponseSpec] = JSONResponseS
 
 ### Raw 响应
 
-非 JSON media type 生成 `RawResponseSpec` 而非 `JSONResponseSpec`，模板根据 `categorize_raw_media_type` 的分类结果选择 `.bytes()` 或 `.text()` 工厂方法：
+非 JSON media type 生成 `RawResponseSpec` 而非 `JSONResponseSpec`，通过 `target_type` 参数指定目标类型：
 
 ```python
-on_200_application_octet_stream: ClassVar[RawResponseSpec[bytes]] = RawResponseSpec.bytes(
-    status_code=200,
-    media_type="application/octet-stream",
-)
+class DownloadFile(APIRoute):
+    @property
+    def on_200(self) -> RawResponseSpec[bytes]:
+        return RawResponseSpec(
+            status_code=200,
+            media_type="application/octet-stream",
+            target_type=bytes,
+        )
 ```
 
 ## 通配符状态码渲染
 
-OpenAPI 的 `default`、`4XX`、`5XX` 等通配符无法用精确整数匹配，渲染器将其转换为 `callable=lambda s: ...` 谓词形式，由 `render_status_code_kwarg`（`renderer.py` 第 188-214 行）生成。
+OpenAPI 的 `default`、`4XX`、`5XX` 等通配符无法用精确整数匹配，渲染器将其转换为 `status_code=lambda s: ...` 谓词形式，由 `render_status_code_kwarg`（`renderer.py` 第 188-214 行）生成。
 
 ### `default`
 
 ```python
-on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-    callable=lambda s: True,
-    media_type="application/json",
-    model=ErrorResponse,
-)
+class SomeEndpoint(APIRoute):
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorResponse]:
+        return JSONResponseSpec(
+            status_code=lambda s: True,
+            media_type="application/json",
+            model=ErrorResponse,
+        )
 ```
 
 `default` 匹配所有未在 OpenAPI 响应中明确声明的状态码。
@@ -303,21 +319,27 @@ on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
 ### 范围通配符
 
 ```python
-on_4xx: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-    callable=lambda s: 400 <= s < 500,
-    media_type="application/json",
-    model=ErrorResponse,
-)
-on_5xx: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-    callable=lambda s: 500 <= s < 600,
-    media_type="application/json",
-    model=InternalServerError,
-)
+class SomeEndpoint(APIRoute):
+    @property
+    def on_4xx(self) -> JSONResponseSpec[ErrorResponse]:
+        return JSONResponseSpec(
+            status_code=lambda s: 400 <= s < 500,
+            media_type="application/json",
+            model=ErrorResponse,
+        )
+
+    @property
+    def on_5xx(self) -> JSONResponseSpec[InternalServerError]:
+        return JSONResponseSpec(
+            status_code=lambda s: 500 <= s < 600,
+            media_type="application/json",
+            model=InternalServerError,
+        )
 ```
 
 ### 状态码谓词校验
 
-`BaseResponseSpec`（`response.py` 第 62-152 行）在 `validate_response` 时调用 `_assert_status`，对 `callable` 类型的 `status_code` 执行谓词判断：
+`BaseResponseSpec`（`response.py` 第 62-152 行）在 `validate_response` 时调用 `_assert_status`，对 `status_code` 类型的 lambda 执行谓词判断：
 
 ```python
 def _assert_status(self, actual: int) -> None:

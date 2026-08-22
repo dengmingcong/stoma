@@ -3,7 +3,7 @@
 通过 `APIRouter` 实例的 HTTP 方法装饰器（`get` / `post` 等）定义接口路由。以用户增、删、改、查为例：
 
 ```python
-from typing import Annotated, ClassVar
+from typing import Annotated
 
 from stoma import APIRoute, APIRouter, JSONResponseSpec
 
@@ -12,33 +12,48 @@ router = APIRouter(prefix="/api/v1")
 
 @router.get("/users")
 class GetUsers(APIRoute):
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, list[dict])
+    @property
+    def on_200(self) -> JSONResponseSpec[list[dict]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[dict])
+
     limit: int = 20
 
 
 @router.get("/users/{user_id}")
 class GetUserById(APIRoute):
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, dict)
+    @property
+    def on_200(self) -> JSONResponseSpec[dict]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+
     user_id: int
 
 
 @router.post("/users")
 class CreateUser(APIRoute):
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, dict)
+    @property
+    def on_200(self) -> JSONResponseSpec[dict]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+
     name: str
     email: str
 
 
 @router.patch("/users/{user_id}")
 class PatchUser(APIRoute):
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, dict)
+    @property
+    def on_200(self) -> JSONResponseSpec[dict]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+
     user_id: int
     email: str | None = None
 
 
 @router.delete("/users/{user_id}")
 class DeleteUser(APIRoute):
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, dict)
+    @property
+    def on_200(self) -> JSONResponseSpec[dict]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+
     user_id: int
 ```
 

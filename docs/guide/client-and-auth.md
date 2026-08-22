@@ -64,7 +64,8 @@ merged_headers: dict[str, str] = {**derived_headers, **(request.headers or {})}
 示例：假设 `extra_http_headers={"Authorization": "Bearer global-token"}`，但某个接口需要不同的 token：
 
 ```python
-from typing import Annotated, ClassVar
+from typing import Annotated
+
 from pydantic import Field
 from stoma import Header, APIRoute, Client, JSONResponseSpec
 from playwright.sync_api import sync_playwright
@@ -73,7 +74,9 @@ from playwright.sync_api import sync_playwright
 class GetUserById(APIRoute):
     """根据 ID 获取用户接口，动态传入 token。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
+    @property
+    def on_200(self) -> JSONResponseSpec[UserData]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
 
     user_id: int
     authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]
@@ -136,7 +139,7 @@ def client():
     ctx = pw.request.new_context(base_url="https://api.example.com")
     client = Client(context=ctx)
     yield client
-    client.dispose()   # teardown 阶段释放
+    client.dispose()  # teardown 阶段释放
     pw.stop()
 ```
 

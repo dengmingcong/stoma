@@ -115,27 +115,32 @@ $ stoma make --spec specs/001-generate-api/contracts/openapi.yaml --out src/exam
 
 ## 响应声明格式
 
-每个 endpoint 的 route 文件在类体内生成一组响应声明，格式为：
+每个 endpoint 的 route 文件在类体内生成一组响应声明，格式为 `@property def on_<status>`：
 
 ```python
 class GetBookById(APIRoute):
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-        status_code=200,
-        media_type="application/json",
-        model=BookResponse,
-    )
-    on_404: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-        status_code=404,
-        media_type="application/json",
-        model=ErrorResponse,
-    )
+    @property
+    def on_200(self) -> JSONResponseSpec[BookResponse]:
+        return JSONResponseSpec(
+            status_code=200,
+            media_type="application/json",
+            model=BookResponse,
+        )
+
+    @property
+    def on_404(self) -> JSONResponseSpec[ErrorResponse]:
+        return JSONResponseSpec(
+            status_code=404,
+            media_type="application/json",
+            model=ErrorResponse,
+        )
 ```
 
-`on_<status>` 类属性遵循以下命名规则：
+`on_<status>` 属性的命名规则如下：
 
 - 精确状态码（如 `200`、`404`）→ `on_200`、`on_404`
 - OpenAPI 通配符 → `on_default`、`on_4xx`、`on_5xx`（小写）
-- 每个状态码生成一条独立的 `ClassVar[...] = JSONResponseSpec(...)` 声明
+- 每个状态码生成一条独立的 `@property` 声明
 
 渲染逻辑由 `EndpointRenderer._extract_response_specs`（`renderer.py` 第 836-960 行）实现，按 `status_code + media_type` 组合切分响应声明列表。
 
@@ -148,34 +153,40 @@ stoma 采用"每个状态码一个 spec"的设计原则，原因如下：
 **可独立校验**：调用方可以精确断言某个状态码的响应结构，例如：
 
 ```python
-response = client.send(GetBookById())
+response = client.send(GetBookById(book_id=42))
 if response.raw.status == 200:
-    book = response.validated  # 类型为 BookResponse
+    book = response.expect(GetBookById(book_id=42).on_200)  # BookResponse
 elif response.raw.status == 404:
-    error = response.validated  # 类型为 ErrorResponse
+    error = response.expect(GetBookById(book_id=42).on_404)  # ErrorResponse
 ```
 
 **多 media type 支持**：同一个状态码可能返回多种 media type（如 `application/json` 和 `application/problem+json`），此时渲染器生成两条独立的 spec：
 
 ```python
-on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-    status_code=200,
-    media_type="application/json",
-    model=BookResponse,
-)
-on_200_application_problem_plus_json: ClassVar[JSONResponseSpec] = JSONResponseSpec(
-    status_code=200,
-    media_type="application/problem+json",
-    model=ErrorResponse,
-)
+@property
+def on_200(self) -> JSONResponseSpec[BookResponse]:
+    return JSONResponseSpec(
+        status_code=200,
+        media_type="application/json",
+        model=BookResponse,
+    )
+
+
+@property
+def on_200_application_problem_plus_json(self) -> JSONResponseSpec[ErrorResponse]:
+    return JSONResponseSpec(
+        status_code=200,
+        media_type="application/problem+json",
+        model=ErrorResponse,
+    )
 ```
 
 `sanitize_media_type` 函数（`media_type.py` 第 100-127 行）负责将 media type 字符串转换为合法的 Python 属性名后缀。
 
-**OpenAPI 通配符处理**：对于 `default`、`4XX`、`5XX` 等范围通配符，渲染器生成 `callable=lambda s: ...` 形式的谓词：
+**OpenAPI 通配符处理**：对于 `default`、`4XX`、`5XX` 等范围通配符，渲染器生成 `status_code=lambda s: ...` 形式的谓词：
 
-- `default` → `callable=lambda s: True`
-- `4XX` → `callable=lambda s: 400 <= s < 500`
-- `5XX` → `callable=lambda s: 500 <= s < 600`
+- `default` → `status_code=lambda s: True`
+- `4XX` → `status_code=lambda s: 400 <= s < 500`
+- `5XX` → `status_code=lambda s: 500 <= s < 600`
 
 [继续：代码生成规则](./generation-rules.md)
