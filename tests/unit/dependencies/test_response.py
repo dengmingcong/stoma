@@ -245,6 +245,40 @@ class TestJSONResponseSpec:
         spec = JSONResponseSpec(200, "application/json", UserPayload)
         assert spec.adapter is not None
 
+    def test_callable_kwarg_alias(self) -> None:
+        """``callable=`` 是 ``status_code=`` 的关键字别名（用于渲染器生成的 ``on_default``）。
+
+        与 ``JSONResponseSpec(callable=lambda s: True, media_type=..., model=...)``
+        等价于 ``JSONResponseSpec(status_code=lambda s: True, ...)`。
+        """
+        spec = JSONResponseSpec(
+            callable=lambda s: True,
+            media_type="application/problem+json",
+            model=UserPayload,
+        )
+        assert callable(spec.status_code)
+        assert spec.status_code(404) is True
+        assert spec.status_code(200) is True
+        assert spec.media_type == "application/problem+json"
+
+    def test_status_code_and_callable_mutually_exclusive(self) -> None:
+        """``status_code`` 与 ``callable`` 同时提供抛 :class:`TypeError`。"""
+        with pytest.raises(TypeError, match="status_code 与 callable 不能同时提供"):
+            JSONResponseSpec(
+                status_code=200,
+                callable=lambda s: True,
+                media_type="application/json",
+                model=UserPayload,
+            )
+
+    def test_status_code_or_callable_required(self) -> None:
+        """``status_code`` 与 ``callable`` 都未提供抛 :class:`TypeError`。"""
+        with pytest.raises(TypeError, match="必须提供 status_code 或 callable"):
+            JSONResponseSpec(
+                media_type="application/json",
+                model=UserPayload,
+            )
+
 
 # ===== RawResponseSpec =====
 
@@ -355,6 +389,24 @@ class TestRawResponseSpec:
         )
         with pytest.raises(AssertionError, match="HTTP 状态码不匹配"):
             spec.validate_response(api_response)
+
+    def test_callable_kwarg_alias_bytes(self) -> None:
+        """``RawResponseSpec[bytes](callable=..., media_type=...)`` 工作。"""
+        spec = RawResponseSpec[bytes](
+            callable=lambda s: True,
+            media_type="application/octet-stream",
+        )
+        assert callable(spec.status_code)
+        assert spec.status_code(404) is True
+
+    def test_status_code_and_callable_mutually_exclusive(self) -> None:
+        """``RawResponseSpec`` 的 ``status_code`` 与 ``callable`` 同时提供抛 :class:`TypeError`。"""
+        with pytest.raises(TypeError, match="status_code 与 callable 不能同时提供"):
+            RawResponseSpec[bytes](
+                status_code=200,
+                callable=lambda s: True,
+                media_type="application/octet-stream",
+            )
 
 
 # ===== Public imports =====

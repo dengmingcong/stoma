@@ -5,6 +5,11 @@
   （``application/json`` + ``application/*+json`` 后缀，如
   ``application/problem+json``、``application/json-patch+json``）。
   接受可能带 ``;charset=...`` 后缀的 content-type header（先 strip 再判断）。
+- :func:`is_text_media_type` — 检查非 JSON 的 media type 是否为文本型（用于
+  :class:`stoma.RawResponseSpec` 的 ``.text(...)`` / ``.bytes(...)`` 工厂方法
+  分派）。``text/*`` + 一组已知文本 subtype（``xml`` / ``javascript`` /
+  ``yaml`` / ``xhtml+xml`` / ``csv`` / ``event-stream`` / ``atom+xml`` /
+  ``rss+xml``）。
 - :func:`sanitize_media_type` — 将 media type 字符串转换为合法 Python
   标识符片段（用于在 renderer 中作为多 media type 区分的属性名后缀）。
   链式替换 ``/``、``+``、``-``、``.``、``;``、空格 为 ``_``，其中 ``+``
@@ -33,6 +38,63 @@ def is_json_media_type(media_type: str) -> bool:
     # strip ;charset=... 等参数
     main = media_type.split(";", 1)[0].strip().lower()
     return main == "application/json" or main.endswith("+json")
+
+
+def is_text_media_type(media_type: str) -> bool:
+    """检查 media type 是否为文本型。
+
+    用于 :class:`stoma.RawResponseSpec` 工厂方法分派（``text(...)`` vs
+    ``bytes(...)``）——``RawResponseSpec`` 必须显式指定 ``T`` 类型参数，
+    因此 renderer 在生成 ``ClassVar[RawResponseSpec] = ...`` 时必须调用
+    ``.text(...)`` / ``.bytes(...)`` 之一（裸 ``RawResponseSpec(...)`` 会在
+    ``__init__`` 抛 ``TypeError``）。
+
+    文本型（返回 ``True`` → ``.text(...)``）：
+
+    - ``text/*`` 前缀（如 ``text/plain`` / ``text/html`` / ``text/xml`` /
+      ``text/event-stream`` / ``text/csv``）。
+    - 一组已知文本 subtype：
+      ``application/xml`` / ``application/javascript`` /
+      ``application/xhtml+xml`` / ``application/atom+xml`` /
+      ``application/rss+xml`` / ``application/yaml`` /
+      ``application/x-yaml`` / ``application/csv``。
+    - ``application/*+xml`` / ``application/*+yaml`` structured syntax suffix
+      （如 ``application/soap+xml``）。
+
+    其他所有非 JSON media type（如 ``application/octet-stream`` /
+    ``image/*`` / ``audio/*`` / ``video/*``）返回 ``False`` → ``.bytes(...)``。
+
+    注意：本函数处理的是已被 :func:`is_json_media_type` 排除后的剩余
+    media type；``application/json`` / ``application/*+json`` 已被分流到
+    :class:`stoma.JSONResponseSpec`，不会传入本函数。
+
+    支持 content-type header 直接传入：先 strip ``;charset=...`` 等参数，
+    再做判断。空字符串返回 ``False``。
+
+    :param media_type: media type 字符串，可能带 ``;charset=...`` 后缀。
+    :return: 是文本型 media type 返回 ``True``，否则返回 ``False``。
+    """
+    if not media_type:
+        return False
+    # strip ;charset=... 等参数
+    main = media_type.split(";", 1)[0].strip().lower()
+    if main.startswith("text/"):
+        return True
+    text_subtypes = frozenset(
+        {
+            "application/xml",
+            "application/javascript",
+            "application/xhtml+xml",
+            "application/atom+xml",
+            "application/rss+xml",
+            "application/yaml",
+            "application/x-yaml",
+            "application/csv",
+        }
+    )
+    if main in text_subtypes:
+        return True
+    return main.endswith("+xml") or main.endswith("+yaml")
 
 
 def sanitize_media_type(media_type: str) -> str:
@@ -65,4 +127,4 @@ def sanitize_media_type(media_type: str) -> str:
     )
 
 
-__all__ = ["is_json_media_type", "sanitize_media_type"]
+__all__ = ["is_json_media_type", "is_text_media_type", "sanitize_media_type"]

@@ -177,9 +177,11 @@ class JSONResponseSpec[T](BaseResponseSpec[T]):
 
     def __init__(
         self,
-        status_code: int | Callable[[int], bool],
-        media_type: str,
-        model: type[T],
+        status_code: int | Callable[[int], bool] | None = None,
+        media_type: str | None = None,
+        model: type[T] | None = None,
+        *,
+        callable: Callable[[int], bool] | None = None,
     ) -> None:
         """初始化 JSON 响应协议。
 
@@ -187,7 +189,25 @@ class JSONResponseSpec[T](BaseResponseSpec[T]):
         :param media_type: 期望的 media type（如 ``application/json``），
             ``*`` 表示通配所有 media type。
         :param model: 用于校验响应 body 的 Pydantic 模型类。
+        :param callable: 渲染器生成的 ``callable=`` 别名关键字，等价于 ``status_code=lambda ...``。
+            ``status_code`` 与 ``callable`` 不能同时提供。
+        :raise TypeError: ``status_code`` 与 ``callable`` 同时提供或都未提供；
+            ``media_type`` / ``model`` 未提供。
         """
+        if callable is not None:
+            if status_code is not None:
+                msg = "status_code 与 callable 不能同时提供"
+                raise TypeError(msg)
+            status_code = callable
+        if status_code is None:
+            msg = "必须提供 status_code 或 callable"
+            raise TypeError(msg)
+        if media_type is None:
+            msg = "必须提供 media_type"
+            raise TypeError(msg)
+        if model is None:
+            msg = "必须提供 model"
+            raise TypeError(msg)
         super().__init__(status_code, media_type)
         self.adapter: TypeAdapter[T] = TypeAdapter(model)
 
@@ -319,8 +339,10 @@ class RawResponseSpec[T](BaseResponseSpec[T]):
 
     def __init__(
         self,
-        status_code: int | Callable[[int], bool],
-        media_type: str,
+        status_code: int | Callable[[int], bool] | None = None,
+        media_type: str | None = None,
+        *,
+        callable: Callable[[int], bool] | None = None,
     ) -> None:
         """初始化原始响应协议。
 
@@ -331,7 +353,10 @@ class RawResponseSpec[T](BaseResponseSpec[T]):
         :param status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
         :param media_type: 期望的 media type（如 ``application/octet-stream``），
             ``*`` 表示通配所有 media type。
-        :raise TypeError: 裸 :class:`RawResponseSpec` 调用未指定 ``T``。
+        :param callable: 渲染器生成的 ``callable=`` 别名关键字，等价于 ``status_code=lambda ...``。
+            ``status_code`` 与 ``callable`` 不能同时提供。
+        :raise TypeError: 裸 :class:`RawResponseSpec` 调用未指定 ``T``；
+            ``status_code`` 与 ``callable`` 同时提供或都未提供；``media_type`` 未提供。
         """
         if type(self)._target_type is None:
             raise TypeError(
@@ -339,6 +364,17 @@ class RawResponseSpec[T](BaseResponseSpec[T]):
                 "请使用 RawResponseSpec[bytes](...) / RawResponseSpec[str](...) "
                 "或工厂方法 RawResponseSpec.bytes(...) / RawResponseSpec.text(...)。"
             )
+        if callable is not None:
+            if status_code is not None:
+                msg = "status_code 与 callable 不能同时提供"
+                raise TypeError(msg)
+            status_code = callable
+        if status_code is None:
+            msg = "必须提供 status_code 或 callable"
+            raise TypeError(msg)
+        if media_type is None:
+            msg = "必须提供 media_type"
+            raise TypeError(msg)
         super().__init__(status_code, media_type)
 
     def validate_response(self, response: APIResponse) -> T:

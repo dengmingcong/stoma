@@ -3497,6 +3497,7 @@ class TestExtractResponseSpecs:
             model_name="User",
             is_json=True,
             spec_class="JSONResponseSpec",
+            raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
         assert renderer.errors == []
@@ -3528,6 +3529,7 @@ class TestExtractResponseSpecs:
             model_name="User",
             is_json=True,
             spec_class="JSONResponseSpec",
+            raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
         assert decls[1] == ResponseSpecDecl(
@@ -3537,7 +3539,8 @@ class TestExtractResponseSpecs:
             media_type="text/xml",
             model_name=None,
             is_json=False,
-            spec_class="RawResponseSpec",
+            spec_class="RawResponseSpec[str]",
+            raw_factory="text",
             status_code_or_matcher="status_code=200",
         )
         assert renderer.errors == []
@@ -3622,6 +3625,7 @@ class TestExtractResponseSpecs:
             model_name="User",
             is_json=True,
             spec_class="JSONResponseSpec",
+            raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
         assert decls[1] == ResponseSpecDecl(
@@ -3632,6 +3636,7 @@ class TestExtractResponseSpecs:
             model_name="Problem",
             is_json=True,
             spec_class="JSONResponseSpec",
+            raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
         assert renderer.errors == []
@@ -3776,6 +3781,7 @@ class TestRenderPassesResponseSpecDecls:
             model_name="User",
             is_json=True,
             spec_class="JSONResponseSpec",
+            raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
 
@@ -4055,7 +4061,13 @@ components:
         assert "status_code=200" in content
 
     def test_raw_decl_emits_classvar_without_model(self, cli_runner: Any, tmp_path: Path) -> None:
-        """验证 Raw decl（image/png）渲染为 ``RawResponseSpec(...)``，无 ``model=`` 参数。"""
+        """验证 Raw decl（image/png，bytes 族）渲染为正确的 ClassVar 注解 + 工厂调用。
+
+        ``image/png`` 是二进制族 → ClassVar 注解用 ``RawResponseSpec[bytes]``，
+        构造用 :meth:`RawResponseSpec.bytes` 工厂方法（Wave 1.3 设计要求裸
+        ``RawResponseSpec(...)`` 抛 :class:`TypeError`，故 renderer 必须派生
+        factory 调用而非裸构造）。
+        """
         spec = """\
 openapi: 3.1.0
 info:
@@ -4088,7 +4100,7 @@ paths:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_avatar.py").read_text(encoding="utf-8")
-        assert "on_200: ClassVar[RawResponseSpec] = RawResponseSpec(" in content
+        assert "on_200: ClassVar[RawResponseSpec[bytes]] = RawResponseSpec.bytes(" in content
         assert "model=" not in content
         assert 'media_type="image/png"' in content
 

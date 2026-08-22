@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, NamedTuple, Protocol
+from typing import Any, Literal, NamedTuple, Protocol
 
 from jinja2 import Environment, FileSystemLoader, Template
 from pydantic import BaseModel
@@ -143,9 +143,16 @@ class ResponseSpecDecl(NamedTuple):
     :var is_json: ``True`` → :class:`stoma.JSONResponseSpec`；``False`` → :class:`stoma.RawResponseSpec`。
     :vartype is_json: bool
     :var spec_class: 模板渲染时使用的 spec 类名字符串——``is_json=True`` 时为
-        ``"JSONResponseSpec"``，否则为 ``"RawResponseSpec"``。模板据此输出
-        ``ClassVar[<spec_class>]`` 与构造调用。
+        ``"JSONResponseSpec"``；``is_json=False`` 时为下标化的
+        ``"RawResponseSpec[bytes]"`` 或 ``"RawResponseSpec[str]"``（作为 ClassVar
+        类型注解；裸 :class:`RawResponseSpec` 必须显式指定 ``T``，
+        Wave 1.3 设计约束）。
     :vartype spec_class: str
+    :var raw_factory: 仅 ``is_json=False`` 时有值——``"bytes"`` 或 ``"text"``，
+        对应 :meth:`RawResponseSpec.bytes` / :meth:`RawResponseSpec.text` 工厂方法名；
+        ``is_json=True`` 时为 ``None``。模板据此选择工厂方法而非下标构造，
+        与用户调用点风格一致（plan 要求 factory methods for raw）。
+    :vartype raw_factory: str | None
     :var status_code_or_matcher: 已渲染为代码生成字符串的 ``status_code`` 字面量——
         精确匹配为 ``"status_code=200"``；``"default"`` 为 ``"callable=lambda s: True"``；
         ``"4XX"`` 等范围键为 ``"callable=lambda s: 400 <= s < 500"``。模板直接嵌入，
@@ -160,6 +167,7 @@ class ResponseSpecDecl(NamedTuple):
     model_name: str | None
     is_json: bool
     spec_class: str
+    raw_factory: str | None
     status_code_or_matcher: str
 
 
@@ -204,6 +212,91 @@ def render_status_code_kwarg(status_code: int | str) -> str:
         return f"callable=lambda s: {digit * 100} <= s < {digit * 100 + 100}"
     msg = f"Cannot render status_code {status_code!r} to code-generation kwarg"
     raise ValueError(msg)
+
+
+# 文本族 media type —— 响应 body 可用 ``response.text()`` 安全解码为 ``str``。
+# 大小写不敏感（OpenAPI 3.1 规范允许大小写自由，但 ``_assert_media_type``
+# 在 :class:`BaseResponseSpec` 内部统一 lowercased 比较）。
+_TEXT_LIKE_MEDIA_TYPES: frozenset[str] = frozenset(
+    {
+        "application/xml",
+        "application/yaml",
+        "application/javascript",
+        "application/x-www-form-urlencoded",
+        "application/json-seq",
+    }
+)
+
+
+def categorize_raw_media_type(media_type: str) -> Literal["bytes", "str"]:
+    """把非 JSON media type 分类为 ``"bytes"`` 或 ``"str"``，决定 RawResponseSpec 的 ``T``。
+
+    Wave 1.3 设计要求 :class:`stoma.RawResponseSpec` 必须显式指定 ``T``
+    （``bytes`` 或 ``str``），否则裸 ``RawResponseSpec(...)`` 抛 :class:`TypeError`。
+    渲染器按 media type 的可解码性派生 ``T``，避免在生成的代码里
+    出现裸 ``RawResponseSpec(status_code=..., media_type=...)`` 形式的
+    运行时崩溃。
+
+    返回值是类型参数名（``"bytes"`` / ``"str"``）而非工厂方法后缀
+    （``"bytes"`` / ``"text"``）——``spec_class`` 直接拼成
+    ``"RawResponseSpec[<T>]"`` 形式（ClassVar 类型注解），
+    工厂调用在模板里通过 ``"RawResponseSpec." + raw_factory`` 派生，
+    由 :attr:`ResponseSpecDecl.raw_factory` 提供（``"bytes"`` / ``"text"``）。
+
+    分类规则（大小写不敏感，优先文本族 fallback 到字节族）：
+
+    - 文本族（→ ``"str"`` / :meth:`RawResponseSpec.text`）：
+
+      - 所有 ``text/*``（``text/plain`` / ``text/html`` / ``text/xml`` /
+        ``text/csv`` / ``text/yaml`` / ``text/event-stream`` 等）；
+      - 显式白名单的 ``application/xml`` / ``application/yaml`` /
+        ``application/javascript`` / ``application/x-www-form-urlencoded`` /
+        ``application/json-seq``。
+
+    - 字节族（→ ``"bytes"`` / :meth:`RawResponseSpec.bytes`，默认）：
+
+      - 其他所有未列入文本族的 ``application/*``（含
+        ``application/octet-stream`` / ``application/pdf``）；
+      - ``image/*`` / ``audio/*`` / ``video/*``；
+      - ``*/*`` 通配（spec 模糊声明时的兜底，保守取 bytes）。
+
+    ``is_json_media_type`` 已经在调用方过滤 JSON 家族（含 ``application/json``
+    与 ``application/*+json``），此处不重复判断——传入的 ``media_type`` 一定
+    非 JSON。
+
+    :param media_type: OpenAPI responses content 的 media type 字符串。
+    :return: ``"str"`` 或 ``"bytes"``，对应
+        :class:`RawResponseSpec` 的 ``T`` 类型参数。
+    """
+    normalized = media_type.strip().lower()
+    # 文本族前缀匹配（text/* 全家）；常见文本 MIME 均落在此分支。
+    if normalized.startswith("text/"):
+        return "str"
+    # 文本族白名单 application/* 子集；剥离 ``;charset=...`` 等参数再做精确匹配。
+    main_type = normalized.split(";", 1)[0].strip()
+    if main_type in _TEXT_LIKE_MEDIA_TYPES:
+        return "str"
+    # 兜底 bytes：image/* / audio/* / video/* / application/octet-stream /
+    # application/pdf / */* 通配。保守取 bytes 因多数非文本资源都需要
+    # ``response.body()`` 读取（Playwright 默认行为）。
+    return "bytes"
+
+
+def raw_factory_for(type_arg: Literal["bytes", "str"]) -> Literal["bytes", "text"]:
+    """把 :func:`categorize_raw_media_type` 返回的 ``T`` 名映射到 :class:`RawResponseSpec` 工厂方法后缀。
+
+    模板渲染时对 Raw 路径用 ``"RawResponseSpec." + raw_factory`` 拼出工厂调用：
+    ``T="bytes"`` → ``RawResponseSpec.bytes(...)``，
+    ``T="str"`` → ``RawResponseSpec.text(...)``。两个映射不同名是 Wave 1.3
+    工厂方法设计的副作用——``text`` 强调「按文本解码」，``bytes`` 强调「按字节
+    读取」，比 ``str(...)`` / ``bytes(...)`` 更直观。
+
+    :param type_arg: :func:`categorize_raw_media_type` 返回的 ``T`` 类型名。
+    :return: 工厂方法后缀，``"bytes"`` 仍为 ``"bytes"``，``"str"`` 映射为 ``"text"``。
+    """
+    if type_arg == "bytes":
+        return "bytes"
+    return "text"
 
 
 class EndpointRenderer[ReferenceT: _ReferenceLike]:
@@ -754,6 +847,13 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         - 每条 decl 同时携带 ``is_json`` 标志与 ``model_name``（Raw 响应 ``model_name=None``），
           模板按此分别渲染 :class:`stoma.JSONResponseSpec` 与
           :class:`stoma.RawResponseSpec`。
+        - Raw 路径额外派生 ``spec_class``（``"RawResponseSpec[bytes]"`` /
+          ``"RawResponseSpec[str]"``，作为 ClassVar 类型注解）与 ``raw_factory``
+          （``"bytes"`` / ``"text"``，对应 :meth:`RawResponseSpec.bytes` /
+          :meth:`RawResponseSpec.text` 工厂方法）。Wave 1.3 设计禁止裸
+          ``RawResponseSpec(...)`` 实例化（运行时抛 :class:`TypeError`），故
+          渲染器按 :func:`categorize_raw_media_type` 静态分类 media type，避免
+          生成可执行但运行时崩溃的代码。
         - ``attr_name`` 按该 response 的 media type 数量决定：
           单 media → ``on_<status>``；多 media → ``on_<status>_<sanitized_media>`` 消歧。
         - OpenAPI 通配符状态码（``default`` / ``4XX`` / ``5XX``）由
@@ -847,7 +947,12 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                         media_type=media_type,
                         model_name=model_name,
                         is_json=is_json,
-                        spec_class="JSONResponseSpec" if is_json else "RawResponseSpec",
+                        spec_class=(
+                            "JSONResponseSpec"
+                            if is_json
+                            else f"RawResponseSpec[{categorize_raw_media_type(media_type)}]"
+                        ),
+                        raw_factory=None if is_json else raw_factory_for(categorize_raw_media_type(media_type)),
                         status_code_or_matcher=render_status_code_kwarg(status_code),
                     )
                 )
