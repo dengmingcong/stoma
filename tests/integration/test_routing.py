@@ -2,27 +2,28 @@
 
 此文件通过手动编写示例接口类，验证：
 1. 装饰器语法的可用性（@router.get/post 等）
-2. IDE 类型提示的准确性（泛型响应类型推断）
-3. 泛型响应类型的工作（APIRoute[T]）
+2. IDE 类型提示的准确性（按状态码声明响应协议）
+3. 按状态码声明响应协议的工作（``on_<status>: ClassVar[JSONResponseSpec]``）
 4. Pydantic BaseModel 的自动 __init__ 生成（零样板代码）
 5. 参数标记的正确使用（Query, Path, Header, Body）
 
 **验收场景**:
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，
    Then IDE 提供参数补全与类型检查。
-2. Given 接口类继承 `APIRoute[T]` 泛型，When 调用实例的 send 方法（`endpoint.with_context(context).send()`），
-   Then mypy/IDE 可正确推断返回类型为 T。
+2. Given 接口类通过 ``on_<status>: ClassVar[JSONResponseSpec]`` 声明响应协议，
+   When 调用 ``client.send(endpoint, expect=endpoint.on_200)``，
+   Then mypy/IDE 可正确推断 ``response.validated`` 的类型为声明的 model。
 3. Given 接口类继承 BaseModel 并使用 Query/Body/Header/Path 标记，
    When 字段声明完成，Then IDE 自动补全所有字段，无需编写 `__init__` 样板代码。
 4. Given 生成的接口类使用路由元数据隔离（`_route_meta`），
    When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 """
 
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from pydantic import BaseModel, Field
 
-from stoma import Body, Header, Path, Query
+from stoma import Body, Header, JSONResponseSpec, Path, Query
 from stoma.routing import APIRoute, APIRouter
 
 
@@ -59,15 +60,17 @@ router = APIRouter()
 # ===== 验收场景 1: 装饰器语法与参数补全 =====
 # IDE 应该在 @router.get() 处提供参数补全（path）
 @router.get("/users")
-class GetUsers(APIRoute[list[UserData]]):
-    """获取用户列表 - 响应类型：list[UserData]。
+class GetUsers(APIRoute):
+    """获取用户列表 - 响应协议：on_200 → list[UserData]。
 
     验证：
     - 装饰器语法正确
-    - 泛型类型注解 APIRoute[list[UserData]]
+    - 按状态码声明响应协议 on_200: ClassVar[JSONResponseSpec]
     - Query 参数标记
     - 参数默认值使用函数默认值形式
     """
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
 
     # Query 参数：使用 Annotated 和函数默认值
     limit: Annotated[int, Query()] = Field(ge=1, le=100, description="每页数量", default=20)
@@ -76,25 +79,26 @@ class GetUsers(APIRoute[list[UserData]]):
     token: Annotated[str, Header()] = Field(serialization_alias="Authorization", description="认证令牌")
 
 
-# ===== 验收场景 2: 泛型响应类型推断 =====
-# 测试 mypy/IDE 是否能正确推断返回类型为 UserData
+# ===== 验收场景 2: 按状态码声明响应协议 =====
+# 测试 mypy/IDE 是否能正确推断 response.validated 的类型为 UserData
 @router.get("/users/{user_id}")
-class GetUserById(APIRoute[UserData]):
-    """根据 ID 获取用户 - 响应类型：UserData。
+class GetUserById(APIRoute):
+    """根据 ID 获取用户 - 响应协议：on_200 → UserData。
 
     验证：
     - 路径参数标记（Path）
-    - 泛型返回类型推断
+    - 响应协议推断
     """
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
     user_id: Annotated[int, Path()] = Field(description="用户 ID", ge=1)
 
 
 # ===== 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）=====
 # 测试是否无需编写 __init__，Pydantic 自动生成
 @router.post("/users")
-class CreateUser(APIRoute[UserData]):
-    """创建用户 - 响应类型：UserData。
+class CreateUser(APIRoute):
+    """创建用户 - 响应协议：on_200 → UserData。
 
     验证：
     - POST 方法装饰器
@@ -103,6 +107,7 @@ class CreateUser(APIRoute[UserData]):
     - IDE 应自动补全 name、email 等字段
     """
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
     # Body 参数：整个请求体
     body: Annotated[UserCreateRequest, Body()] = Field(description="用户创建请求")
 
@@ -110,13 +115,15 @@ class CreateUser(APIRoute[UserData]):
 # ===== 验收场景 4: 命名空间隔离（用户字段名为 method、path 等）=====
 # 测试当用户字段名为 method、path 时是否产生冲突
 @router.post("/debug")
-class DebugEndpoint(APIRoute[dict[str, str]]):
+class DebugEndpoint(APIRoute):
     """测试命名空间隔离 - 用户字段名为 method、path 等保留字。
 
     验证：
     - 用户字段名为 method、path 不会与路由元数据冲突
     - 元数据隔离机制工作正常
     """
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
 
     # 故意使用可能冲突的字段名
     method: Annotated[str, Query()] = Field(description="用户自定义的 method 字段")
@@ -126,27 +133,30 @@ class DebugEndpoint(APIRoute[dict[str, str]]):
 
 # ===== 测试 PUT 方法 =====
 @router.put("/users/{user_id}")
-class UpdateUser(APIRoute[UserData]):
+class UpdateUser(APIRoute):
     """完全更新用户（PUT）。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
     user_id: Annotated[int, Path()] = Field(ge=1)
     body: Annotated[UserCreateRequest, Body()]
 
 
 # ===== 测试 PATCH 方法 =====
 @router.patch("/users/{user_id}")
-class PartialUpdateUser(APIRoute[UserData]):
+class PartialUpdateUser(APIRoute):
     """部分更新用户（PATCH）。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
     user_id: Annotated[int, Path()] = Field(ge=1)
     body: Annotated[UserUpdateRequest, Body()]
 
 
 # ===== 测试 DELETE 方法 =====
 @router.delete("/users/{user_id}")
-class DeleteUser(APIRoute[dict[str, str]]):
+class DeleteUser(APIRoute):
     """删除用户（DELETE）。"""
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
     user_id: Annotated[int, Path()] = Field(ge=1)
     # 可选的认证头
     token: Annotated[str | None, Header()] = Field(serialization_alias="Authorization", default=None)
@@ -154,8 +164,10 @@ class DeleteUser(APIRoute[dict[str, str]]):
 
 # ===== 测试多个查询参数和复杂验证 =====
 @router.get("/search")
-class SearchUsers(APIRoute[list[UserData]]):
+class SearchUsers(APIRoute):
     """搜索用户 - 测试多个查询参数和复杂验证。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
 
     # 必需的查询参数（无默认值）
     query: Annotated[str, Query()] = Field(min_length=1, max_length=100, description="搜索关键词")
@@ -196,8 +208,8 @@ def test_decorator_validation() -> None:
     print(f"  - 实例字段: limit={get_users_endpoint.limit}, offset={get_users_endpoint.offset}")
     print("  - 装饰器语法验证通过 ✓")
 
-    # 验收场景 2: 泛型响应类型推断
-    print("\n✅ 验收场景 2: 泛型响应类型推断")
+    # 验收场景 2: 按状态码声明响应协议
+    print("\n✅ 验收场景 2: 按状态码声明响应协议")
     get_user_endpoint = GetUserById(user_id=123)
     get_user_meta = get_user_endpoint._get_dependant()
     assert get_user_meta.method == "GET"
@@ -205,8 +217,8 @@ def test_decorator_validation() -> None:
     assert get_user_endpoint.user_id == 123
     print(f"  - 路由元数据: method={get_user_meta.method}, path={get_user_meta.path}")
     print(f"  - 路径参数: user_id={get_user_endpoint.user_id}")
-    print("  - 泛型类型 APIRoute[UserData] 验证通过 ✓")
-    print("  - mypy/IDE 应推断 get_user_endpoint.with_context(context).send() 返回类型为 UserData")
+    print("  - on_200: ClassVar[JSONResponseSpec] 响应协议验证通过 ✓")
+    print("  - mypy/IDE 应推断 client.send(endpoint, expect=endpoint.on_200).validated 类型为 UserData")
 
     # 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）
     print("\n✅ 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）")
@@ -278,7 +290,7 @@ def test_decorator_validation() -> None:
     print("=" * 60)
     print("\n总结：")
     print("1. ✓ 装饰器语法正确，@router.get/post/put/patch/delete 全部可用")
-    print("2. ✓ 泛型响应类型 APIRoute[T] 工作正常，IDE 类型提示准确")
+    print("2. ✓ 按状态码声明响应协议 on_<status>: ClassVar[JSONResponseSpec] 工作正常，IDE 类型提示准确")
     print("3. ✓ 继承 BaseModel 自动生成 __init__，零样板代码")
     print("4. ✓ 路由元数据隔离机制工作正常，无命名冲突")
     print("5. ✓ Query/Path/Header/Body 参数标记全部正常工作")
@@ -298,7 +310,9 @@ class TestAllMethods:
         """验证 GET 方法装饰器。"""
 
         @router.get("/x")
-        class X(APIRoute[dict]):
+        class X(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
+
             pass
 
         meta = X()._get_dependant()
@@ -309,7 +323,9 @@ class TestAllMethods:
         """验证 POST 方法装饰器。"""
 
         @router.post("/x")
-        class X(APIRoute[dict]):
+        class X(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
+
             pass
 
         meta = X()._get_dependant()
@@ -320,7 +336,9 @@ class TestAllMethods:
         """验证 PUT 方法装饰器。"""
 
         @router.put("/x")
-        class X(APIRoute[dict]):
+        class X(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
+
             pass
 
         meta = X()._get_dependant()
@@ -331,7 +349,9 @@ class TestAllMethods:
         """验证 PATCH 方法装饰器。"""
 
         @router.patch("/x")
-        class X(APIRoute[dict]):
+        class X(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
+
             pass
 
         meta = X()._get_dependant()
@@ -342,7 +362,9 @@ class TestAllMethods:
         """验证 DELETE 方法装饰器。"""
 
         @router.delete("/x")
-        class X(APIRoute[dict]):
+        class X(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
+
             pass
 
         meta = X()._get_dependant()
@@ -353,7 +375,9 @@ class TestAllMethods:
         """验证 HEAD 方法装饰器。"""
 
         @router.head("/x")
-        class X(APIRoute[dict]):
+        class X(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
+
             pass
 
         meta = X()._get_dependant()
@@ -364,7 +388,9 @@ class TestAllMethods:
         """验证 OPTIONS 方法装饰器。"""
 
         @router.options("/x")
-        class X(APIRoute[dict]):
+        class X(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
+
             pass
 
         meta = X()._get_dependant()
@@ -375,7 +401,9 @@ class TestAllMethods:
         """验证 TRACE 方法装饰器。"""
 
         @router.trace("/x")
-        class X(APIRoute[dict]):
+        class X(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
+
             pass
 
         meta = X()._get_dependant()

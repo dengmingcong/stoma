@@ -12,13 +12,13 @@
 """
 
 import pathlib
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, ClassVar
 
 from playwright.sync_api import FormData
 from pydantic import BaseModel, Field
 from pydantic.fields import FieldInfo
 
-from stoma import Body, Form, Path, Query, UploadFile
+from stoma import Body, Form, JSONResponseSpec, Path, Query, UploadFile
 from stoma.dependencies import ModelField
 from stoma.dependencies.request import (
     RawPayload,
@@ -51,7 +51,8 @@ def test_form_scalar_passes_value() -> None:
     """测试 Form 标量字段值原值存储（不 ``json.dumps``），与 FastAPI ``Form()`` 直传字符串一致。"""
 
     @router.post("/form-scalar")
-    class LoginForm(APIRoute[dict[str, Any]]):
+    class LoginForm(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         username: Annotated[str, Form()]
 
     endpoint = LoginForm(username="alice")
@@ -65,7 +66,8 @@ def test_form_int() -> None:
     """测试 Form 整数字段值原值存储（不 ``json.dumps``）。"""
 
     @router.post("/form-int")
-    class AgeForm(APIRoute[dict[str, Any]]):
+    class AgeForm(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         age: Annotated[int, Form()]
 
     endpoint = AgeForm(age=42)
@@ -79,7 +81,8 @@ def test_form_scalar_list_append_multiple() -> None:
     """测试函数级 Form 列表值按元素追加同名字段。"""
 
     @router.post("/form-list")
-    class TagsForm(APIRoute[dict[str, Any]]):
+    class TagsForm(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         tags: Annotated[list[str], Form()]
 
     endpoint = TagsForm(tags=["a", "b"])
@@ -93,7 +96,8 @@ def test_form_scalar_list_field() -> None:
     """测试函数级 ``Annotated[list[str], Form()]`` 追加多个同名字段。"""
 
     @router.post("/form-scalar-list-field")
-    class ScalarListForm(APIRoute[dict[str, Any]]):
+    class ScalarListForm(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         tags: Annotated[list[str], Form()]
 
     endpoint = ScalarListForm(tags=["a", "b"])
@@ -113,7 +117,8 @@ def test_uploadfile_single(tmp_path: pathlib.Path) -> None:
     file_path.write_text("hello", encoding="utf-8")
 
     @router.post("/upload-single")
-    class UploadSingle(APIRoute[dict[str, Any]]):
+    class UploadSingle(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         file: UploadFile
 
     endpoint = UploadSingle(file=UploadFile(path=file_path))
@@ -132,7 +137,8 @@ def test_uploadfile_list(tmp_path: pathlib.Path) -> None:
     file2.write_text("b", encoding="utf-8")
 
     @router.post("/upload-list")
-    class UploadList(APIRoute[dict[str, Any]]):
+    class UploadList(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         files: list[UploadFile]
 
     endpoint = UploadList(files=[UploadFile(path=file1), UploadFile(path=file2)])
@@ -146,7 +152,8 @@ def test_uploadfile_optional_none() -> None:
     """``file: UploadFile | None = None`` + ``file=None`` → MULTIPART，``form_data`` 为空（跳过 None）。"""
 
     @router.post("/upload-opt-none")
-    class UploadOptNone(APIRoute[dict[str, Any]]):
+    class UploadOptNone(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         file: UploadFile | None = None
 
     endpoint = UploadOptNone(file=None)
@@ -160,7 +167,8 @@ def test_uploadfile_optional_missing() -> None:
     """``file: UploadFile | None = None`` + 构造时不传 → MULTIPART，``form_data`` 为空（缺省值 None 跳过）。"""
 
     @router.post("/upload-opt-missing")
-    class UploadOptMissing(APIRoute[dict[str, Any]]):
+    class UploadOptMissing(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         file: UploadFile | None = None
 
     endpoint = UploadOptMissing()  # 缺省值 None
@@ -177,7 +185,8 @@ def test_uploadfile_optional_with_value(tmp_path: pathlib.Path) -> None:
     file_path.write_text("optional content", encoding="utf-8")
 
     @router.post("/upload-opt-value")
-    class UploadOptValue(APIRoute[dict[str, Any]]):
+    class UploadOptValue(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         file: UploadFile | None = None
 
     endpoint = UploadOptValue(file=UploadFile(path=file_path))
@@ -191,7 +200,8 @@ def test_uploadfile_list_optional_none() -> None:
     """``files: list[UploadFile] | None = None`` + ``files=None`` → MULTIPART，``form_data`` 为空。"""
 
     @router.post("/upload-files-opt-none")
-    class UploadFilesOptNone(APIRoute[dict[str, Any]]):
+    class UploadFilesOptNone(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         files: list[UploadFile] | None = None
 
     endpoint = UploadFilesOptNone(files=None)
@@ -205,7 +215,8 @@ def test_uploadfile_list_optional_empty() -> None:
     """``files: list[UploadFile] | None = None`` + ``files=[]`` → MULTIPART，``form_data`` 为空（空列表视为跳过）。"""
 
     @router.post("/upload-files-opt-empty")
-    class UploadFilesOptEmpty(APIRoute[dict[str, Any]]):
+    class UploadFilesOptEmpty(APIRoute):
+        on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
         files: list[UploadFile] | None = None
 
     endpoint = UploadFilesOptEmpty(files=[])
@@ -243,7 +254,7 @@ class TestFillScalarFormField:
 
     def test_none_skipped(self) -> None:
         """``None`` 值跳过，不产生任何 part。"""
-        assert self._fill(Optional[str], None)._fields == []
+        assert self._fill(str | None, None)._fields == []
 
     def test_list_text_appends_each(self) -> None:
         """``list[str]`` 每个元素 ``append`` 一次同名 part。"""
@@ -280,7 +291,8 @@ class TestRawPayloadAndMediaType:
         """``Body(media_type)`` 三条件全满足：scalar + embed=False + 1 body → media_type 设置。"""
 
         @router.post("/scalar-media")
-        class ScalarMedia(APIRoute[dict[str, Any]]):
+        class ScalarMedia(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             value: Annotated[int, Body(media_type="text/plain")]
 
         body = _serialize_body_params(
@@ -296,7 +308,8 @@ class TestRawPayloadAndMediaType:
         """``Body()`` 不显式设 media_type → ``raw_data.media_type`` is None。"""
 
         @router.post("/scalar-default")
-        class ScalarDefault(APIRoute[dict[str, Any]]):
+        class ScalarDefault(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             value: Annotated[int, Body()]
 
         body = _serialize_body_params(
@@ -312,7 +325,8 @@ class TestRawPayloadAndMediaType:
         """多 body + media_type → media_type 被忽略。"""
 
         @router.post("/multi-media")
-        class MultiMedia(APIRoute[dict[str, Any]]):
+        class MultiMedia(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             name: Annotated[str, Body()]
             age: Annotated[int, Body(media_type="text/plain")]
 
@@ -328,7 +342,8 @@ class TestRawPayloadAndMediaType:
         """``Body(embed=True, media_type=...)`` → media_type 被忽略。"""
 
         @router.post("/embed-media")
-        class EmbedMedia(APIRoute[dict[str, Any]]):
+        class EmbedMedia(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             value: Annotated[int, Body(embed=True, media_type="text/plain")]
 
         body = _serialize_body_params(
@@ -349,7 +364,8 @@ class TestRawPayloadAndMediaType:
             email: str
 
         @router.post("/basemodel-media")
-        class BM(APIRoute[dict[str, Any]]):
+        class BM(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             data: Annotated[LocalUserCreateRequest, Body(media_type="application/xml")]
 
         body = _serialize_body_params(
@@ -364,7 +380,8 @@ class TestRawPayloadAndMediaType:
         """``list[T]`` + media_type → media_type 被忽略（list 非标量）。"""
 
         @router.post("/list-media")
-        class ListMedia(APIRoute[dict[str, Any]]):
+        class ListMedia(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             values: Annotated[list[int], Body(media_type="text/plain")]
 
         body = _serialize_body_params(
@@ -379,7 +396,8 @@ class TestRawPayloadAndMediaType:
         """scalar ``Body()`` → ``raw_data.value`` 是裸值。"""
 
         @router.post("/scalar-bare")
-        class ScalarBare(APIRoute[dict[str, Any]]):
+        class ScalarBare(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             importance: Annotated[int, Body()]
 
         body = _serialize_body_params(
@@ -393,7 +411,8 @@ class TestRawPayloadAndMediaType:
         """scalar ``Body(embed=False)`` → ``raw_data.value`` 是裸值。"""
 
         @router.post("/scalar-no-embed")
-        class ScalarNoEmbed(APIRoute[dict[str, Any]]):
+        class ScalarNoEmbed(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             importance: Annotated[int, Body(embed=False)]
 
         body = _serialize_body_params(
@@ -413,7 +432,8 @@ class TestRawPayloadAndMediaType:
             email: str
 
         @router.post("/bm-default")
-        class BMDefault(APIRoute[dict[str, Any]]):
+        class BMDefault(APIRoute):
+            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             data: LocalUserCreateRequest
 
         body = _serialize_body_params(
@@ -433,7 +453,8 @@ def test_interpolate_single_path_param() -> None:
     """测试单个路径参数的插值。"""
 
     @router.get("/users/{user_id}")
-    class GetUser(APIRoute[UserData]):
+    class GetUser(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
         user_id: Annotated[int, Path()]
 
     endpoint = GetUser(user_id=123)
@@ -446,7 +467,8 @@ def test_interpolate_multiple_path_params() -> None:
     """测试多个路径参数的插值。"""
 
     @router.get("/users/{user_id}/posts/{post_id}")
-    class GetUserPost(APIRoute[dict[str, str]]):
+    class GetUserPost(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
         user_id: Annotated[int, Path()]
         post_id: Annotated[int, Path()]
 
@@ -460,7 +482,8 @@ def test_interpolate_path_with_string_param() -> None:
     """测试携带字符串参数的路径插值。"""
 
     @router.get("/posts/{slug}/comments/{comment_id}")
-    class GetPostComment(APIRoute[dict[str, str]]):
+    class GetPostComment(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
         slug: Annotated[str, Path()]
         comment_id: Annotated[int, Path()]
 
@@ -474,7 +497,8 @@ def test_interpolate_path_with_mixed_params() -> None:
     """测试混合参数类型的路径插值。"""
 
     @router.put("/users/{user_id}/resource/{resource_id}/version/{version}")
-    class UpdateResource(APIRoute[dict[str, str]]):
+    class UpdateResource(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
         user_id: Annotated[int, Path()]
         resource_id: Annotated[str, Path()]
         version: Annotated[int, Path()]
@@ -489,7 +513,8 @@ def test_interpolate_path_no_params() -> None:
     """测试没有路径参数的路径插值（应返回原始路径）。"""
 
     @router.get("/users")
-    class ListUsers(APIRoute[list[UserData]]):
+    class ListUsers(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
         limit: int = 20
         offset: int = 0
 
@@ -503,7 +528,8 @@ def test_interpolate_path_preserves_base_path() -> None:
     """测试路径插值保留基础路径部分。"""
 
     @router.get("/api/v1/users/{user_id}")
-    class GetUserV1(APIRoute[UserData]):
+    class GetUserV1(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
         user_id: Annotated[int, Path()]
 
     endpoint = GetUserV1(user_id=999)
@@ -519,7 +545,8 @@ def test_serialize_single_query_param() -> None:
     """测试单个查询参数的序列化。"""
 
     @router.get("/users")
-    class GetUsers(APIRoute[list[UserData]]):
+    class GetUsers(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
         limit: Annotated[int, Query()] = 20
 
     endpoint = GetUsers(limit=10)
@@ -532,7 +559,8 @@ def test_serialize_multiple_query_params() -> None:
     """测试多个查询参数的序列化。"""
 
     @router.get("/users")
-    class GetUsers(APIRoute[list[UserData]]):
+    class GetUsers(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
         limit: Annotated[int, Query()] = 20
         offset: Annotated[int, Query()] = 0
         keyword: Annotated[str | None, Query()] = None
@@ -548,7 +576,8 @@ def test_serialize_query_params_skip_none() -> None:
     """测试查询参数序列化时跳过 ``None`` 值。"""
 
     @router.get("/search")
-    class Search(APIRoute[list[UserData]]):
+    class Search(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
         query: Annotated[str, Query()]
         limit: Annotated[int, Query()] = 20
         filter_type: Annotated[str | None, Query()] = None
@@ -565,7 +594,8 @@ def test_serialize_query_params_with_alias() -> None:
     """测试查询参数序列化时使用别名。"""
 
     @router.get("/users")
-    class GetUsers(APIRoute[list[UserData]]):
+    class GetUsers(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
         page_size: Annotated[int, Query()] = Field(serialization_alias="pageSize", default=20)
         page_num: Annotated[int, Query()] = Field(serialization_alias="pageNum", default=1)
 
@@ -580,7 +610,8 @@ def test_serialize_query_params_with_boolean() -> None:
     """测试查询参数序列化时处理布尔值（HTTP 约定小写）。"""
 
     @router.get("/users")
-    class GetUsers(APIRoute[list[UserData]]):
+    class GetUsers(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
         active: Annotated[bool, Query()] = True
         verified: Annotated[bool, Query()] = False
 
@@ -595,7 +626,8 @@ def test_serialize_query_params_with_default_values() -> None:
     """测试查询参数序列化时使用默认值。"""
 
     @router.get("/users")
-    class GetUsers(APIRoute[list[UserData]]):
+    class GetUsers(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
         limit: Annotated[int, Query()] = 20
         offset: Annotated[int, Query()] = 0
 
@@ -610,7 +642,8 @@ def test_serialize_query_params_type_conversion() -> None:
     """测试查询参数：int/float/str 直接传递（Playwright 自动 str()）。"""
 
     @router.get("/data")
-    class GetData(APIRoute[dict]):
+    class GetData(APIRoute):
+        on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
         count: Annotated[int, Query()] = 1
         ratio: Annotated[float, Query()] = 1.5
         name: Annotated[str, Query()] = "default"
