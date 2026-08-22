@@ -225,6 +225,23 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         与渲染结果对应——调用方（``make``）拿到 file_name 直接落盘，
         不用再算一次。
 
+        响应声明处理流程：
+
+        1. 调用 :meth:`_extract_response_specs` 取得按 ``status + media_type`` 切分的
+           :class:`ResponseSpecDecl` 列表，覆盖每个合法响应分支（含 ``default`` /
+           ``1XX``/``2XX``/``3XX``/``4XX``/``5XX`` 通配符及多 media type）。
+        2. ``imported_models`` 从 decls 的 ``model_name`` 派生（Raw 响应的
+           ``model_name=None`` 跳过），按 spec 顺序去重。
+        3. ``imported_specs`` 按 decls 的 ``is_json`` 标志决定是否添加
+           ``"JSONResponseSpec"`` 或 ``"RawResponseSpec"``——只要对应类型至少
+           一条 decl 存在即添加，按 JSON → Raw 顺序。
+        4. ``uses_classvar_import`` 任意 decl 存在时为 True，供模板按需注入
+           ``from typing import ClassVar``。
+        5. ``response_type``（Union 字符串）从 decls 的 ``model_name`` 派生，
+           保留供 Wave 6.4 前模板的 ``APIRoute[T]`` 泛型语法使用；Wave 6.4 会
+           把模板切换到 ``on_<status>: ClassVar = ...`` 形式，``response_type``
+           随之退役。
+
         :param endpoint: :class:`Endpoint` IR 对象，类型参数用 ``Any``
             表达（renderer 不依赖具体 spec 版本类型）。
         :return: ``(file_name, rendered_code)`` 元组，``file_name`` 含
@@ -233,21 +250,40 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         operation_id = endpoint.operation_id
         class_name = to_pascal_case(operation_id)
         file_name = f"{to_snake(operation_id)}.py"
-        # 用户指定：变量名 json_reponse_types（按用户字面意思，含 typo"reponse"）
-        json_reponse_types = self._get_json_response_types(endpoint.responses, endpoint)
-        response_type = " | ".join(json_reponse_types) if json_reponse_types else ""
+        response_spec_decls = self._extract_response_specs(endpoint.responses, endpoint)
+
+        # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
+        # response model 名字从 decls 的 ``model_name`` 派生（Raw 响应 ``model_name=None`` 跳过），
+        # request body 的 ``import_model`` 追加到末尾并一起去重。
         body_fields_template = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields, uses_field_import = make_param_fields(endpoint.parameters)
 
-        # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
-        # model 名字来自 JSON body 路径（import_model），response 路径也独立收集。
         body_import_model: str | None = (
             body_fields_template.import_model if isinstance(body_fields_template, JSONRequestBodyFields) else None
         )
-        models_for_import: list[str] = list(json_reponse_types)
+        imported_models: list[str] = list(
+            dict.fromkeys(decl.model_name for decl in response_spec_decls if decl.model_name is not None)
+        )
         if body_import_model:
-            models_for_import.append(body_import_model)
-        imported_models = list(dict.fromkeys(models_for_import))
+            imported_models.append(body_import_model)
+        imported_models = list(dict.fromkeys(imported_models))
+
+        # ``imported_specs`` 按 decls 的 ``is_json`` 决定，按 JSON → Raw 顺序添加。
+        # 模板据此条件导入 ``JSONResponseSpec`` / ``RawResponseSpec``。
+        imported_specs: list[str] = []
+        if any(decl.is_json for decl in response_spec_decls):
+            imported_specs.append("JSONResponseSpec")
+        if any(not decl.is_json for decl in response_spec_decls):
+            imported_specs.append("RawResponseSpec")
+
+        # 任意响应声明存在 → 模板按需导入 ``from typing import ClassVar``。
+        uses_classvar_import = bool(response_spec_decls)
+
+        # ``response_type`` 临时保留：Wave 6.4 前模板仍消费 ``APIRoute[T]`` 泛型语法。
+        # 由 decls 的 ``model_name`` 去重拼接（同一 model 出现多个 status 时去重），
+        # 与旧 ``_get_json_response_types`` 在既有 spec 集上等价；Wave 6.4 模板切换后此变量退役。
+        response_type_models = list(dict.fromkeys(decl.model_name for decl in response_spec_decls if decl.model_name))
+        response_type = " | ".join(response_type_models) if response_type_models else ""
 
         # 把 body fields 子类拍平为 template 变量。
         # NONE 路径返回空字典时模板所有 body 块跳过。
@@ -295,6 +331,9 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             param_fields=param_fields,
             imported_models=imported_models,
             uses_field_import=uses_field_import,
+            response_spec_decls=response_spec_decls,
+            imported_specs=imported_specs,
+            uses_classvar_import=uses_classvar_import,
             module_docstring=module_docstring,
             class_docstring=class_docstring,
             has_class_body_content=has_class_body_content,
@@ -631,68 +670,6 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             examples=expanded_schema_dict.get("examples"),
         )
         return ScalarRequestBodyFields(scalar_field=scalar_field)
-
-    def _get_json_response_types(
-        self,
-        responses: dict[str, Any] | None,
-        endpoint: Endpoint[Any, Any, Any],
-    ) -> list[str]:
-        """提取响应模型名列表（也是要从 ``.models`` 导入的类名集合）。
-
-        遍历所有 response 的所有 content media type，匹配 JSON 家族：
-        - ``application/json``
-        - ``application/*+json``（RFC 6839 structured syntax suffix，如
-          ``application/problem+json``、``application/json-patch+json``）
-
-        命名规则与之前一致（``$ref`` 取末段 PascalCase；inline object 用
-        ``{PascalOpId}Response`` / ``{PascalOpId}Response{n}``）。返回的 list 后续
-        在 :meth:`render` 中用 ``" | "`` join 成 Union 字符串供模板使用。
-
-        :param responses: OpenAPI 响应字典（状态码 → Response 对象），可为
-            ``None`` 或空。
-        :param endpoint: 当前 :class:`Endpoint` IR 对象。
-        :return: 响应模型名列表，无任何可命名响应时返回空列表。
-        """
-        if not responses:
-            return []
-
-        operation_id_pascal = to_pascal_case(endpoint.operation_id)
-        inline_counter = 0
-        ordered_names: list[str] = []
-
-        for response in responses.values():
-            content = getattr(response, "content", None) or {}
-            # 修复 1：匹配所有 JSON 家族（application/json + application/*+json）
-            json_content = next(
-                (mt_obj for mt, mt_obj in content.items() if is_json_media_type(mt)),
-                None,
-            )
-            if not json_content:
-                continue
-            schema = getattr(json_content, "media_type_schema", None)
-            if isinstance(schema, self.Reference):
-                name = to_pascal_case(schema.ref.rsplit("/", 1)[-1])
-            else:
-                inline_counter += 1
-                if inline_counter == 1:
-                    name = f"{operation_id_pascal}Response"
-                else:
-                    name = f"{operation_id_pascal}Response{inline_counter - 1}"
-
-            if self.available_models is not None and name not in self.available_models:
-                self.errors.append(
-                    GenerationError(
-                        method=endpoint.method,
-                        path=endpoint.path,
-                        kind=GenerationErrorKind.MISSING_RESPONSE_MODEL,
-                        message=f"缺少 Response 模型 {name!r}（已跳过 import + generic）",
-                    )
-                )
-                continue
-
-            ordered_names.append(name)
-
-        return list(dict.fromkeys(ordered_names))
 
     @staticmethod
     def _parse_status_key(

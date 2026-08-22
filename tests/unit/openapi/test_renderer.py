@@ -3688,3 +3688,219 @@ class TestExtractResponseSpecs:
         renderer = make_endpoint_renderer("3.1")
         _attr, _code, matcher = renderer._parse_status_key("default")
         assert matcher(100) and matcher(404) and matcher(500) and matcher(999)
+
+
+def _capture_render_kwargs(
+    renderer: Any,
+    endpoint: Endpoint[Any, Any, Any],
+) -> dict[str, Any]:
+    """执行 ``renderer.render(endpoint)`` 并捕获传给模板 ``render()`` 的 kwargs。
+
+    模板在 Wave 6.3 阶段尚未消费新增的 ``response_spec_decls`` /
+    ``imported_specs`` / ``uses_classvar_import`` 变量（Wave 6.4 才切换），
+    本辅助函数通过 ``unittest.mock`` 替换 ``renderer.env.get_template`` 返回的
+    ``Template.render`` 方法，记录所有 kwargs 后返回给调用方做断言。
+
+    :param renderer: 已初始化的 ``EndpointRenderer`` 实例。
+    :param endpoint: 待渲染的 :class:`Endpoint` IR。
+    :return: ``Template.render(**kwargs)`` 调用时的 kwargs 字典。
+    """
+    captured: dict[str, Any] = {}
+
+    class _StubTemplate:
+        def render(self, **kwargs: Any) -> str:  # noqa: ANN401 - test stub mirrors Jinja2 API
+            captured.update(kwargs)
+            return ""
+
+    def _fake_get_template(_name: str) -> _StubTemplate:
+        return _StubTemplate()
+
+    renderer.env.get_template = _fake_get_template  # type: ignore[method-assign]
+    renderer.render(endpoint)
+    return captured
+
+
+class TestRenderPassesResponseSpecDecls:
+    """验证 :meth:`EndpointRenderer.render` 把 ``response_spec_decls`` 等新模板变量透传给模板。
+
+    本测试类不验证最终 route 文件（Wave 6.4 才完成模板切换），而是直接捕获
+    ``render()`` 内部传给 ``Template.render(...)`` 的 kwargs，断言：
+    ``response_spec_decls`` 是 :class:`ResponseSpecDecl` 列表、
+    ``imported_specs`` 按 JSON/Raw 类型正确收集、
+    ``uses_classvar_import`` 反映 decl 存在性。
+    """
+
+    def test_render_passes_response_spec_decls_to_template(self) -> None:
+        """200 + 单 JSON media → 模板收到 1 条 ``ResponseSpecDecl``。"""
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
+                ),
+            },
+        )
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        assert "response_spec_decls" in kwargs
+        decls = kwargs["response_spec_decls"]
+        assert len(decls) == 1
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            status_code=200,
+            status_matcher=200,
+            media_type="application/json",
+            model_name="User",
+            is_json=True,
+        )
+
+    def test_render_passes_imported_specs_json_only(self) -> None:
+        """仅 JSON 响应 → ``imported_specs == ["JSONResponseSpec"]``，不含 ``RawResponseSpec``。"""
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
+                ),
+            },
+        )
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        assert kwargs["imported_specs"] == ["JSONResponseSpec"]
+
+    def test_render_passes_imported_specs_raw_only(self) -> None:
+        """仅 Raw 响应（``image/png``，``model_name=None``） → ``imported_specs == ["RawResponseSpec"]``。"""
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={"image/png": _FakeMediaType(media_type_schema=None)},
+                ),
+            },
+        )
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        assert kwargs["imported_specs"] == ["RawResponseSpec"]
+
+    def test_render_passes_imported_specs_both_json_and_raw(self) -> None:
+        """JSON + Raw 混合 → ``imported_specs == ["JSONResponseSpec", "RawResponseSpec"]``。
+
+        验证 JSON → Raw 的固定顺序，且两端都存在时才会两个都添加。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "application/json": _FakeMediaType(media_type_schema=_make_ref("User")),
+                        "image/png": _FakeMediaType(media_type_schema=None),
+                    },
+                ),
+            },
+        )
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        assert kwargs["imported_specs"] == ["JSONResponseSpec", "RawResponseSpec"]
+
+    def test_render_uses_classvar_import_true_when_decls_exist(self) -> None:
+        """任意 decl 存在 → ``uses_classvar_import == True``。"""
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
+                ),
+            },
+        )
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        assert kwargs["uses_classvar_import"] is True
+
+    def test_render_uses_classvar_import_false_when_no_responses(self) -> None:
+        """``responses=None`` → 0 个 decl → ``uses_classvar_import == False``。"""
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(None)
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        assert kwargs["response_spec_decls"] == []
+        assert kwargs["imported_specs"] == []
+        assert kwargs["uses_classvar_import"] is False
+
+    def test_render_uses_classvar_import_false_when_only_description(self) -> None:
+        """``responses`` 含但 ``content`` 为空 → 0 个 decl → ``uses_classvar_import == False``。"""
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint({"200": _FakeResponse(content={})})
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        assert kwargs["response_spec_decls"] == []
+        assert kwargs["uses_classvar_import"] is False
+
+    def test_render_imported_models_collected_from_decl_model_names(self) -> None:
+        """多 decl → ``imported_models`` 从 ``decl.model_name`` 去重收集。
+
+        验证：顺序按 decl 出现顺序（spec 中 status 顺序），重复 model 去重。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
+                ),
+                "404": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("Error"))},
+                ),
+                "default": _FakeResponse(
+                    content={
+                        "application/problem+json": _FakeMediaType(media_type_schema=_make_ref("User")),
+                    },
+                ),
+            },
+        )
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        # User 出现两次（200 + default），只保留一次，按 spec 顺序 User 在 Error 前。
+        assert kwargs["imported_models"] == ["User", "Error"]
+
+    def test_render_imported_models_excludes_raw_decl_none(self) -> None:
+        """Raw decl ``model_name=None`` 不污染 ``imported_models``。
+
+        验证：JSON 模型的 ``User`` 仍正确收集，Raw 响应（``image/png`` 无 schema）不被加入。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "application/json": _FakeMediaType(media_type_schema=_make_ref("User")),
+                        "image/png": _FakeMediaType(media_type_schema=None),
+                    },
+                ),
+            },
+        )
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        # Raw decl 的 model_name=None 被跳过，只剩 JSON decl 的 "User"。
+        assert kwargs["imported_models"] == ["User"]
+        assert None not in kwargs["imported_models"]
+
+    def test_render_response_type_kept_for_template_backward_compat(self) -> None:
+        """``response_type``（Union 字符串）由 decls 的 ``model_name`` 派生，保留到 Wave 6.4。
+
+        验证：现有模板仍消费 ``APIRoute[T]`` 泛型语法，所以 ``render()`` 仍计算
+        ``response_type``；多 status + 重复 model 时按 spec 顺序去重。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
+                ),
+                "404": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("Error"))},
+                ),
+                "201": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
+                ),
+            },
+        )
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        # 三个 JSON decl，User 出现两次（200 + 201），去重后 "User | Error"（按首次出现顺序）。
+        assert kwargs["response_type"] == "User | Error"
+
+    def test_render_response_type_empty_when_no_json_decls(self) -> None:
+        """无任何 decl → ``response_type == ""``（模板 ``{% if response_type %}`` 跳过）。"""
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(None)
+        kwargs = _capture_render_kwargs(renderer, endpoint)
+        assert kwargs["response_type"] == ""
