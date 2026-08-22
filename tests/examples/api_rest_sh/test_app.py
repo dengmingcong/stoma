@@ -15,14 +15,18 @@
 所有场景均为 2xx，刻意避开已知 stoma 框架 bug 的边界（4xx 跳过 schema 校验 /
 HEAD 空 body 解析 / 畸形 multipart spec）。
 
-每个测试调用 ``client.send(endpoint, expect=...)`` 时显式声明响应协议：
+每个测试按需调用 ``response.expect(spec)`` 显式声明响应协议：
 
-- JSON happy-path（场景 1/2/3/5）：用渲染器生成的 ``endpoint.on_200``，
+- JSON happy-path（场景 1/2/3/5）：用渲染器生成的 ``endpoint.on_200`` 属性，
   校验响应符合 OpenAPI 声明的 ``EchoModel`` / ``TokenResponseBody``。
 - 204 / 非 JSON happy-path（场景 4/6/7）：spec 对这些端点的响应声明与实际
   服务器行为不一致（204 无 body 描述、``/bytes`` 与 ``/image`` 实际返回
   非 JSON 但 spec 仅声明 JSON），使用手工构造的 ``RawResponseSpec``
   协议接收字节内容。
+
+注意：渲染器生成的 ``on_<status>`` 是实例 ``@property``（不是 ``ClassVar``），
+因此访问必须通过 ``endpoint`` 实例（如 ``endpoint.on_200``），不能直接通过类
+（``GetMethod.on_200`` 会返回 property 描述符本身）。
 """
 
 from __future__ import annotations
@@ -45,13 +49,15 @@ def test_get_with_query_param_returns_validated(e2e_client: Client) -> None:
     ``status=200`` 作为 query 参数，由 ``_collect_query_params`` 收集后
     由 Playwright ``params=`` 拼接到 URL。
     """
-    response = e2e_client.send(GetMethod(status=200), expect=GetMethod.on_200)
+    endpoint = GetMethod(status=200)
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert response.validated.method == Method.get
-    assert response.validated.path == "/get"
-    assert response.validated.url is not None
-    assert "/get" in str(response.validated.url)
+    data = response.expect(endpoint.on_200)
+    assert data.method == Method.get
+    assert data.path == "/get"
+    assert data.url is not None
+    assert "/get" in str(data.url)
 
 
 def test_post_raw_json_body_returns_validated(e2e_client: Client) -> None:
@@ -60,11 +66,13 @@ def test_post_raw_json_body_returns_validated(e2e_client: Client) -> None:
     ``PostMethod`` 无 body 字段 → ``RequestBodyKind.RAW`` 走空 body，
     服务器将请求回显为 ``EchoModel``。
     """
-    response = e2e_client.send(PostMethod(), expect=PostMethod.on_200)
+    endpoint = PostMethod()
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert response.validated.method == Method.post
-    assert response.validated.path == "/post"
+    data = response.expect(endpoint.on_200)
+    assert data.method == Method.post
+    assert data.path == "/post"
 
 
 def test_post_form_urlencoded_body_returns_validated(e2e_client: Client) -> None:
@@ -73,12 +81,14 @@ def test_post_form_urlencoded_body_returns_validated(e2e_client: Client) -> None
     api.rest.sh 始终返回 ``user="anonymous"``（忽略输入 username），
     本断言只验证 schema 字段集与 token_type 枚举值，不强依赖回显。
     """
-    response = e2e_client.send(PostLogin(username="alice"), expect=PostLogin.on_200)
+    endpoint = PostLogin(username="alice")
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert response.validated.user == "anonymous"
-    assert response.validated.token_type.value == "Bearer"
-    assert response.validated.token  # non-empty string from server
+    data = response.expect(endpoint.on_200)
+    assert data.user == "anonymous"
+    assert data.token_type.value == "Bearer"
+    assert data.token  # non-empty string from server
 
 
 def test_delete_with_path_param_returns_204(e2e_client: Client) -> None:
@@ -86,24 +96,25 @@ def test_delete_with_path_param_returns_204(e2e_client: Client) -> None:
 
     spec 的 ``204`` 仅描述 ``"No Content"`` 无 body schema，渲染器仅发射
     ``on_default``（要求 ``application/problem+json``），与实际响应不符。
-    用 ``RawResponseSpec.bytes(204, "*")`` 显式接收空字节。
+    用 ``RawResponseSpec(204, "*", target_type=bytes)`` 显式接收空字节。
     """
-    response = e2e_client.send(
-        DeleteBook(book_id="123"),
-        expect=RawResponseSpec.bytes(204, "*"),
-    )
+    endpoint = DeleteBook(book_id="123")
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 204
-    assert response.validated == b""
+    body: bytes = response.expect(RawResponseSpec(204, "*", target_type=bytes))
+    assert body == b""
 
 
 def test_options_returns_validated(e2e_client: Client) -> None:
     """OPTIONS：验证 ``EchoModel`` schema 解析（method 应为 OPTIONS）。"""
-    response = e2e_client.send(OptionsMethod(), expect=OptionsMethod.on_200)
+    endpoint = OptionsMethod()
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert response.validated.method == Method.options
-    assert response.validated.path == "/options"
+    data = response.expect(endpoint.on_200)
+    assert data.method == Method.options
+    assert data.path == "/options"
 
 
 def test_get_with_path_param_returns_octet_stream(e2e_client: Client) -> None:
@@ -111,16 +122,15 @@ def test_get_with_path_param_returns_octet_stream(e2e_client: Client) -> None:
 
     spec 的 ``/bytes/{n}`` 仅声明 ``application/json``（base64 string），
     实际服务器返回 ``application/octet-stream``。用
-    ``RawResponseSpec.bytes(200, "*")`` 接收字节。
+    ``RawResponseSpec(200, "*", target_type=bytes)`` 接收字节。
     """
-    response = e2e_client.send(
-        GetBytes(n=100),
-        expect=RawResponseSpec.bytes(200, "*"),
-    )
+    endpoint = GetBytes(n=100)
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert isinstance(response.validated, bytes)
-    assert len(response.validated) >= 50
+    body: bytes = response.expect(RawResponseSpec(200, "*", target_type=bytes))
+    assert isinstance(body, bytes)
+    assert len(body) >= 50
     content_type = response.raw.headers.get("content-type", "")
     assert "octet-stream" in content_type
 
@@ -130,14 +140,13 @@ def test_get_accept_header_returns_image(e2e_client: Client) -> None:
 
     路径 ``/image`` 根据 Accept 头返回 ``image/*``。spec 仅声明
     ``application/json``（base64 string），与实际响应不符。用
-    ``RawResponseSpec.bytes(200, "*")`` 接收字节。
+    ``RawResponseSpec(200, "*", target_type=bytes)`` 接收字节。
     """
-    response = e2e_client.send(
-        GetAcceptImage(),
-        expect=RawResponseSpec.bytes(200, "*"),
-    )
+    endpoint = GetAcceptImage()
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert isinstance(response.validated, bytes)
+    body: bytes = response.expect(RawResponseSpec(200, "*", target_type=bytes))
+    assert isinstance(body, bytes)
     content_type = response.raw.headers.get("content-type", "")
     assert "image" in content_type

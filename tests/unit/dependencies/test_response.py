@@ -84,12 +84,12 @@ class TestBaseResponseSpec:
     def test_abstract_cannot_instantiate_with_int_status(self) -> None:
         """``int`` 状态码时直接实例化抛 ``TypeError``（``validate_response`` 未实现）。"""
         with pytest.raises(TypeError, match="abstract"):
-            BaseResponseSpec(200, "application/json")  # type: ignore[abstract]
+            BaseResponseSpec(200, "application/json")
 
     def test_abstract_cannot_instantiate_with_callable_status(self) -> None:
         """``callable`` 状态码时直接实例化同样抛 ``TypeError``。"""
         with pytest.raises(TypeError, match="abstract"):
-            BaseResponseSpec(lambda s: 400 <= s < 500, "application/json")  # type: ignore[abstract]
+            BaseResponseSpec(lambda s: 400 <= s < 500, "application/json")
 
     def test_int_status_match_does_not_raise(self) -> None:
         """``int`` 状态码等值匹配时不抛错。"""
@@ -245,40 +245,6 @@ class TestJSONResponseSpec:
         spec = JSONResponseSpec(200, "application/json", UserPayload)
         assert spec.adapter is not None
 
-    def test_callable_kwarg_alias(self) -> None:
-        """``callable=`` 是 ``status_code=`` 的关键字别名（用于渲染器生成的 ``on_default``）。
-
-        与 ``JSONResponseSpec(callable=lambda s: True, media_type=..., model=...)``
-        等价于 ``JSONResponseSpec(status_code=lambda s: True, ...)`。
-        """
-        spec = JSONResponseSpec(
-            callable=lambda s: True,
-            media_type="application/problem+json",
-            model=UserPayload,
-        )
-        assert callable(spec.status_code)
-        assert spec.status_code(404) is True
-        assert spec.status_code(200) is True
-        assert spec.media_type == "application/problem+json"
-
-    def test_status_code_and_callable_mutually_exclusive(self) -> None:
-        """``status_code`` 与 ``callable`` 同时提供抛 :class:`TypeError`。"""
-        with pytest.raises(TypeError, match="status_code 与 callable 不能同时提供"):
-            JSONResponseSpec(
-                status_code=200,
-                callable=lambda s: True,
-                media_type="application/json",
-                model=UserPayload,
-            )
-
-    def test_status_code_or_callable_required(self) -> None:
-        """``status_code`` 与 ``callable`` 都未提供抛 :class:`TypeError`。"""
-        with pytest.raises(TypeError, match="必须提供 status_code 或 callable"):
-            JSONResponseSpec(
-                media_type="application/json",
-                model=UserPayload,
-            )
-
 
 # ===== RawResponseSpec =====
 
@@ -286,9 +252,9 @@ class TestJSONResponseSpec:
 class TestRawResponseSpec:
     """``RawResponseSpec`` 的 happy / failure 路径。"""
 
-    def test_bytes_factory_dispatches_to_body(self) -> None:
-        """``RawResponseSpec.bytes(...)`` 返回 ``bytes``（来自 ``response.body()``）。"""
-        spec = RawResponseSpec.bytes(200, "image/png")
+    def test_bytes_target_type_returns_bytes(self) -> None:
+        """``target_type=bytes`` 时返回 ``bytes``（来自 ``response.body()``）。"""
+        spec = RawResponseSpec(200, "image/png", bytes)
         api_response = _make_api_response(
             status=200,
             content_type="image/png",
@@ -298,21 +264,21 @@ class TestRawResponseSpec:
         assert isinstance(result, bytes)
         assert result == b"\x89PNG\r\n\x1a\n"
 
-    def test_text_factory_dispatches_to_text(self) -> None:
-        """``RawResponseSpec.text(...)`` 返回 ``str``（来自 ``response.text()``）。"""
-        spec = RawResponseSpec.text(200, "text/plain")
+    def test_str_target_type_returns_str(self) -> None:
+        """``target_type=str`` 时返回 ``str``（UTF-8 解码）。"""
+        spec = RawResponseSpec(200, "text/plain", str)
         api_response = _make_api_response(
             status=200,
             content_type="text/plain",
-            text="hello",
+            body=b"hello",
         )
         result = spec.validate_response(api_response)
         assert isinstance(result, str)
         assert result == "hello"
 
-    def test_explicit_subscript_bytes_works(self) -> None:
-        """显式 ``RawResponseSpec[bytes](...)`` 工作（与 factory 等价）。"""
-        spec = RawResponseSpec[bytes](200, "application/octet-stream")
+    def test_bytes_target_type_via_kwarg(self) -> None:
+        """``target_type=bytes`` 作为关键字参数也工作（与位置参数等价）。"""
+        spec = RawResponseSpec(200, "application/octet-stream", target_type=bytes)
         api_response = _make_api_response(
             status=200,
             content_type="application/octet-stream",
@@ -321,45 +287,45 @@ class TestRawResponseSpec:
         result = spec.validate_response(api_response)
         assert result == b"raw bytes"
 
-    def test_explicit_subscript_str_works(self) -> None:
-        """显式 ``RawResponseSpec[str](...)`` 工作（与 factory 等价）。
+    def test_str_target_type_via_kwarg(self) -> None:
+        """``target_type=str`` 作为关键字参数也工作。
 
         spec 自身的 ``media_type`` 不做 suffix 归一化，所以传不带 ``;charset=`` 的形式。
         实际响应 content-type 带 ``;charset=utf-8`` 后缀仍能匹配。
         """
-        spec = RawResponseSpec[str](200, "text/plain")
+        spec = RawResponseSpec(200, "text/plain", target_type=str)
         api_response = _make_api_response(
             status=200,
             content_type="text/plain; charset=utf-8",
-            text="content",
+            body=b"content",
         )
         result = spec.validate_response(api_response)
         assert result == "content"
 
-    def test_bare_raw_spec_raises_type_error(self) -> None:
-        """裸 ``RawResponseSpec(...)`` 抛 ``TypeError``（PEP 695 要求显式指定 ``T``）。"""
-        with pytest.raises(TypeError, match="必须显式指定类型参数"):
-            RawResponseSpec(200, "application/octet-stream")  # type: ignore[call-arg]
+    def test_missing_target_type_raises_type_error(self) -> None:
+        """裸 ``RawResponseSpec(...)``（漏 ``target_type``）抛 ``TypeError``。"""
+        with pytest.raises(TypeError, match="missing"):
+            RawResponseSpec(200, "application/octet-stream")
 
-    def test_invalid_type_arg_raises_type_error(self) -> None:
-        """``RawResponseSpec[int](...)`` 抛 ``TypeError``（仅支持 ``bytes`` / ``str``）。"""
+    def test_invalid_target_type_raises_type_error(self) -> None:
+        """``target_type=int`` 抛 ``TypeError``（仅支持 ``bytes`` / ``str``）。"""
         with pytest.raises(TypeError, match="仅支持 bytes / str"):
-            RawResponseSpec[int](200, "application/json")  # type: ignore[valid-type]
+            RawResponseSpec(200, "application/json", target_type=int)
 
     def test_unicode_decode_error_wrapped_as_parse_error(self) -> None:
-        """``T=str`` 时 ``UnicodeDecodeError`` 被包装为 :class:`ParseError`（不向上透传）。"""
-        spec = RawResponseSpec.text(200, "text/plain")
+        """``target_type=str`` 时 ``UnicodeDecodeError`` 被包装为 :class:`ParseError`（不向上透传）。"""
+        spec = RawResponseSpec(200, "text/plain", str)
         api_response = _make_api_response(
             status=200,
             content_type="text/plain",
+            body=b"\xff\xfe",  # 非 UTF-8
         )
-        api_response.text.side_effect = UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid")
         with pytest.raises(ParseError, match="响应文本解码失败"):
             spec.validate_response(api_response)
 
     def test_status_mismatch_raises_assertion(self) -> None:
         """status 不匹配抛 ``AssertionError``（bytes 派发）。"""
-        spec = RawResponseSpec.bytes(200, "image/png")
+        spec = RawResponseSpec(200, "image/png", bytes)
         api_response = _make_api_response(
             status=404,
             content_type="image/png",
@@ -370,7 +336,7 @@ class TestRawResponseSpec:
 
     def test_media_type_mismatch_raises_assertion(self) -> None:
         """media type 不匹配抛 ``AssertionError``（bytes 派发）。"""
-        spec = RawResponseSpec.bytes(200, "image/png")
+        spec = RawResponseSpec(200, "image/png", bytes)
         api_response = _make_api_response(
             status=200,
             content_type="text/plain",
@@ -381,57 +347,83 @@ class TestRawResponseSpec:
 
     def test_status_mismatch_raises_assertion_str_dispatch(self) -> None:
         """status 不匹配抛 ``AssertionError``（str 派发）。"""
-        spec = RawResponseSpec.text(200, "text/plain")
+        spec = RawResponseSpec(200, "text/plain", str)
         api_response = _make_api_response(
             status=500,
             content_type="text/plain",
-            text="err",
+            body=b"err",
         )
         with pytest.raises(AssertionError, match="HTTP 状态码不匹配"):
             spec.validate_response(api_response)
 
-    def test_callable_kwarg_alias_bytes(self) -> None:
-        """``RawResponseSpec[bytes](callable=..., media_type=...)`` 工作。"""
-        spec = RawResponseSpec[bytes](
-            callable=lambda s: True,
-            media_type="application/octet-stream",
-        )
-        assert callable(spec.status_code)
-        assert spec.status_code(404) is True
 
-    def test_status_code_and_callable_mutually_exclusive(self) -> None:
-        """``RawResponseSpec`` 的 ``status_code`` 与 ``callable`` 同时提供抛 :class:`TypeError`。"""
-        with pytest.raises(TypeError, match="status_code 与 callable 不能同时提供"):
-            RawResponseSpec[bytes](
-                status_code=200,
-                callable=lambda s: True,
-                media_type="application/octet-stream",
-            )
+# ===== Response.expect =====
+
+
+class TestResponseExpect:
+    """``Response.expect`` 方法将 spec 校验与响应对象解耦。"""
+
+    def test_expect_dispatches_to_spec(self) -> None:
+        """``response.expect(spec)`` 调用 ``spec.validate_response(raw)`` 并返回 ``T``。"""
+        spec = JSONResponseSpec(200, "application/json", UserPayload)
+        api_response = _make_api_response(
+            status=200,
+            content_type="application/json",
+            json_value={"name": "alice", "age": 30},
+        )
+        response = Response(raw=api_response)
+        result = response.expect(spec)
+        assert isinstance(result, UserPayload)
+        assert result.name == "alice"
+        assert result.age == 30
+
+    def test_expect_can_be_called_multiple_times_with_different_specs(self) -> None:
+        """同一份 ``Response`` 可被多个 spec 反复校验（如先按成功分支，再按错误分支）。"""
+        success_spec = JSONResponseSpec(200, "application/json", UserPayload)
+        error_spec = JSONResponseSpec(500, "application/json", dict[str, str])
+
+        # 200 成功响应：先按 success 解析为 UserPayload。
+        success_response = _make_api_response(
+            status=200,
+            content_type="application/json",
+            json_value={"name": "alice", "age": 30},
+        )
+        wrapped_success = Response(raw=success_response)
+        result = wrapped_success.expect(success_spec)
+        assert isinstance(result, UserPayload)
+
+        # 500 错误响应：按 error 解析为 dict。
+        error_response = _make_api_response(
+            status=500,
+            content_type="application/json",
+            json_value={"error": "internal"},
+        )
+        wrapped_error = Response(raw=error_response)
+        result = wrapped_error.expect(error_spec)
+        assert result == {"error": "internal"}
+
+    def test_expect_propagates_assertion_error(self) -> None:
+        """``expect`` 把 status/media_type 不匹配的 ``AssertionError`` 透传给调用方。"""
+        spec = JSONResponseSpec(200, "application/json", UserPayload)
+        api_response = _make_api_response(
+            status=400,
+            content_type="application/json",
+            json_value={"name": "alice", "age": 30},
+        )
+        response = Response(raw=api_response)
+        with pytest.raises(AssertionError, match="HTTP 状态码不匹配"):
+            response.expect(spec)
 
 
 # ===== Public imports =====
 
 
 def test_public_imports() -> None:
-    """验证公开 API 可被 ``from stoma import ...`` 导入。
-
-    Wave 1 仅导出 :class:`Response`；:class:`BaseResponseSpec` / :class:`JSONResponseSpec`
-    / :class:`RawResponseSpec` 的顶层导出在 Wave 4.3（todo 9）补齐。
-    本测试目前仅验证 :class:`Response` 可导入；spec 类的导出用 ``pytest.xfail``
-    占位，避免破坏当前测试套件，Wave 4.3 完成后自然转 pass。
-    """
+    """验证公开 API 可被 ``from stoma import ...`` 导入。"""
+    from stoma import JSONResponseSpec as PublicJSON
+    from stoma import RawResponseSpec as PublicRaw
     from stoma import Response as PublicResponse
 
     assert PublicResponse is not None
-
-    # Wave 4.3 (todo 9) 会把这三个 spec 类加入 ``stoma/__init__.py`` 的 ``__all__``。
-    # 当前未导出，标记 xfail 让套件保持绿色。
-    try:
-        from stoma import BaseResponseSpec as PublicBase  # type: ignore[attr-defined]  # noqa: F401
-        from stoma import JSONResponseSpec as PublicJSON  # type: ignore[attr-defined]  # noqa: F401
-        from stoma import RawResponseSpec as PublicRaw  # type: ignore[attr-defined]  # noqa: F401
-    except ImportError:
-        pytest.xfail("Spec classes exported in Wave 4.3 (todo 9)")
-    assert PublicBase is not None
     assert PublicJSON is not None
     assert PublicRaw is not None

@@ -19,8 +19,8 @@
 - DELETE /store/order/{orderId} — 服务器持续返回 500（订单不存在）
 
 注意：
-- test_get_order_by_id_returns_order 使用 ``order_id=2``（order_id=1 已被服务器清理）
-- ``Client.send(endpoint, expect=...)`` 在 Wave 4.2 后要求显式传入响应协议 spec；
+- test_get_order_by_id_returns_order 使用 ``order_id=10``（order_id=1 已被服务器清理）
+- ``Client.send(endpoint)`` 返回 ``Response``，按需调用 ``response.expect(spec)`` 触发协议校验；
   本文件按 Wave 5 模式迁移，与 api_rest_sh/test_app.py 风格一致。
 
 响应协议映射：
@@ -29,12 +29,16 @@
   ``on_200_application_xml`` 两条 spec；petstore3 服务端实际返回 JSON，测试用
   ``on_200_application_json``。
 - LoginUser：spec 仅声明 ``application/xml``，渲染器生成 ``on_200_application_xml``
-  （文本族 → :meth:`RawResponseSpec.text` 工厂，``T=str``）。petstore3 服务端实际
+  （文本族 → ``RawResponseSpec(200, "*", target_type=str)`` ，``T=str``）。petstore3 服务端实际
   返回 ``"Logged in user session: <token>"`` 字符串，``T=str`` 协议正确接收。
-- LogoutUser：spec 无 response content，渲染器不生成 spec。Wave 4.2 要求
-  ``expect`` 必传，本测试用 :meth:`RawResponseSpec.bytes` 兜底接收空字节
+- LogoutUser：spec 无 response content，渲染器不生成 spec。本测试用
+  ``RawResponseSpec(200, "*", target_type=bytes)`` 兜底接收空字节
   （服务端返回 ``User logged out``，content-type 通常 ``text/plain``，
   bytes 协议容错接受任意 media type 与 body）。
+
+注意：渲染器生成的 ``on_<status>`` 是实例 ``@property``（不是 ``ClassVar``），
+因此访问必须通过 ``endpoint`` 实例（如 ``endpoint.on_200_application_json``），
+不能直接通过类（``GetOrderById.on_200_application_json`` 会返回 property 描述符本身）。
 """
 
 from __future__ import annotations
@@ -55,17 +59,19 @@ def test_get_order_by_id_returns_order(e2e_client: Client) -> None:
     ValidationError），3-9 返回 404；``order_id=10`` 在 2026-08 当下稳定返回
     ``status="approved"`` 完整 Order JSON。
 
-    ``expect=GetOrderById.on_200_application_json`` 选择 JSON 协议分支
+    ``response.expect(endpoint.on_200_application_json)`` 选择 JSON 协议分支
     （服务端实际返回 ``application/json`` + ``Order`` JSON）。
-    ``response.validated`` 由 ClassVar 下标 ``JSONResponseSpec[Order]`` 静态推断为
-    ``Order | None``，访问 ``.status`` 等字段无需 ``isinstance`` 收窄——这是本次
+    ``response.expect`` 的返回类型由 ``JSONResponseSpec[Order]`` 静态推断为
+    ``Order``，访问 ``.status`` 等字段无需 ``isinstance`` 收窄——这是本次
     IDE 推断修复的核心收益。
     """
-    response = e2e_client.send(GetOrderById(order_id=10), expect=GetOrderById.on_200_application_json)
+    endpoint = GetOrderById(order_id=10)
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert response.validated is not None
-    assert response.validated.status.value == "approved"
+    order = response.expect(endpoint.on_200_application_json)
+    assert order is not None
+    assert order.status.value == "approved"
 
 
 def test_login_user_returns_token(e2e_client: Client) -> None:
@@ -76,30 +82,27 @@ def test_login_user_returns_token(e2e_client: Client) -> None:
     + ``application/json``（均为 primitive string schema），渲染器在 JSON 分支
     因无 model 可 import 跳过该 decl；XML 分支生成
     ``on_200_application_xml`` 但服务端返回 ``application/json``，严格 media-type
-    匹配会失败。用 :meth:`RawResponseSpec.text` + ``*`` 通配接收任意 content-type
+    匹配会失败。用 ``RawResponseSpec(200, "*", target_type=str)`` + ``*`` 通配接收任意 content-type
     的字符串 body，绕过 spec/实际不一致的限制。
     """
-    response = e2e_client.send(
-        LoginUser(username="alice", password="12345"),
-        expect=RawResponseSpec.text(200, "*"),
-    )
+    endpoint = LoginUser(username="alice", password="12345")
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert isinstance(response.validated, str)
-    assert "Logged in user session:" in response.validated
+    body: str = response.expect(RawResponseSpec(200, "*", target_type=str))
+    assert isinstance(body, str)
+    assert "Logged in user session:" in body
 
 
 def test_logout_user_returns_200(e2e_client: Client) -> None:
     """GET /user/logout：验证无副作用 logout 调用。
 
     spec 无 response content → 渲染器不生成 spec。用
-    :meth:`RawResponseSpec.bytes` 200 + ``*`` 通显式接收字节内容，容错任意
+    ``RawResponseSpec(200, "*", target_type=bytes)`` 显式接收字节内容，容错任意
     content-type（服务端返回 ``User logged out``，media type 通常 text/plain）。
     """
-    response = e2e_client.send(
-        LogoutUser(),
-        expect=RawResponseSpec.bytes(200, "*"),
-    )
+    endpoint = LogoutUser()
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
 
@@ -108,17 +111,16 @@ def test_get_user_by_name_returns_user(e2e_client: Client) -> None:
     """GET /user/{username}：验证 path 参数插值与 User schema 校验。
 
     petstore3 对 ``user1``（spec 示例用户名）返回 200 完整 JSON；未知用户名返回 404。
-    ``response.validated`` 由 ClassVar 下标 ``JSONResponseSpec[User]`` 静态推断为
-    ``User | None``，访问 ``.username`` 等字段无需 ``isinstance`` 收窄。
+    ``response.expect`` 的返回类型由 ``JSONResponseSpec[User]`` 静态推断为
+    ``User``，访问 ``.username`` 等字段无需 ``isinstance`` 收窄。
     """
-    response = e2e_client.send(
-        GetUserByName(username="user1"),
-        expect=GetUserByName.on_200_application_json,
-    )
+    endpoint = GetUserByName(username="user1")
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert response.validated is not None
-    assert response.validated.username == "user1"
+    user = response.expect(endpoint.on_200_application_json)
+    assert user is not None
+    assert user.username == "user1"
 
 
 def test_get_user_by_name_returns_user2(e2e_client: Client) -> None:
@@ -127,11 +129,10 @@ def test_get_user_by_name_returns_user2(e2e_client: Client) -> None:
     与 test_get_user_by_name_returns_user 相同逻辑，验证 user 端点对 user2 同样返回 200
     完整 JSON schema。
     """
-    response = e2e_client.send(
-        GetUserByName(username="user2"),
-        expect=GetUserByName.on_200_application_json,
-    )
+    endpoint = GetUserByName(username="user2")
+    response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    assert response.validated is not None
-    assert response.validated.username == "user2"
+    user = response.expect(endpoint.on_200_application_json)
+    assert user is not None
+    assert user.username == "user2"

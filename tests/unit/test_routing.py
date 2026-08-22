@@ -1162,65 +1162,14 @@ class TestAPIRouterPrefix:
 # :mod:`tests.unit.dependencies.test_request` 的 ``_fill_form_data`` 单测下。
 
 
-# ===== APIRoute.__init_subclass__ 保留字段名校验 =====
+# ===== on_<status> ClassVar 协议字段 =====
 
 
 class _ReservedRouteModel(BaseModel):
-    """保留字段校验测试用的 Pydantic 模型。"""
+    """on_<status> ClassVar 协议字段测试用的 Pydantic 模型。"""
 
     name: str
     age: int = 0
-
-
-def test_reserved_field_names_rejected_int() -> None:
-    """``on_200: int = 200`` 在类定义时立即抛 ``ValueError``。
-
-    错误信息需包含字段名 ``on_200`` 与 ``reserved keyword`` 字样。
-    """
-
-    with pytest.raises(ValueError, match=r"on_200.*reserved keyword|reserved keyword.*on_200"):
-
-        class BadRoute(APIRoute):
-            on_200: int = 200
-
-
-def test_reserved_field_names_rejected_default() -> None:
-    """``on_default: str = ""`` 在类定义时立即抛 ``ValueError``。"""
-
-    with pytest.raises(ValueError, match=r"on_default.*reserved keyword|reserved keyword.*on_default"):
-
-        class BadDefault(APIRoute):
-            on_default: str = ""
-
-
-def test_reserved_field_names_rejected_4xx_wildcard() -> None:
-    """``on_4xx``（OpenAPI 4XX 通配符）在类定义时抛 ``ValueError``。"""
-
-    with pytest.raises(ValueError, match=r"on_4xx.*reserved keyword|reserved keyword.*on_4xx"):
-
-        class BadWildcard4xx(APIRoute):
-            on_4xx: int = 400
-
-
-def test_reserved_field_names_rejected_5xx_wildcard() -> None:
-    """``on_5xx``（OpenAPI 5XX 通配符）在类定义时抛 ``ValueError``。"""
-
-    with pytest.raises(ValueError, match=r"on_5xx.*reserved keyword|reserved keyword.*on_5xx"):
-
-        class BadWildcard5xx(APIRoute):
-            on_5xx: str = ""
-
-
-def test_reserved_field_names_rejected_multi_media() -> None:
-    """``on_200_application_json``（多 media type 消歧后缀）在类定义时抛 ``ValueError``。"""
-
-    with pytest.raises(
-        ValueError,
-        match=r"on_200_application_json.*reserved keyword|reserved keyword.*on_200_application_json",
-    ):
-
-        class BadMultiMedia(APIRoute):
-            on_200_application_json: int = 200
 
 
 def test_classvar_on_allowed() -> None:
