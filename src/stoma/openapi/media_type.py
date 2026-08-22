@@ -47,8 +47,8 @@ def is_text_media_type(media_type: str) -> bool:
 
     用于 :class:`stoma.RawResponseSpec` 工厂方法分派（``text(...)`` vs
     ``bytes(...)``）——``RawResponseSpec`` 必须显式指定 ``T`` 类型参数，
-    因此 renderer 在生成 ``ClassVar[RawResponseSpec] = ...`` 时必须调用
-    ``.text(...)`` / ``.bytes(...)`` 之一（裸 ``RawResponseSpec(...)`` 会在
+    因此 renderer 在生成 ``@property def on_<status>(self) -> RawResponseSpec[T]: return ...``
+    时必须调用 ``.text(...)`` / ``.bytes(...)`` 之一（裸 ``RawResponseSpec(...)`` 会在
     ``__init__`` 抛 ``TypeError``）。
 
     文本型（返回 ``True`` → ``.text(...)``）：

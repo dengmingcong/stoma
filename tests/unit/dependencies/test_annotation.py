@@ -13,7 +13,7 @@ namespace package 巧合解析，统一改为 ``from src.dependencies.annotation
 """
 
 from dataclasses import dataclass
-from typing import Any, ClassVar, Optional, Union
+from typing import Any, Optional, Union
 
 import pytest
 from pydantic import BaseModel
@@ -71,8 +71,11 @@ class TestBinaryBodySerialization:
 
         @router.post("/upload-raw", upload_as_multipart=False)
         class R(APIRoute):
-            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             file: UploadFile
+
+            @property
+            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
+                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
 
         return R
 
@@ -112,8 +115,11 @@ class TestBinaryBodySerialization:
 
         @router.post("/upload-raw-opt", upload_as_multipart=False)
         class R(APIRoute):
-            on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
             file: UploadFile | None = None
+
+            @property
+            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
+                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
 
         body = _serialize_body_params(
             R(),

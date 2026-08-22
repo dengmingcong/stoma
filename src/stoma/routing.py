@@ -42,6 +42,8 @@ class APIRoute(BaseModel):
 
         @router.get(path="/users")
         class GetUsers(APIRoute):
+            limit: Annotated[int, Query()] = Field(ge=1, le=100, default=20)
+
             @property
             def on_200(self) -> JSONResponseSpec[list[UserData]]:
                 return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
@@ -57,8 +59,6 @@ class APIRoute(BaseModel):
                     media_type="application/json",
                     model=ErrorResponse,
                 )
-
-            limit: Annotated[int, Query()] = Field(ge=1, le=100, default=20)
 
         endpoint = GetUsers(limit=10)
         response = client.send(endpoint)
@@ -264,11 +264,11 @@ def api_route_decorator[T: APIRoute](
 
         @api_route_decorator(method="GET", path="/users/{user_id}")
         class GetUserById(APIRoute):
+            user_id: Annotated[int, Path()]
+
             @property
             def on_200(self) -> JSONResponseSpec[UserData]:
                 return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
-
-            user_id: Annotated[int, Path()]
 
         # 验证元数据已注入
         dependant = GetUserById._get_dependant()
@@ -312,20 +312,20 @@ class APIRouter:
         # 使用装饰器定义接口
         @router.get("/users")
         class GetUsers(APIRoute):
+            limit: int = 20
+
             @property
             def on_200(self) -> JSONResponseSpec[list[UserData]]:
                 return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
 
-            limit: int = 20
-
         @router.post("/users")
         class CreateUser(APIRoute):
+            name: str
+            email: str
+
             @property
             def on_201(self) -> JSONResponseSpec[UserData]:
                 return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
-
-            name: str
-            email: str
 
         @router.head("/users")
         class HeadUsers(APIRoute):
@@ -384,20 +384,20 @@ class APIRouter:
             # 无前缀：实际路径为 /users
             @router.get("/users")
             class GetUsers(APIRoute):
+                limit: int = 20
+
                 @property
                 def on_200(self) -> JSONResponseSpec[list[UserData]]:
                     return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
 
-                limit: int = 20
-
             # 带前缀：实际路径为 /api/v3/users/{user_id}
             @router_v3.get("/users/{user_id}")
             class GetUserV3(APIRoute):
+                user_id: Annotated[int, Path()]
+
                 @property
                 def on_200(self) -> JSONResponseSpec[UserData]:
                     return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
-
-                user_id: Annotated[int, Path()]
         """
         return api_route_decorator(method="GET", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -420,22 +420,22 @@ class APIRouter:
             # 无前缀
             @router.post("/users")
             class CreateUser(APIRoute):
+                name: str
+                email: str
+
                 @property
                 def on_201(self) -> JSONResponseSpec[UserData]:
                     return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
-
-                name: str
-                email: str
 
             # 带前缀：实际路径为 /api/v3/users
             @router_v3.post("/users")
             class CreateUserV3(APIRoute):
+                name: str
+                email: str
+
                 @property
                 def on_201(self) -> JSONResponseSpec[UserData]:
                     return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
-
-                name: str
-                email: str
         """
         return api_route_decorator(method="POST", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -463,22 +463,22 @@ class APIRouter:
             # 无前缀
             @router.put("/users/{user_id}")
             class UpdateUser(APIRoute):
+                user_id: Annotated[int, Path()]
+                name: str
+
                 @property
                 def on_200(self) -> JSONResponseSpec[UserData]:
                     return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
-
-                user_id: Annotated[int, Path()]
-                name: str
 
             # 带前缀：实际路径为 /api/v3/users/{user_id}
             @router_v3.put("/users/{user_id}")
             class UpdateUserV3(APIRoute):
+                user_id: Annotated[int, Path()]
+                name: str
+
                 @property
                 def on_200(self) -> JSONResponseSpec[UserData]:
                     return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
-
-                user_id: Annotated[int, Path()]
-                name: str
         """
         return api_route_decorator(method="PUT", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -501,22 +501,22 @@ class APIRouter:
             # 无前缀
             @router.patch("/users/{user_id}")
             class PatchUser(APIRoute):
+                user_id: Annotated[int, Path()]
+                email: str | None = None
+
                 @property
                 def on_200(self) -> JSONResponseSpec[UserData]:
                     return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
-
-                user_id: Annotated[int, Path()]
-                email: str | None = None
 
             # 带前缀：实际路径为 /api/v3/users/{user_id}
             @router_v3.patch("/users/{user_id}")
             class PatchUserV3(APIRoute):
+                user_id: Annotated[int, Path()]
+                email: str | None = None
+
                 @property
                 def on_200(self) -> JSONResponseSpec[UserData]:
                     return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
-
-                user_id: Annotated[int, Path()]
-                email: str | None = None
         """
         return api_route_decorator(method="PATCH", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 
@@ -539,20 +539,20 @@ class APIRouter:
             # 无前缀
             @router.delete("/users/{user_id}")
             class DeleteUser(APIRoute):
+                user_id: Annotated[int, Path()]
+
                 @property
                 def on_200(self) -> JSONResponseSpec[dict[str, str]]:
                     return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
-
-                user_id: Annotated[int, Path()]
 
             # 带前缀：实际路径为 /api/v3/users/{user_id}
             @router_v3.delete("/users/{user_id}")
             class DeleteUserV3(APIRoute):
+                user_id: Annotated[int, Path()]
+
                 @property
                 def on_200(self) -> JSONResponseSpec[dict[str, str]]:
                     return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
-
-                user_id: Annotated[int, Path()]
         """
         return api_route_decorator(method="DELETE", path=self.prefix + path, upload_as_multipart=upload_as_multipart)
 

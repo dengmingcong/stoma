@@ -3,14 +3,14 @@
 此文件通过手动编写示例接口类，验证：
 1. 装饰器语法的可用性（@router.get/post 等）
 2. IDE 类型提示的准确性（按状态码声明响应协议）
-3. 按状态码声明响应协议的工作（``on_<status>: ClassVar[JSONResponseSpec]``）
+3. 按状态码声明响应协议的工作（``on_<status>`` @property）
 4. Pydantic BaseModel 的自动 __init__ 生成（零样板代码）
 5. 参数标记的正确使用（Query, Path, Header, Body）
 
 **验收场景**:
 1. Given 开发者手动编写接口类，When 使用 `@router.get/post` 装饰器传入 path，
    Then IDE 提供参数补全与类型检查。
-2. Given 接口类通过 ``on_<status>: ClassVar[JSONResponseSpec]`` 声明响应协议，
+2. Given 接口类通过 ``@property on_<status>`` 声明响应协议，
    When 调用 ``client.send(endpoint, expect=endpoint.on_200)``，
    Then mypy/IDE 可正确推断 ``response.validated`` 的类型为声明的 model。
 3. Given 接口类继承 BaseModel 并使用 Query/Body/Header/Path 标记，
@@ -19,7 +19,7 @@
    When 用户字段名为 method、path 等，Then 不产生命名冲突，框架正常工作。
 """
 
-from typing import Annotated, ClassVar
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 
@@ -65,18 +65,20 @@ class GetUsers(APIRoute):
 
     验证：
     - 装饰器语法正确
-    - 按状态码声明响应协议 on_200: ClassVar[JSONResponseSpec]
+    - 按状态码声明响应协议 @property on_200
     - Query 参数标记
     - 参数默认值使用函数默认值形式
     """
-
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
 
     # Query 参数：使用 Annotated 和函数默认值
     limit: Annotated[int, Query()] = Field(ge=1, le=100, description="每页数量", default=20)
     offset: Annotated[int, Query()] = Field(ge=0, description="偏移量", default=0)
     # Header 参数：认证令牌
     token: Annotated[str, Header()] = Field(serialization_alias="Authorization", description="认证令牌")
+
+    @property
+    def on_200(self) -> JSONResponseSpec[list[UserData]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
 
 
 # ===== 验收场景 2: 按状态码声明响应协议 =====
@@ -90,8 +92,11 @@ class GetUserById(APIRoute):
     - 响应协议推断
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
     user_id: Annotated[int, Path()] = Field(description="用户 ID", ge=1)
+
+    @property
+    def on_200(self) -> JSONResponseSpec[UserData]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
 
 
 # ===== 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）=====
@@ -107,9 +112,12 @@ class CreateUser(APIRoute):
     - IDE 应自动补全 name、email 等字段
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
     # Body 参数：整个请求体
     body: Annotated[UserCreateRequest, Body()] = Field(description="用户创建请求")
+
+    @property
+    def on_200(self) -> JSONResponseSpec[UserData]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
 
 
 # ===== 验收场景 4: 命名空间隔离（用户字段名为 method、path 等）=====
@@ -123,12 +131,14 @@ class DebugEndpoint(APIRoute):
     - 元数据隔离机制工作正常
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
-
     # 故意使用可能冲突的字段名
     method: Annotated[str, Query()] = Field(description="用户自定义的 method 字段")
     path: Annotated[str, Query()] = Field(description="用户自定义的 path 字段")
     servers: Annotated[list[str] | None, Query()] = Field(description="用户自定义的 servers 字段", default=None)
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
 
 
 # ===== 测试 PUT 方法 =====
@@ -136,9 +146,12 @@ class DebugEndpoint(APIRoute):
 class UpdateUser(APIRoute):
     """完全更新用户（PUT）。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
     user_id: Annotated[int, Path()] = Field(ge=1)
     body: Annotated[UserCreateRequest, Body()]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[UserData]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
 
 
 # ===== 测试 PATCH 方法 =====
@@ -146,9 +159,12 @@ class UpdateUser(APIRoute):
 class PartialUpdateUser(APIRoute):
     """部分更新用户（PATCH）。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
     user_id: Annotated[int, Path()] = Field(ge=1)
     body: Annotated[UserUpdateRequest, Body()]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[UserData]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
 
 
 # ===== 测试 DELETE 方法 =====
@@ -156,18 +172,19 @@ class PartialUpdateUser(APIRoute):
 class DeleteUser(APIRoute):
     """删除用户（DELETE）。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
     user_id: Annotated[int, Path()] = Field(ge=1)
     # 可选的认证头
     token: Annotated[str | None, Header()] = Field(serialization_alias="Authorization", default=None)
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
 
 
 # ===== 测试多个查询参数和复杂验证 =====
 @router.get("/search")
 class SearchUsers(APIRoute):
     """搜索用户 - 测试多个查询参数和复杂验证。"""
-
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
 
     # 必需的查询参数（无默认值）
     query: Annotated[str, Query()] = Field(min_length=1, max_length=100, description="搜索关键词")
@@ -179,6 +196,10 @@ class SearchUsers(APIRoute):
 
     # 可选的 Header 参数
     x_request_id: Annotated[str | None, Header()] = Field(serialization_alias="X-Request-ID", default=None)
+
+    @property
+    def on_200(self) -> JSONResponseSpec[list[UserData]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
 
 
 # ===== 手动测试代码 =====
@@ -217,7 +238,7 @@ def test_decorator_validation() -> None:
     assert get_user_endpoint.user_id == 123
     print(f"  - 路由元数据: method={get_user_meta.method}, path={get_user_meta.path}")
     print(f"  - 路径参数: user_id={get_user_endpoint.user_id}")
-    print("  - on_200: ClassVar[JSONResponseSpec] 响应协议验证通过 ✓")
+    print("  - on_200: @property 响应协议验证通过 ✓")
     print("  - mypy/IDE 应推断 client.send(endpoint, expect=endpoint.on_200).validated 类型为 UserData")
 
     # 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）
@@ -290,7 +311,7 @@ def test_decorator_validation() -> None:
     print("=" * 60)
     print("\n总结：")
     print("1. ✓ 装饰器语法正确，@router.get/post/put/patch/delete 全部可用")
-    print("2. ✓ 按状态码声明响应协议 on_<status>: ClassVar[JSONResponseSpec] 工作正常，IDE 类型提示准确")
+    print("2. ✓ 按状态码声明响应协议 on_<status> @property 工作正常，IDE 类型提示准确")
     print("3. ✓ 继承 BaseModel 自动生成 __init__，零样板代码")
     print("4. ✓ 路由元数据隔离机制工作正常，无命名冲突")
     print("5. ✓ Query/Path/Header/Body 参数标记全部正常工作")
@@ -311,9 +332,9 @@ class TestAllMethods:
 
         @router.get("/x")
         class X(APIRoute):
-            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
-
-            pass
+            @property
+            def on_200(self) -> JSONResponseSpec[dict]:
+                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "GET"
@@ -324,9 +345,9 @@ class TestAllMethods:
 
         @router.post("/x")
         class X(APIRoute):
-            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
-
-            pass
+            @property
+            def on_200(self) -> JSONResponseSpec[dict]:
+                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "POST"
@@ -337,9 +358,9 @@ class TestAllMethods:
 
         @router.put("/x")
         class X(APIRoute):
-            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
-
-            pass
+            @property
+            def on_200(self) -> JSONResponseSpec[dict]:
+                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "PUT"
@@ -350,9 +371,9 @@ class TestAllMethods:
 
         @router.patch("/x")
         class X(APIRoute):
-            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
-
-            pass
+            @property
+            def on_200(self) -> JSONResponseSpec[dict]:
+                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "PATCH"
@@ -363,9 +384,9 @@ class TestAllMethods:
 
         @router.delete("/x")
         class X(APIRoute):
-            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
-
-            pass
+            @property
+            def on_200(self) -> JSONResponseSpec[dict]:
+                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "DELETE"
@@ -376,9 +397,9 @@ class TestAllMethods:
 
         @router.head("/x")
         class X(APIRoute):
-            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
-
-            pass
+            @property
+            def on_200(self) -> JSONResponseSpec[dict]:
+                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "HEAD"
@@ -389,9 +410,9 @@ class TestAllMethods:
 
         @router.options("/x")
         class X(APIRoute):
-            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
-
-            pass
+            @property
+            def on_200(self) -> JSONResponseSpec[dict]:
+                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "OPTIONS"
@@ -402,9 +423,9 @@ class TestAllMethods:
 
         @router.trace("/x")
         class X(APIRoute):
-            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict)
-
-            pass
+            @property
+            def on_200(self) -> JSONResponseSpec[dict]:
+                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "TRACE"
