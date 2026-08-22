@@ -5,9 +5,6 @@ from __future__ import annotations
 {% if header_fields or scalar_field or form_text_fields or uses_field_import -%}
 from typing import Annotated
 {% endif -%}
-{% if uses_classvar_import -%}
-from typing import ClassVar
-{% endif -%}
 {% if uses_field_import -%}
 from pydantic import Field
 {% endif %}
@@ -15,8 +12,8 @@ from stoma import APIRoute{% if imported_specs %}, {{ imported_specs | join(', '
 
 from ..router import router
 
-{% if imported_models -%}
-from ..models import {{ imported_models | join(', ') }}
+{% if imported -%}
+from ..models import {{ imported | join(', ') }}
 {% endif -%}
 
 
@@ -26,53 +23,44 @@ class {{ class_name }}(APIRoute):
 {% endif %}
 {% if not class_docstring and not has_class_body_content and not response_spec_decls %}    pass
 {% endif %}
-{% if response_spec_decls %}
-{% for decl in response_spec_decls %}
-    {{ decl.attr_name }}: ClassVar[{{ decl.spec_class_annotation }}] = {{ decl.spec_class_constructor }}(
-        {{ decl.status_code_or_matcher }},
-        media_type="{{ decl.media_type }}"{% if decl.is_json %},
-        model={{ decl.model_name }}{% endif %}
-    )
-{% endfor %}
-{% endif %}
-{% if param_fields %}
-{% for decl in param_fields %}
+{# Fields #}
+{% if param_fields %}{% for decl in param_fields %}
     {{ decl.line }}
 {% if decl.docstring %}    {{ decl.docstring }}
-{% endif %}
-{% endfor %}
-{% endif %}
-{% if header_fields %}
-{% for decl in header_fields %}
+{% endif %}{% endfor %}{% endif %}
+{% if header_fields %}{% for decl in header_fields %}
     {{ decl.line }}
 {% if decl.docstring %}    {{ decl.docstring }}
-{% endif %}
-{% endfor %}
-{% endif %}
+{% endif %}{% endfor %}{% endif %}
 {% if import_model and not form_text_fields and not form_file_fields and not scalar_field and not binary_file_field %}
     body: {{ import_model }}
 {% endif %}
 {% if scalar_field %}
     {{ scalar_field.line }}
 {% if scalar_field.docstring %}    {{ scalar_field.docstring }}
-{% endif %}
-{% endif %}
+{% endif %}{% endif %}
 {% if binary_file_field %}
     {{ binary_file_field.line }}
 {% if binary_file_field.docstring %}    {{ binary_file_field.docstring }}
-{% endif %}
-{% endif %}
-{% if form_text_fields %}
-{% for decl in form_text_fields %}
+{% endif %}{% endif %}
+{% if form_text_fields %}{% for decl in form_text_fields %}
     {{ decl.line }}
 {% if decl.docstring %}    {{ decl.docstring }}
-{% endif %}
-{% endfor %}
-{% endif %}
-{% if form_file_fields %}
-{% for decl in form_file_fields %}
+{% endif %}{% endfor %}{% endif %}
+{% if form_file_fields %}{% for decl in form_file_fields %}
     {{ decl.line }}
 {% if decl.docstring %}    {{ decl.docstring }}
-{% endif %}
+{% endif %}{% endfor %}{% endif %}
+{# Response spec declarations as @property methods #}
+{% if response_spec_decls %}
+{% for decl in response_spec_decls %}
+    @property
+    def {{ decl.attr_name }}(self) -> {{ decl.annotation }}:
+        return {{ decl.constructor }}(
+            {{ decl.status_code_or_matcher }},
+            media_type="{{ decl.media_type }}"{% if decl.is_json %},
+            model={{ decl.model_name }}{% elif decl.target_type %},
+            target_type={{ decl.target_type }}{% endif %}
+        )
 {% endfor %}
 {% endif %}
