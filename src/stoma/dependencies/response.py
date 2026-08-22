@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from playwright.sync_api import APIResponse
+from pydantic import TypeAdapter
 
 from stoma.exceptions import ParseError, ValidationError
 from stoma.openapi.media_type import is_json_media_type
@@ -159,6 +160,91 @@ class BaseResponseSpec[T](ABC):
         raise NotImplementedError
 
 
+class JSONResponseSpec[T](BaseResponseSpec[T]):
+    """JSON 响应协议。
+
+    在 :class:`BaseResponseSpec` 的协议级强校验基础上，
+    用 :class:`pydantic.TypeAdapter` 按 ``model`` 校验 JSON body，
+    并返回强类型的 ``T`` 实例。
+
+    设计要点：
+
+    - ``adapter``：构造时通过 :class:`pydantic.TypeAdapter` 编译 ``model``，
+      :meth:`validate_response` 直接复用同一适配器实例，
+      避免每次调用都重新构造。
+    - 异常映射：JSON 解析失败抛 :class:`ParseError`（带原始 ``response_text``）；
+      Pydantic 校验失败抛 stoma :class:`ValidationError`（带 Pydantic ``errors``）。
+
+    :var status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
+    :vartype status_code: int | Callable[[int], bool]
+    :var media_type: 期望的 media type（如 ``application/json``），
+        ``*`` 表示通配所有 media type。
+    :vartype media_type: str
+    :var adapter: Pydantic :class:`TypeAdapter` 实例，按 ``model`` 校验 body。
+    :vartype adapter: TypeAdapter[T]
+    """
+
+    def __init__(
+        self,
+        status_code: int | Callable[[int], bool],
+        media_type: str,
+        model: type[T],
+    ) -> None:
+        """初始化 JSON 响应协议。
+
+        :param status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
+        :param media_type: 期望的 media type（如 ``application/json``），
+            ``*`` 表示通配所有 media type。
+        :param model: 用于校验响应 body 的 Pydantic 模型类。
+        """
+        super().__init__(status_code, media_type)
+        self.adapter: TypeAdapter[T] = TypeAdapter(model)
+
+    def validate_response(self, response: APIResponse) -> T:
+        """校验并解析 JSON 响应为 ``T`` 类型实例。
+
+        流程：
+
+        1. 从 ``response.headers`` 取 content-type，并调用
+           :meth:`_assert_status` 与 :meth:`_assert_media_type` 做协议级强校验。
+        2. 调用 ``response.json()`` 解析 body；解析失败抛 :class:`ParseError`。
+        3. 调用 ``self.adapter.validate_python(payload)`` 按 ``model`` 校验；
+           校验失败抛 stoma :class:`ValidationError`（带 Pydantic ``errors``）。
+
+        :param response: Playwright 响应对象。
+        :return: 已校验的 Pydantic 模型实例，类型为 ``T``。
+        :raise AssertionError: status 或 content-type 与 spec 不匹配。
+        :raise ParseError: JSON 解析失败。
+        :raise ValidationError: 响应数据验证失败。
+        """
+        content_type = response.headers.get("content-type", "") if response.headers else ""
+        self._assert_status(response.status)
+        self._assert_media_type(content_type)
+
+        try:
+            payload: Any = response.json()
+        except Exception as e:
+            fallback_text = ""
+            try:
+                fallback_text = response.text() if hasattr(response, "text") else ""
+            except Exception:
+                pass
+            msg = f"响应 JSON 解析失败: {e}"
+            raise ParseError(msg, response_text=fallback_text) from e
+
+        try:
+            validated = self.adapter.validate_python(payload)
+        except Exception as e:
+            msg = f"响应数据验证失败: {e}"
+            errors: list[dict[str, Any]] = []
+            # Pydantic 的 ValidationError 才有 .errors() 方法。
+            if hasattr(e, "errors"):
+                errors = list(e.errors())  # type: ignore[no-any-return]
+            raise ValidationError(msg, errors=errors) from e
+
+        return validated  # type: ignore[no-any-return]
+
+
 def build_response[T](api_route: APIRoute[T], api_response: APIResponse) -> Response[T]:
     """从 Playwright :class:`APIResponse` 构造 :class:`Response[T]`。
 
@@ -227,4 +313,4 @@ def build_response[T](api_route: APIRoute[T], api_response: APIResponse) -> Resp
     return Response[T](raw=api_response, validated=None)
 
 
-__all__ = ["Response", "BaseResponseSpec", "build_response"]
+__all__ = ["Response", "BaseResponseSpec", "JSONResponseSpec", "build_response"]
