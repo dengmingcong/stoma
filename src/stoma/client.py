@@ -5,14 +5,14 @@ Client 是 stoma 的运行时入口，封装所有 HTTP 细节：
 - 持有 Playwright APIRequestContext（用户提供）
 - 调用 :func:`build_request` 从 APIRoute 提取参数
 - 发送 HTTP 请求（通过 :meth:`Client._execute_request`）
-- 调用 ``expect.validate_response`` 按响应协议校验并解析响应
+- 返回 :class:`Response`（不触发任何校验）
 
 调用模式：
 
     ctx = pw.request.new_context(base_url="http://localhost:8000")
     client = Client(context=ctx)
-    response = client.send(GetUsers(limit=10), expect=GetUsers.on_200)
-    # response: Response[T]，T 从 expect 推导
+    response = client.send(GetUsers(limit=10))
+    # 用户按需调用 response.expect(GetUsers.on_200) 触发协议校验
 
 URL/Query 处理说明：
 
@@ -34,8 +34,8 @@ from stoma.dependencies.request import (
     RequestBodyKind,
     build_request,
 )
-from stoma.dependencies.response import BaseResponseSpec, Response
-from stoma.exceptions import HTTPError, ParseError, ValidationError
+from stoma.dependencies.response import Response
+from stoma.exceptions import HTTPError
 from stoma.routing import APIRoute
 
 
@@ -55,10 +55,11 @@ class Client:
 
         # endpoint 子类按状态码声明响应协议（``on_<status>``）。
         endpoint = GetUsers(limit=10)
-        response = client.send(endpoint, expect=GetUsers.on_200)
-        # IDE: response 类型为 Response[list[UserData]]，T 从 expect 推导
-        # response.validated: list[UserData]
-        # response.raw: Playwright APIResponse
+        response = client.send(endpoint)
+        # 用户按需触发校验：
+        if response.raw.status == 200:
+            users = response.expect(GetUsers.on_200)  # → list[UserData]
+        # response.raw: Playwright APIResponse，未做协议校验。
     """
 
     def __init__(self, context: APIRequestContext) -> None:
@@ -69,40 +70,29 @@ class Client:
         """
         self._context = context
 
-    def send[T](self, api_route: APIRoute, expect: BaseResponseSpec[T]) -> Response[T]:
-        """发送 api_route 请求，按 ``expect`` 协议校验响应并返回 :class:`Response[T]`。
+    def send(self, api_route: APIRoute) -> Response:
+        """发送 api_route 请求，返回 :class:`Response`（不触发任何协议校验）。
 
-        ``expect`` 是本次请求对应的响应协议（如 ``endpoint.on_200``），
-        负责校验 HTTP 状态码与 media type 是否匹配，并按其 ``T``
-        类型参数解析响应体。
+        :meth:`Client.send` 只负责「发请求 + 包装原始响应」，不做状态码、
+        content-type 或响应体的解析。校验与解析由调用方按需通过
+        :meth:`Response.expect` 显式触发——同一份 ``Response`` 可被多个协议
+        反复校验（例如先按成功分支解析，再按错误分支解析）。
 
-        ``T`` 通过 PEP 695 泛型方法从 ``expect`` 的类型参数自动推断，
-        与 ``api_route`` 无关（APIRoute 已不再携带泛型）。
-
-        流程（全部内联在 :meth:`send` 内，无 helper）：
+        流程：
 
         1. 调用 :func:`build_request` 从 ``api_route`` 构造 :class:`Request`。
         2. 通过 :meth:`_execute_request` 发送 HTTP 请求，得到 ``api_response``。
-        3. 调用 ``expect.validate_response(api_response)`` 校验状态码、media type、
-           并按 ``T`` 解析响应体，得到 ``validated``。
-        4. 返回 :class:`Response[T]`，``raw`` 持有原始 ``api_response``，
-           ``validated`` 为已校验数据。
+        3. 返回 :class:`Response`，``raw`` 持有原始 ``api_response``。
 
         :param api_route: APIRoute 实例。
-        :param expect: 本次请求对应的响应协议（``BaseResponseSpec`` 子类实例），
-            通常取 ``endpoint.on_<status>``。
-        :return: 包装后的响应，类型为 :class:`Response[T]`。
+        :return: 包装后的原始响应，类型为 :class:`Response`。
         :raise HTTPError: 网络层失败时抛出。
-        :raise ParseError: 响应体无法按协议解析（如 JSON 解码失败、文本解码失败）。
-        :raise ValidationError: 响应解析成功但不符合 ``expect`` 的 ``T``。
-        :raise AssertionError: 状态码或 content-type 与 ``expect`` 不匹配（协议违反），透传不包装。
         """
         try:
             request: Request = build_request(api_route)
             api_response = self._execute_request(request)
-            validated = expect.validate_response(api_response)
-            return Response[T](raw=api_response, validated=validated)
-        except (HTTPError, ParseError, ValidationError, AssertionError):
+            return Response(raw=api_response)
+        except HTTPError:
             raise
         except Exception as e:
             msg = f"请求发送失败: {e}"

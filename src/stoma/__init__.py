@@ -5,7 +5,6 @@
 
 from stoma.client import Client
 from stoma.dependencies.response import (
-    BaseResponseSpec,
     JSONResponseSpec,
     RawResponseSpec,
     Response,
@@ -18,7 +17,6 @@ __all__ = [
     "__version__",
     "APIRoute",
     "APIRouter",
-    "BaseResponseSpec",
     "Body",
     "Client",
     "Form",
