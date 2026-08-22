@@ -14,7 +14,7 @@ import re
 from collections.abc import Callable
 from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter
+from pydantic import BaseModel, ConfigDict
 
 from stoma.dependencies import Dependant, ModelField
 from stoma.dependencies.annotation import (
@@ -25,15 +25,23 @@ from stoma.dependencies.annotation import (
 )
 from stoma.params import Form, Param, ParamTypes
 
+"""匹配 ``on_<status_code>`` 形式字段名的正则。
 
-class APIRoute[T](BaseModel):
+精确 3 位状态码（200、404），或 1 位数字 + 2 至 3 个 ``x`` 的
+OpenAPI 通配符（4xx、5xx、1xx），或 ``default``；
+可选后缀 ``_<sanitized_media_type>`` 用于多 media type 消歧。
+"""
+RESERVED_ON_FIELD_PATTERN: re.Pattern[str] = re.compile(r"on_(\d{3}x?|\dx{2,3}|default)(?:_.+)?")
+
+
+class APIRoute(BaseModel):
     """接口基类，纯数据类（字段 + 路由元数据）。
 
-    通过泛型 ``T`` 指定 JSON 响应校验类型。
-    仅当响应 content-type 为 JSON 时，
-    框架会用 Pydantic ``TypeAdapter`` 按 ``T`` 校验 JSON 内容。
+    通过 ``on_<status_code>`` ClassVar 声明每个合法响应分支的协议，
+    例如 ``on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, ...)``。
+    客户端发送请求时通过 ``expect=endpoint.on_200`` 选取响应协议。
 
-    实际请求由 ``Client.send(api_route)`` 发起。
+    实际请求由 ``Client.send(api_route, expect=...)`` 发起。
 
     :var _dependant: 路由元数据和参数依赖定义缓存。
     :vartype _dependant: ClassVar[Dependant | None]
@@ -41,18 +49,53 @@ class APIRoute[T](BaseModel):
     Example::
 
         @router.get(path="/users")
-        class GetUsers(APIRoute[list[UserData]]):
+        class GetUsers(APIRoute):
+            on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, list[UserData])
             limit: Annotated[int, Query()] = Field(ge=1, le=100, default=20)
 
         endpoint = GetUsers(limit=10)
-        response = client.send(endpoint)  # 类型: Response[list[UserData]]
+        response = client.send(endpoint, expect=GetUsers.on_200)
         if response.raw.status == 200:
-            users = response.validated  # 类型: list[UserData] | None
+            users = response.validated  # 类型: list[UserData]
     """
 
     # Ref: https://pydantic.dev/docs/validation/latest/concepts/models/#class-variables
     _dependant: ClassVar[Dependant | None] = None
     model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """类定义时校验保留字段名。
+
+        扫描 ``cls.__annotations__``，任何字段名匹配
+        :data:`RESERVED_ON_FIELD_PATTERN` 的（即 ``on_<status_code>`` 形式）
+        必须绑定到 :class:`stoma.dependencies.response.BaseResponseSpec`
+        实例（渲染器生成的合法代码）；其他情况抛 ``ValueError``，
+        错误信息含字段名与 ``reserved keyword`` 字样。
+
+        为什么必须扫描 ``__annotations__`` 而不是 ``cls.model_fields``：
+        ``ClassVar[...]`` 注解会被 Pydantic 从 ``model_fields`` 排除，
+        但仍保留在 ``__annotations__`` 中。这是唯一能拦截
+        ``on_200: ClassVar = JSONResponseSpec(...)`` 这类声明的途径。
+
+        :raise ValueError: 字段名匹配保留模式且未绑定 ``BaseResponseSpec`` 实例。
+        """
+        super().__init_subclass__(**kwargs)
+        # 延迟导入避免 stoma.routing <-> stoma.dependencies.response 循环依赖：
+        # dependencies/response.py 在模块顶层 ``from stoma.routing import APIRoute``。
+        from stoma.dependencies.response import BaseResponseSpec
+
+        for name in cls.__annotations__:
+            if not RESERVED_ON_FIELD_PATTERN.fullmatch(name):
+                continue
+            value = getattr(cls, name, None)
+            if isinstance(value, BaseResponseSpec):
+                continue
+            msg = (
+                f"字段名 '{name}' 是 reserved keyword："
+                "on_<status> 名称由框架保留用于声明按状态码的响应协议，"
+                "不应作为普通字段使用。"
+            )
+            raise ValueError(msg)
 
     @classmethod
     def _get_dependant(
@@ -141,7 +184,7 @@ class APIRoute[T](BaseModel):
                 # 类型推断三分支（无 Param 标记时）：
                 #   UploadFile / list[UploadFile]（含 Optional） → file_body_params
                 #   复杂类型（BaseModel/Mapping/序列/dataclass） → pure_body_params
-                #   标量类型（int/str/bool/float 等） → query_params
+                #   标量类型（int / str / bool / float 等） → query_params
                 field_type = field_info.annotation
                 if is_uploadfile_or_list_annotation(field_type):
                     file_body_params.append(model_field)
@@ -149,24 +192,6 @@ class APIRoute[T](BaseModel):
                     pure_body_params.append(model_field)
                 else:
                     query_params.append(model_field)
-
-            # 提取响应类型（用于 JSON 响应校验）
-            json_response_schema: type | None = None
-            for c in cls.mro():
-                name = c.__name__
-                if name == "APIRoute":
-                    # APIRoute 不带泛型参数，无需校验响应
-                    break
-                if name.startswith("APIRoute["):
-                    metadata = getattr(c, "__pydantic_generic_metadata__", {})
-                    if args := metadata.get("args"):
-                        json_response_schema = args[0]  # 如果泛型有多个参数，取第一个作为响应类型，忽略后续其他参数
-                    break
-
-            # 创建 JSON 响应校验器
-            json_response_schema_adapter: TypeAdapter[Any] | None = None
-            if json_response_schema is not None:
-                json_response_schema_adapter = TypeAdapter(json_response_schema)
 
             cls._dependant = Dependant(
                 method=method,
@@ -177,8 +202,6 @@ class APIRoute[T](BaseModel):
                 pure_body_params=pure_body_params,
                 form_body_params=form_body_params,
                 file_body_params=file_body_params,
-                json_response_schema=json_response_schema,
-                json_response_schema_adapter=json_response_schema_adapter,
                 upload_as_multipart=upload_as_multipart,
             )
 

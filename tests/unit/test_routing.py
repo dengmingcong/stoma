@@ -17,7 +17,7 @@
 
 import pathlib
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated, Any, ClassVar
 
 import pytest
 from pydantic import BaseModel, Field
@@ -1082,3 +1082,99 @@ class TestAPIRouterPrefix:
 
 # 旧 ``test_client_helpers.py`` 里的 ``TestFillScalarFormField`` 已迁到
 # :mod:`tests.unit.dependencies.test_request` 的 ``_fill_form_data`` 单测下。
+
+
+# ===== APIRoute.__init_subclass__ 保留字段名校验 =====
+
+
+class _ReservedRouteModel(BaseModel):
+    """保留字段校验测试用的 Pydantic 模型。"""
+
+    name: str
+    age: int = 0
+
+
+def test_reserved_field_names_rejected_int() -> None:
+    """``on_200: int = 200`` 在类定义时立即抛 ``ValueError``。
+
+    错误信息需包含字段名 ``on_200`` 与 ``reserved keyword`` 字样。
+    """
+
+    with pytest.raises(ValueError, match=r"on_200.*reserved keyword|reserved keyword.*on_200"):
+
+        class BadRoute(APIRoute):
+            on_200: int = 200
+
+
+def test_reserved_field_names_rejected_default() -> None:
+    """``on_default: str = ""`` 在类定义时立即抛 ``ValueError``。"""
+
+    with pytest.raises(ValueError, match=r"on_default.*reserved keyword|reserved keyword.*on_default"):
+
+        class BadDefault(APIRoute):
+            on_default: str = ""
+
+
+def test_reserved_field_names_rejected_4xx_wildcard() -> None:
+    """``on_4xx``（OpenAPI 4XX 通配符）在类定义时抛 ``ValueError``。"""
+
+    with pytest.raises(ValueError, match=r"on_4xx.*reserved keyword|reserved keyword.*on_4xx"):
+
+        class BadWildcard4xx(APIRoute):
+            on_4xx: int = 400
+
+
+def test_reserved_field_names_rejected_5xx_wildcard() -> None:
+    """``on_5xx``（OpenAPI 5XX 通配符）在类定义时抛 ``ValueError``。"""
+
+    with pytest.raises(ValueError, match=r"on_5xx.*reserved keyword|reserved keyword.*on_5xx"):
+
+        class BadWildcard5xx(APIRoute):
+            on_5xx: str = ""
+
+
+def test_reserved_field_names_rejected_multi_media() -> None:
+    """``on_200_application_json``（多 media type 消歧后缀）在类定义时抛 ``ValueError``。"""
+
+    with pytest.raises(
+        ValueError,
+        match=r"on_200_application_json.*reserved keyword|reserved keyword.*on_200_application_json",
+    ):
+
+        class BadMultiMedia(APIRoute):
+            on_200_application_json: int = 200
+
+
+def test_classvar_on_allowed() -> None:
+    """``on_200: ClassVar = JSONResponseSpec(200, Model)`` 不抛错（渲染器生成的合法代码）。
+
+    ``on_*`` 字段绑定到 :class:`BaseResponseSpec` 实例时，校验跳过；
+    这是渲染器生成 endpoint 文件时的合法模式（``tests/examples/**/app/endpoints/*.py``）。
+    """
+
+    from stoma.dependencies.response import JSONResponseSpec
+
+    class GeneratedRoute(APIRoute):
+        on_200: ClassVar = JSONResponseSpec(200, "application/json", _ReservedRouteModel)
+
+    # 类定义不抛错；实例化正常
+    endpoint = GeneratedRoute()
+    assert endpoint is not None
+    assert isinstance(GeneratedRoute.on_200, JSONResponseSpec)
+    assert GeneratedRoute.on_200.status_code == 200
+
+
+def test_normal_field_names_allowed() -> None:
+    """普通字段名（``user_id``、``limit``、``name``、``status``、``body`` 等）不抛错。"""
+
+    class NormalRoute(APIRoute):
+        user_id: int
+        limit: int = 10
+        name: str = "default"
+        status: str = "active"
+
+    endpoint = NormalRoute(user_id=1)
+    assert endpoint.user_id == 1
+    assert endpoint.limit == 10
+    assert endpoint.name == "default"
+    assert endpoint.status == "active"
