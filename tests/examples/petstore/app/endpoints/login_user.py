@@ -6,7 +6,9 @@ Log into the system.
 
 from __future__ import annotations
 
-from stoma import APIRoute
+from typing import ClassVar
+
+from stoma import APIRoute, RawResponseSpec
 
 from ..router import router
 
@@ -18,6 +20,9 @@ class LoginUser(APIRoute):
     Log into the system.
     """
 
+    on_200_application_xml: ClassVar[RawResponseSpec[str]] = RawResponseSpec.text(
+        status_code=200, media_type="application/xml"
+    )
     username: str | None = None
     """The user name for login"""
     password: str | None = None

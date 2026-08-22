@@ -6,15 +6,21 @@ Returns a map of status codes to quantities.
 
 from __future__ import annotations
 
-from stoma import APIRoute
+from typing import ClassVar
+
+from stoma import APIRoute, JSONResponseSpec
 
 from ..models import GetInventoryResponse
 from ..router import router
 
 
 @router.get("/store/inventory")
-class GetInventory(APIRoute[GetInventoryResponse]):
+class GetInventory(APIRoute):
     """Returns pet inventories by status.。
 
     Returns a map of status codes to quantities.
     """
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        status_code=200, media_type="application/json", model=GetInventoryResponse
+    )
