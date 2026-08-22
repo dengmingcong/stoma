@@ -5,10 +5,13 @@ from __future__ import annotations
 {% if header_fields or scalar_field or form_text_fields or uses_field_import -%}
 from typing import Annotated
 {% endif -%}
+{% if uses_classvar_import -%}
+from typing import ClassVar
+{% endif -%}
 {% if uses_field_import -%}
 from pydantic import Field
 {% endif %}
-from stoma import APIRoute{% if header_fields %}, Header{% endif %}{% if scalar_field %}, Body{% endif %}{% if form_text_fields %}, Form{% endif %}{% if form_file_fields or (binary_file_field and not upload_as_multipart) %}, UploadFile{% endif %}
+from stoma import APIRoute{% if imported_specs %}, {{ imported_specs | join(', ') }}{% endif %}{% if header_fields %}, Header{% endif %}{% if scalar_field %}, Body{% endif %}{% if form_text_fields %}, Form{% endif %}{% if form_file_fields or (binary_file_field and not upload_as_multipart) %}, UploadFile{% endif %}
 
 from ..router import router
 
@@ -18,10 +21,19 @@ from ..models import {{ imported_models | join(', ') }}
 
 
 @router.{{ method }}("{{ path }}"{% if not upload_as_multipart %}, upload_as_multipart=False{% endif %})
-class {{ class_name }}(APIRoute{% if response_type %}[{{ response_type }}]{% endif %}):
+class {{ class_name }}(APIRoute):
 {% if class_docstring %}    {{ class_docstring }}
 {% endif %}
-{% if not class_docstring and not has_class_body_content %}    pass
+{% if not class_docstring and not has_class_body_content and not response_spec_decls %}    pass
+{% endif %}
+{% if response_spec_decls %}
+{% for decl in response_spec_decls %}
+    {{ decl.attr_name }}: ClassVar[{{ decl.spec_class }}] = {{ decl.spec_class }}(
+        {{ decl.status_code_or_matcher }},
+        media_type="{{ decl.media_type }}"{% if decl.is_json %},
+        model={{ decl.model_name }}{% endif %}
+    )
+{% endfor %}
 {% endif %}
 {% if param_fields %}
 {% for decl in param_fields %}

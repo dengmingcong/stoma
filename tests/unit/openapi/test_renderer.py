@@ -37,6 +37,7 @@ from stoma.openapi.renderer import (
     ResponseSpecDecl,
     make_endpoint_renderer,
     make_range_matcher,
+    render_status_code_kwarg,
 )
 from stoma.openapi.version import Reference31
 
@@ -1620,9 +1621,10 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        # response 类型为 User，从 .models 导入。
-        assert "APIRoute[User]" in content
+        assert "on_200: ClassVar[JSONResponseSpec]" in content
+        assert "model=User" in content
         assert "from ..models import User" in content
+        assert "APIRoute[" not in content
 
     def test_response_body_v30_ref_detection(self, valid_v30_spec: Path) -> None:
         """验证 OpenAPI 3.0.x ``responses[200].content.application/json.schema.$ref`` 被 renderer 正确识别。
@@ -1639,7 +1641,9 @@ components:
         get_user = next(ep for ep in endpoints if ep.operation_id == "getUser")
         _file_name, code = renderer.render(get_user)
         assert "from ..models import User" in code
-        assert "APIRoute[User]" in code
+        assert "on_200: ClassVar[JSONResponseSpec]" in code
+        assert "model=User" in code
+        assert "APIRoute[" not in code
 
     def test_response_with_array_of_ref(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 response 为引用类型的数组时生成 ``list[Model]``。"""
@@ -1681,11 +1685,10 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "list_users.py").read_text(encoding="utf-8")
-        # datamodel-codegen 包装 array-of-ref response 时按 operationId 派生
-        # （``listUsers`` → ``ListUsersResponse``），renderer 同步引用同名，
-        # 由 ``use_operation_id_as_name=True`` 触发。
-        assert "APIRoute[ListUsersResponse]" in content
+        assert "on_200: ClassVar[JSONResponseSpec]" in content
+        assert "model=ListUsersResponse" in content
         assert "from ..models import ListUsersResponse" in content
+        assert "APIRoute[" not in content
 
     def test_response_with_nested_object_schema(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 response 为嵌套对象时能正常生成。"""
@@ -1734,10 +1737,10 @@ paths:
         assert (out_dir / "endpoints" / "get_profile.py").exists()
         content = (out_dir / "endpoints" / "get_profile.py").read_text(encoding="utf-8")
         assert "@router.get" in content
-        # 嵌套对象响应也按 operationId 派生模型名（``getProfile`` → ``GetProfileResponse``），
-        # 从 .models 导入，由 ``use_operation_id_as_name=True`` 触发。
+        assert "on_200: ClassVar[JSONResponseSpec]" in content
+        assert "model=GetProfileResponse" in content
         assert "from ..models import GetProfileResponse" in content
-        assert "APIRoute[GetProfileResponse]" in content
+        assert "APIRoute[" not in content
 
     def test_response_201_uses_201_status(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 201 Created 响应也能正确识别。"""
@@ -1775,7 +1778,9 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
-        assert "APIRoute[User]" in content
+        assert "on_201: ClassVar[JSONResponseSpec]" in content
+        assert "model=User" in content
+        assert "APIRoute[" not in content
 
     def test_response_without_content(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 response 只有 description 没有 content 时生成 None 类型。"""
@@ -1992,7 +1997,9 @@ components:
         assert "GetEntityResponse" in models
         assert "RootModel[TypeA | TypeB]" in models
         # route.py 正确引用包装类。
-        assert "APIRoute[GetEntityResponse]" in route
+        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "model=GetEntityResponse" in route
+        assert "APIRoute[" not in route
         assert "from ..models import GetEntityResponse" in route
 
     def test_response_with_anyof_union(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -2055,7 +2062,9 @@ components:
         assert "GetRecordResponse" in models
         assert "RootModel[TypeA | TypeB]" in models
         # route.py 正确引用包装类。
-        assert "APIRoute[GetRecordResponse]" in route
+        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "model=GetRecordResponse" in route
+        assert "APIRoute[" not in route
         assert "from ..models import GetRecordResponse" in route
 
     def test_response_with_multiple_status_codes_union(self, cli_runner: Any, tmp_path: Path) -> None:
@@ -2120,13 +2129,12 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        # 泛型拼接为 PEP 604 union，按 spec 顺序 ``User`` 在 ``Error`` 前。
-        assert "APIRoute[User | Error]" in route
-        # import 行包含两个模型名（isort 排序后 ``Error, User``）。
+        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "on_404: ClassVar[JSONResponseSpec]" in route
+        assert "model=User" in route
+        assert "model=Error" in route
         assert "from ..models import Error, User" in route
-        # 防御：当前实现若把 ``response_type`` 当字符串迭代（``U | s | e | r`` 之类）
-        # 而不是真正的 Union，会被这两个断言同时挡下。
-        assert "U | s | e | r" not in route
+        assert "APIRoute[" not in route
 
     def test_response_with_duplicate_status_codes_dedup(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 200 ``$ref: User`` + 201 ``$ref: User`` 时 Union 去重。
@@ -2177,14 +2185,13 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
-        # 单一 ``User`` 泛型，不出现 ``User | User``。
-        assert "APIRoute[User]" in route
-        assert "APIRoute[User | User]" not in route
-        # import 行 ``User`` 只出现一次：先验整行，再验逐项计数。
+        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "on_201: ClassVar[JSONResponseSpec]" in route
+        assert route.count("model=User") == 2
         assert "from ..models import User" in route
         assert route.count("from ..models import User") == 1
-        # 防御：import 行不冗余成 ``User, User``。
         assert "import User, User" not in route
+        assert "APIRoute[" not in route
 
     def test_response_with_mixed_json_and_non_json_status(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证 200 JSON ``$ref: User`` + 400 description-only 时 Union 退化为单元素。
@@ -2237,12 +2244,11 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        # 400 没有 JSON content，被跳过，泛型保持单元素 ``User``。
-        assert "APIRoute[User]" in route
-        # 不应出现 ``User | None`` 或别的拼接污染。
-        assert "User | None" not in route
-        assert "User | " not in route
+        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "model=User" in route
+        assert "on_400" not in route
         assert "from ..models import User" in route
+        assert "APIRoute[" not in route
 
     def test_response_with_only_non_json_status_codes(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证所有 status 都只有 description、无 ``application/json`` 时，route 保持裸 ``APIRoute)``。
@@ -2357,10 +2363,14 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        # 三个模型按 spec 顺序 pipe-union。
-        assert "APIRoute[User | Error | ServerError]" in route
-        # import 行同时列出全部三个（isort 排序后 ``Error, ServerError, User``）。
+        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "on_400: ClassVar[JSONResponseSpec]" in route
+        assert "on_500: ClassVar[JSONResponseSpec]" in route
+        assert "model=User" in route
+        assert "model=Error" in route
+        assert "model=ServerError" in route
         assert "from ..models import Error, ServerError, User" in route
+        assert "APIRoute[" not in route
 
     def test_response_with_inline_multi_status_uses_counter_suffix(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证多个 inline 响应用 dmcg 计数器后缀（``GetXResponse`` / ``GetXResponse1``）。
@@ -2422,14 +2432,15 @@ paths:
         assert result.exit_code == 0, result.output
         models = (out_dir / "models.py").read_text(encoding="utf-8")
         route = (out_dir / "endpoints" / "get_x.py").read_text(encoding="utf-8")
-        # dmcg 已经按计数器命名生成两个 model：第一个 ``GetXResponse``,
-        # 第二个 ``GetXResponse1``（不是 ``GetXResponse2``,不是 ``GetXErrorResponse``）。
         assert "class GetXResponse" in models
         assert "class GetXResponse1" in models
-        # ``GetXResponse2`` 不应出现（只有两个 inline response）。
         assert "class GetXResponse2" not in models
-        # route.py 同时引用两个 inline 模型，顺序与 spec 一致。
-        assert "APIRoute[GetXResponse | GetXResponse1]" in route
+        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "on_400: ClassVar[JSONResponseSpec]" in route
+        assert "model=GetXResponse" in route
+        assert "model=GetXResponse1" in route
+        assert "from ..models import GetXResponse, GetXResponse1" in route
+        assert "APIRoute[" not in route
         # import 行同时列出两者。
         assert "from ..models import GetXResponse, GetXResponse1" in route
 
@@ -2505,17 +2516,17 @@ components:
         assert result.exit_code == 0, result.output
         models = (out_dir / "models.py").read_text(encoding="utf-8")
         route = (out_dir / "endpoints" / "get_x.py").read_text(encoding="utf-8")
-        # dmcg 行为：$ref 不消耗计数器，所以 inline 仍从 ``GetXResponse`` 开始。
         assert "class GetXResponse" in models
         assert "class GetXResponse1" in models
-        # 防御：inline 计数器若错从 2 开始（误以为 ``$ref`` 占位）,
-        # 会生成 ``GetXResponse2`` 而不是 ``GetXResponse1``,或反过来跳过 ``GetXResponse1``。
         assert "class GetXResponse2" not in models
-        # route.py 按 spec 顺序拼接：
-        # ``User`` ($ref 200) → ``GetXResponse`` (inline 400) → ``GetXResponse1`` (inline 500)。
-        assert "APIRoute[User | GetXResponse | GetXResponse1]" in route
-        # import 行同步列出全部三个（isort 排序后 ``GetXResponse, GetXResponse1, User``）。
+        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "on_400: ClassVar[JSONResponseSpec]" in route
+        assert "on_500: ClassVar[JSONResponseSpec]" in route
+        assert "model=User" in route
+        assert "model=GetXResponse" in route
+        assert "model=GetXResponse1" in route
         assert "from ..models import GetXResponse, GetXResponse1, User" in route
+        assert "APIRoute[" not in route
 
     def test_response_with_only_error_status_codes_generates_models(self, cli_runner: Any, tmp_path: Path) -> None:
         """验证仅有 4xx/5xx JSON 响应（无 200/201）时仍生成 ``models.py`` 与对应 route import。
@@ -2590,10 +2601,13 @@ paths:
         models = (out_dir / "models.py").read_text(encoding="utf-8")
         assert "class Error" in models
         assert "class ServerError" in models
-        # route.py 引用两个错误模型(顺序对齐 spec 出现顺序:Error 在前,ServerError 在后)。
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "APIRoute[Error | ServerError]" in route
+        assert "on_400: ClassVar[JSONResponseSpec]" in route
+        assert "on_500: ClassVar[JSONResponseSpec]" in route
+        assert "model=Error" in route
+        assert "model=ServerError" in route
         assert "from ..models import Error, ServerError" in route
+        assert "APIRoute[" not in route
 
     def test_parser_has_json_payloads_true_when_only_error_responses(self, cli_runner: Any, tmp_path: Path) -> None:
         """直接走 parser 探测 ``has_json_payloads``，验证错误响应纳入判定。
@@ -3482,6 +3496,8 @@ class TestExtractResponseSpecs:
             media_type="application/json",
             model_name="User",
             is_json=True,
+            spec_class="JSONResponseSpec",
+            status_code_or_matcher="status_code=200",
         )
         assert renderer.errors == []
 
@@ -3511,6 +3527,8 @@ class TestExtractResponseSpecs:
             media_type="application/json",
             model_name="User",
             is_json=True,
+            spec_class="JSONResponseSpec",
+            status_code_or_matcher="status_code=200",
         )
         assert decls[1] == ResponseSpecDecl(
             attr_name="on_200_text_xml",
@@ -3519,6 +3537,8 @@ class TestExtractResponseSpecs:
             media_type="text/xml",
             model_name=None,
             is_json=False,
+            spec_class="RawResponseSpec",
+            status_code_or_matcher="status_code=200",
         )
         assert renderer.errors == []
 
@@ -3601,6 +3621,8 @@ class TestExtractResponseSpecs:
             media_type="application/json",
             model_name="User",
             is_json=True,
+            spec_class="JSONResponseSpec",
+            status_code_or_matcher="status_code=200",
         )
         assert decls[1] == ResponseSpecDecl(
             attr_name="on_200_application_problem_plus_json",
@@ -3609,6 +3631,8 @@ class TestExtractResponseSpecs:
             media_type="application/problem+json",
             model_name="Problem",
             is_json=True,
+            spec_class="JSONResponseSpec",
+            status_code_or_matcher="status_code=200",
         )
         assert renderer.errors == []
 
@@ -3751,6 +3775,8 @@ class TestRenderPassesResponseSpecDecls:
             media_type="application/json",
             model_name="User",
             is_json=True,
+            spec_class="JSONResponseSpec",
+            status_code_or_matcher="status_code=200",
         )
 
     def test_render_passes_imported_specs_json_only(self) -> None:
@@ -3904,3 +3930,576 @@ class TestRenderPassesResponseSpecDecls:
         endpoint = _make_endpoint(None)
         kwargs = _capture_render_kwargs(renderer, endpoint)
         assert kwargs["response_type"] == ""
+
+
+class TestTemplateEmitsClassVarDeclarations:
+    """验证模板输出 ``on_<status>: ClassVar[<spec_class>] = <spec_class>(...)`` 形式。
+
+    Wave 6.4 模板切换后，渲染结果应满足：
+
+    - ``class <Name>(APIRoute):`` 不带 ``[T]`` 泛型参数。
+    - ``on_<status>: ClassVar[JSONResponseSpec] = JSONResponseSpec(...)``（JSON 路径，含 ``model=...``）。
+    - ``on_<status>: ClassVar[RawResponseSpec] = RawResponseSpec(...)``（Raw 路径，无 ``model=``）。
+    - ``from typing import ClassVar`` 在 ``uses_classvar_import=True`` 时出现。
+    - ``from stoma import JSONResponseSpec`` / ``RawResponseSpec`` 按 ``imported_specs`` 添加。
+    - 全文不含 ``APIRoute[``（带方括号的泛型语法已被淘汰）。
+    """
+
+    def _make_endpoint_with_json_response(
+        self,
+        responses: dict[str, _FakeResponse] | None,
+        operation_id: str = "getUser",
+    ) -> Endpoint[Any, Any, _FakeResponse]:
+        """构造带 responses 的最小 :class:`Endpoint`，仅供 renderer.render 调用。"""
+        return Endpoint[Any, Any, _FakeResponse](
+            operation_id=operation_id,
+            method="GET",
+            path="/test",
+            summary=None,
+            description=None,
+            parameters=[],
+            request_body=None,
+            responses=responses,
+            spec_version="3.1",
+        )
+
+    def test_class_line_has_no_generic(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证渲染后 ``class <Name>(APIRoute):`` 无 ``[T]`` 泛型参数。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: No Generic API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
+        assert "class GetUser(APIRoute):" in content
+        assert "APIRoute[" not in content
+        assert "APIRoute[User]" not in content
+
+    def test_json_decl_emits_classvar_with_model(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 JSON decl 渲染为 ``on_<status>: ClassVar[JSONResponseSpec] = JSONResponseSpec(..., model=...)``。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: JSON Decl API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
+        assert "on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(" in content
+        assert "model=User" in content
+        assert 'media_type="application/json"' in content
+        assert "status_code=200" in content
+
+    def test_raw_decl_emits_classvar_without_model(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 Raw decl（image/png）渲染为 ``RawResponseSpec(...)``，无 ``model=`` 参数。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Raw Decl API
+  version: "1.0.0"
+paths:
+  /avatars/{user_id}:
+    get:
+      operationId: getAvatar
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "get_avatar.py").read_text(encoding="utf-8")
+        assert "on_200: ClassVar[RawResponseSpec] = RawResponseSpec(" in content
+        assert "model=" not in content
+        assert 'media_type="image/png"' in content
+
+    def test_default_decl_uses_callable_lambda_true(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 ``default`` 响应渲染为 ``callable=lambda s: True``（不接受 ``status_code=``）。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Default API
+  version: "1.0.0"
+paths:
+  /echo:
+    post:
+      operationId: postEcho
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+      responses:
+        "default":
+          description: 任何状态码
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    Error:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "post_echo.py").read_text(encoding="utf-8")
+        assert "on_default: ClassVar[JSONResponseSpec]" in content
+        assert "callable=lambda s: True" in content
+        assert "model=Error" in content
+
+    def test_4xx_wildcard_decl_uses_callable_lambda_range(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 ``4XX`` 通配符渲染为 ``callable=lambda s: 400 <= s < 500``。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Wildcard 4xx API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "4XX":
+          description: 客户端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    Error:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
+        assert "on_4xx: ClassVar[JSONResponseSpec]" in content
+        assert "callable=lambda s: 400 <= s < 500" in content
+
+    def test_classvar_import_added_when_decls_exist(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证任意 decl 存在时模板注入 ``from typing import ClassVar``。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: ClassVar Import API
+  version: "1.0.0"
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "health_check.py").read_text(encoding="utf-8")
+        assert "from typing import ClassVar" in content
+
+    def test_classvar_import_absent_when_no_responses(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证无响应声明时模板不输出 ``from typing import ClassVar``。
+
+        注意：spec 仍要求 ``200`` response 存在，所以这里通过 ``description-only``
+        （无 content）路径触发空 decl 列表。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: No Responses API
+  version: "1.0.0"
+paths:
+  /ping:
+    get:
+      operationId: ping
+      responses:
+        "200":
+          description: ok
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "ping.py").read_text(encoding="utf-8")
+        assert "from typing import ClassVar" not in content
+
+    def test_json_response_spec_import_added(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证有 JSON decl 时 ``from stoma import ... JSONResponseSpec`` 自动添加。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: JSON Import API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
+        assert "from stoma import APIRoute, JSONResponseSpec" in content
+        assert "RawResponseSpec" not in content
+
+    def test_raw_response_spec_import_added(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证有 Raw decl 时 ``from stoma import ... RawResponseSpec`` 自动添加。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Raw Import API
+  version: "1.0.0"
+paths:
+  /avatars/{user_id}:
+    get:
+      operationId: getAvatar
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "get_avatar.py").read_text(encoding="utf-8")
+        assert "from stoma import APIRoute, RawResponseSpec" in content
+        assert "JSONResponseSpec" not in content
+
+    def test_mixed_json_and_raw_both_imports(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证 JSON + Raw 混合时两种 spec class 都导入。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Mixed Import API
+  version: "1.0.0"
+paths:
+  /files/{file_id}:
+    get:
+      operationId: getFile
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meta'
+            image/png:
+              schema:
+                type: string
+                format: binary
+components:
+  schemas:
+    Meta:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "get_file.py").read_text(encoding="utf-8")
+        assert "from stoma import APIRoute, JSONResponseSpec, RawResponseSpec" in content
+
+    def test_no_apiroute_generic_brackets_anywhere(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证整个输出文件不含 ``APIRoute[`` 残留。"""
+        spec = """\
+openapi: 3.1.0
+info:
+  title: No Generic Brackets API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "404":
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+    Error:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
+        assert "APIRoute[" not in content
+        assert "APIRoute[User" not in content
+        assert "APIRoute[User | Error]" not in content
+
+    def test_response_spec_block_positioned_after_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+        """验证响应声明块在 docstring 之后、body 字段之前。
+
+        body 字段（路径参数）的 docstring 也出现，必须确保 response_spec_decls
+        不会错误地插入到 body 字段之间或之后。检查 ``on_200`` 出现在 ``user_id`` 之前。
+        """
+        spec = """\
+openapi: 3.1.0
+info:
+  title: Ordering API
+  version: "1.0.0"
+paths:
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      summary: 获取用户
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+"""
+        spec_file = tmp_path / "spec.yaml"
+        spec_file.write_text(spec, encoding="utf-8")
+        out_dir = tmp_path / "output"
+
+        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
+
+        assert result.exit_code == 0, result.output
+        content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
+        on_200_pos = content.index("on_200:")
+        user_id_pos = content.index("user_id:")
+        assert on_200_pos < user_id_pos
+
+    def test_render_status_code_kwarg_int(self) -> None:
+        """验证 ``render_status_code_kwarg`` 对 ``int`` 状态码输出 ``status_code=N``。"""
+        assert render_status_code_kwarg(200) == "status_code=200"
+        assert render_status_code_kwarg(404) == "status_code=404"
+
+    def test_render_status_code_kwarg_default(self) -> None:
+        """验证 ``render_status_code_kwarg`` 对 ``"default"`` 输出 ``callable=lambda s: True``。"""
+        assert render_status_code_kwarg("default") == "callable=lambda s: True"
+
+    def test_render_status_code_kwarg_range(self) -> None:
+        """验证 ``render_status_code_kwarg`` 对 ``"NXX"`` 输出 ``callable=lambda s: start <= s < end``。"""
+        assert render_status_code_kwarg("1XX") == "callable=lambda s: 100 <= s < 200"
+        assert render_status_code_kwarg("2XX") == "callable=lambda s: 200 <= s < 300"
+        assert render_status_code_kwarg("3XX") == "callable=lambda s: 300 <= s < 400"
+        assert render_status_code_kwarg("4XX") == "callable=lambda s: 400 <= s < 500"
+        assert render_status_code_kwarg("5XX") == "callable=lambda s: 500 <= s < 600"
+
+    def test_render_status_code_kwarg_invalid_raises(self) -> None:
+        """验证 ``render_status_code_kwarg`` 对未知字符串抛 ``ValueError``。"""
+        with pytest.raises(ValueError, match="Cannot render status_code"):
+            render_status_code_kwarg("6XX")
+        with pytest.raises(ValueError, match="Cannot render status_code"):
+            render_status_code_kwarg("XYZ")

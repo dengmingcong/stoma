@@ -142,6 +142,15 @@ class ResponseSpecDecl(NamedTuple):
     :vartype model_name: str | None
     :var is_json: ``True`` → :class:`stoma.JSONResponseSpec`；``False`` → :class:`stoma.RawResponseSpec`。
     :vartype is_json: bool
+    :var spec_class: 模板渲染时使用的 spec 类名字符串——``is_json=True`` 时为
+        ``"JSONResponseSpec"``，否则为 ``"RawResponseSpec"``。模板据此输出
+        ``ClassVar[<spec_class>]`` 与构造调用。
+    :vartype spec_class: str
+    :var status_code_or_matcher: 已渲染为代码生成字符串的 ``status_code`` 字面量——
+        精确匹配为 ``"status_code=200"``；``"default"`` 为 ``"callable=lambda s: True"``；
+        ``"4XX"`` 等范围键为 ``"callable=lambda s: 400 <= s < 500"``。模板直接嵌入，
+        不再加 ``status_code=`` 前缀。
+    :vartype status_code_or_matcher: str
     """
 
     attr_name: str
@@ -150,6 +159,8 @@ class ResponseSpecDecl(NamedTuple):
     media_type: str
     model_name: str | None
     is_json: bool
+    spec_class: str
+    status_code_or_matcher: str
 
 
 def make_range_matcher(start: int, end: int) -> Callable[[int], bool]:
@@ -164,6 +175,35 @@ def make_range_matcher(start: int, end: int) -> Callable[[int], bool]:
     :return: 谓词函数 ``lambda s: start <= s < end``。
     """
     return lambda s: start <= s < end
+
+
+def render_status_code_kwarg(status_code: int | str) -> str:
+    """将 ``status_code`` 渲染为 ``JSONResponseSpec(...)`` / ``RawResponseSpec(...)`` 的关键字参数片段。
+
+    输出已含参数名（``status_code=`` / ``callable=``），模板直接嵌入，无需再加前缀。
+    三类形态：
+
+    - 精确匹配 ``int``（如 ``200``）→ ``"status_code=200"``。
+    - OpenAPI ``"default"`` → ``"callable=lambda s: True"``。
+    - 范围通配符 ``"1XX"`` / ``"2XX"`` / ``"3XX"`` / ``"4XX"`` / ``"5XX"``
+      → ``"callable=lambda s: 400 <= s < 500"`` 等。
+
+    :param status_code: 精确匹配为 ``int``；通配符为 OpenAPI 字符串
+        （``"default"`` / ``"NXX"``）。
+    :return: 可直接嵌入模板的代码片段字符串。
+    :raise ValueError: ``status_code`` 既非 ``int``、也非 ``"default"``、也不在
+        ``"NXX"`` 范围集合（无法静态推导 lambda 体）。
+    """
+    if isinstance(status_code, int):
+        return f"status_code={status_code}"
+    if status_code == "default":
+        return "callable=lambda s: True"
+    upper = status_code.upper()
+    if len(upper) == 3 and upper[1:] == "XX" and upper[0] in "12345":
+        digit = int(upper[0])
+        return f"callable=lambda s: {digit * 100} <= s < {digit * 100 + 100}"
+    msg = f"Cannot render status_code {status_code!r} to code-generation kwarg"
+    raise ValueError(msg)
 
 
 class EndpointRenderer[ReferenceT: _ReferenceLike]:
@@ -807,6 +847,8 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                         media_type=media_type,
                         model_name=model_name,
                         is_json=is_json,
+                        spec_class="JSONResponseSpec" if is_json else "RawResponseSpec",
+                        status_code_or_matcher=render_status_code_kwarg(status_code),
                     )
                 )
 
