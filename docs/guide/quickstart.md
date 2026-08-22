@@ -18,9 +18,9 @@ pip install stoma[cli]
 以 Swagger Petstore 接口 [getUserByName](https://petstore.swagger.io/#/user/getUserByName) 为例，说明 Stoma 中如何定义接口。
 
 ```python
-from typing import Annotated
+from typing import Annotated, ClassVar
 from pydantic import BaseModel, Field
-from stoma import APIRoute, APIRouter
+from stoma import APIRoute, APIRouter, JSONResponseSpec
 
 class User(BaseModel):
     id: Annotated[int | None, Field(examples=[10])] = None
@@ -47,11 +47,13 @@ class User(BaseModel):
 router = APIRouter(prefix="/api/v3")
 
 @router.get("/user/{username}")
-class GetUserByName(APIRoute[User]):
+class GetUserByName(APIRoute):
     """Get user by user name.。
 
     Get user detail based on username.
     """
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", User)
 
     username: str
     """The name that needs to be fetched. Use user1 for testing"""
@@ -60,9 +62,9 @@ class GetUserByName(APIRoute[User]):
 
 * `router = APIRouter(prefix="/api/v3")` - 实例化 `APIRouter`，并为所有关联接口设置公共的路径前缀 `/api/v3`。
 * `@router.get("/user/{username}")` - 定义接口的请求方法（`GET`）和路径（`/user/{username}`），其中包含一个路径参数 `username`。最终接口路径为 `/api/v3/user/{username}`。
-* `class GetUserByName(APIRoute[User]):` - 定义接口，Stoma 中一个接口必须是 `APIRoute` 子类。
+* `class GetUserByName(APIRoute):` - 定义接口，Stoma 中一个接口必须是 `APIRoute` 子类。
     - `APIRoute` 是 pydantic `BaseModel` 子类，定义接口和定义 pydantic 模型是相同的书写方式。
-    - `APIRoute` 同时也是泛型，泛型参数是接口的响应类型。当接口响应 Header `Content-Type` 是 JSON（如 `application/json`）时，会使用泛型参数的值去校验响应体并返回对应实例，示例会返回 `User` 实例。
+    - 通过 `on_<status_code>: ClassVar[JSONResponseSpec] = JSONResponseSpec(...)` 声明响应协议。当接口响应 Header `Content-Type` 是 JSON（如 `application/json`）时，会使用声明的模型去校验响应体并返回对应实例，示例中 `response.validated` 类型为 `User`。
 * `username: str` - Path 参数。如果字段名和路径参数相同，会被识别为 Path 参数。
 
 
@@ -76,7 +78,7 @@ with sync_playwright() as p:
     ctx = p.request.new_context(base_url="https://petstore3.swagger.io")
     client = Client(context=ctx)
 
-    response = client.send(GetUserByName(username="user1"))
+    response = client.send(GetUserByName(username="user1"), expect=GetUserByName.on_200)
 
     assert response.raw.status == 200
     assert response.validated
@@ -89,7 +91,7 @@ with sync_playwright() as p:
     ![alt text](../assets/guide/quickstart/ide-autocomplete-param.png)
     还可查看参数的说明。
     ![alt text](../assets/guide/quickstart/hover-param.png)
-* Stoma 利用泛型特性实现了 IDE 可以对响应自动联想。
+* Stoma 通过 `on_<status_code>` 声明响应协议，实现了 IDE 可以对响应自动联想。
     ![alt text](../assets/guide/quickstart/ide-autocomplete-response.png)
 
 ## 回顾

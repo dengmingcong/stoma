@@ -230,3 +230,99 @@ flowchart TD
 - 黄色节点（binary）：`string + format=binary` 单文件路径。
 - 灰色节点（raw scalar）：兜底 RAW 路径，覆盖 `text/plain` 等非 JSON / 非 form / 非 binary 媒体类型。
 - 红色节点（schema_unsupported）：顶层组合子不被支持，抛出异常，CLI exit 1。
+
+## 响应声明属性命名规则
+
+`_extract_response_specs`（`renderer.py` 第 836-960 行）在生成响应声明时，按 `status_code + media_type` 组合生成唯一的属性名。命名规则由 `sanitize_media_type`（`media_type.py` 第 100-127 行）实现。
+
+### 单 media type
+
+某个状态码只有一个 media type 时，属性名直接使用 `on_<status>` 形式：
+
+```python
+on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    status_code=200,
+    media_type="application/json",
+    model=BookResponse,
+)
+```
+
+### 多 media type
+
+某个状态码有多个 media type 时，属性名后缀经过 `sanitize_media_type` 清洗，确保生成合法的 Python 标识符：
+
+```python
+on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    status_code=200,
+    media_type="application/json",
+    model=BookResponse,
+)
+on_200_application_problem_plus_json: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    status_code=200,
+    media_type="application/problem+json",
+    model=ErrorResponse,
+)
+```
+
+`sanitize_media_type` 执行以下链式替换：
+
+1. `/` → `_`（分隔 type/subtype）
+2. `+` → `_plus_`（保留 RFC 6839 structured syntax suffix 语义）
+3. `-` → `_`
+4. `.` → `_`
+5. `;` → `_`（剥离 charset 参数）
+6. 空格 → `_`
+
+### Raw 响应
+
+非 JSON media type 生成 `RawResponseSpec` 而非 `JSONResponseSpec`，模板根据 `categorize_raw_media_type` 的分类结果选择 `.bytes()` 或 `.text()` 工厂方法：
+
+```python
+on_200_application_octet_stream: ClassVar[RawResponseSpec[bytes]] = RawResponseSpec.bytes(
+    status_code=200,
+    media_type="application/octet-stream",
+)
+```
+
+## 通配符状态码渲染
+
+OpenAPI 的 `default`、`4XX`、`5XX` 等通配符无法用精确整数匹配，渲染器将其转换为 `callable=lambda s: ...` 谓词形式，由 `render_status_code_kwarg`（`renderer.py` 第 188-214 行）生成。
+
+### `default`
+
+```python
+on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    callable=lambda s: True,
+    media_type="application/json",
+    model=ErrorResponse,
+)
+```
+
+`default` 匹配所有未在 OpenAPI 响应中明确声明的状态码。
+
+### 范围通配符
+
+```python
+on_4xx: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    callable=lambda s: 400 <= s < 500,
+    media_type="application/json",
+    model=ErrorResponse,
+)
+on_5xx: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    callable=lambda s: 500 <= s < 600,
+    media_type="application/json",
+    model=InternalServerError,
+)
+```
+
+### 状态码谓词校验
+
+`BaseResponseSpec`（`response.py` 第 62-152 行）在 `validate_response` 时调用 `_assert_status`，对 `callable` 类型的 `status_code` 执行谓词判断：
+
+```python
+def _assert_status(self, actual: int) -> None:
+    if callable(self.status_code):
+        assert self.status_code(actual), f"HTTP 状态码不匹配: 期望满足谓词，实际为 {actual}"
+    else:
+        assert actual == self.status_code, f"HTTP 状态码不匹配: 期望 {self.status_code}，实际为 {actual}"
+```

@@ -113,4 +113,69 @@ $ stoma make --spec specs/001-generate-api/contracts/openapi.yaml --out src/exam
 
 若存在 `SCHEMA_UNSUPPORTED` 错误，输出末尾会追加对应警告块，CLI 以退出码 1 终止，不输出生成结果摘要。
 
+## 响应声明格式
+
+每个 endpoint 的 route 文件在类体内生成一组响应声明，格式为：
+
+```python
+class GetBookById(APIRoute):
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        status_code=200,
+        media_type="application/json",
+        model=BookResponse,
+    )
+    on_404: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+        status_code=404,
+        media_type="application/json",
+        model=ErrorResponse,
+    )
+```
+
+`on_<status>` 类属性遵循以下命名规则：
+
+- 精确状态码（如 `200`、`404`）→ `on_200`、`on_404`
+- OpenAPI 通配符 → `on_default`、`on_4xx`、`on_5xx`（小写）
+- 每个状态码生成一条独立的 `ClassVar[...] = JSONResponseSpec(...)` 声明
+
+渲染逻辑由 `EndpointRenderer._extract_response_specs`（`renderer.py` 第 836-960 行）实现，按 `status_code + media_type` 组合切分响应声明列表。
+
+## 每个状态码一个 spec
+
+stoma 采用"每个状态码一个 spec"的设计原则，原因如下：
+
+**精确匹配语义**：`on_200` 只匹配 HTTP 200，不会误匹配其他状态码。这种设计避免了多状态码合并声明带来的隐式分支判断，调用方可精确断言每个状态码的响应结构。
+
+**可独立校验**：调用方可以精确断言某个状态码的响应结构，例如：
+
+```python
+response = client.send(GetBookById())
+if response.raw.status == 200:
+    book = response.validated  # 类型为 BookResponse
+elif response.raw.status == 404:
+    error = response.validated  # 类型为 ErrorResponse
+```
+
+**多 media type 支持**：同一个状态码可能返回多种 media type（如 `application/json` 和 `application/problem+json`），此时渲染器生成两条独立的 spec：
+
+```python
+on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    status_code=200,
+    media_type="application/json",
+    model=BookResponse,
+)
+on_200_application_problem_plus_json: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    status_code=200,
+    media_type="application/problem+json",
+    model=ErrorResponse,
+)
+```
+
+`sanitize_media_type` 函数（`media_type.py` 第 100-127 行）负责将 media type 字符串转换为合法的 Python 属性名后缀。
+
+**OpenAPI 通配符处理**：对于 `default`、`4XX`、`5XX` 等范围通配符，渲染器生成 `callable=lambda s: ...` 形式的谓词：
+
+- `default` → `callable=lambda s: True`
+- `4XX` → `callable=lambda s: 400 <= s < 500`
+- `5XX` → `callable=lambda s: 500 <= s < 600`
+
 [继续：代码生成规则](./generation-rules.md)

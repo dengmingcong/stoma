@@ -3,31 +3,42 @@
 通过 `APIRouter` 实例的 HTTP 方法装饰器（`get` / `post` 等）定义接口路由。以用户增、删、改、查为例：
 
 ```python
-from typing import Annotated
-from stoma import APIRoute, APIRouter
+from typing import Annotated, ClassVar
+
+from stoma import APIRoute, APIRouter, JSONResponseSpec
 
 router = APIRouter(prefix="/api/v1")
 
+
 @router.get("/users")
-class GetUsers(APIRoute[list[dict]]):
+class GetUsers(APIRoute):
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, list[dict])
     limit: int = 20
 
+
 @router.get("/users/{user_id}")
-class GetUserById(APIRoute[dict]):
+class GetUserById(APIRoute):
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, dict)
     user_id: int
 
+
 @router.post("/users")
-class CreateUser(APIRoute[dict]):
+class CreateUser(APIRoute):
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, dict)
     name: str
     email: str
 
+
 @router.patch("/users/{user_id}")
-class PatchUser(APIRoute[dict]):
+class PatchUser(APIRoute):
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, dict)
     user_id: int
     email: str | None = None
 
+
 @router.delete("/users/{user_id}")
-class DeleteUser(APIRoute[dict]):
+class DeleteUser(APIRoute):
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, dict)
     user_id: int
 ```
 
