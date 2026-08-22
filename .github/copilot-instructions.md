@@ -40,6 +40,8 @@ query_params_list = []
 
 应该优先使用内建类型如 `list`、`dict`、`set` 等做类型注解，不应使用 `typing` 模块中的 `List`、`Dict`、`Set` 等类型。
 
+应该优先使用具体的类型做注解，不应使用 `Any`。
+
 ## 常量
 
 规范见 [常量编码规范](./instructions/constants.instructions.md)。
