@@ -5,8 +5,6 @@ Generated from OpenAPI: get-headers
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from stoma import APIRoute, JSONResponseSpec
 
 from ..models import ErrorModel, GetHeadersResponse
@@ -17,9 +15,12 @@ from ..router import router
 class GetHeaders(APIRoute):
     """Return request headers。"""
 
-    on_200: ClassVar[JSONResponseSpec[GetHeadersResponse]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=GetHeadersResponse
-    )
-    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
-        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
-    )
+    @property
+    def on_200(self) -> JSONResponseSpec[GetHeadersResponse]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=GetHeadersResponse)
+
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorModel]:
+        return JSONResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+        )

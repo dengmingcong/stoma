@@ -5,8 +5,6 @@ Generated from OpenAPI: get-stream-bytes
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from stoma import APIRoute, JSONResponseSpec
 
 from ..models import ErrorModel
@@ -17,12 +15,15 @@ from ..router import router
 class GetStreamBytes(APIRoute):
     """Stream bytes in chunks。"""
 
-    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
-        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
-    )
     n: int
     """Total number of bytes to stream"""
     chunk_size: int | None = None
     """Maximum bytes written per chunk"""
     seed: int | None = None
     """Optional deterministic seed"""
+
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorModel]:
+        return JSONResponseSpec(
+            status_code=lambda c: c not in [204], media_type="application/problem+json", model=ErrorModel
+        )

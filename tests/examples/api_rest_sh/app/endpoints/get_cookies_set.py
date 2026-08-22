@@ -5,8 +5,6 @@ Generated from OpenAPI: get-cookies-set
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from stoma import APIRoute, JSONResponseSpec
 
 from ..models import ErrorModel, GetCookiesSetResponse
@@ -17,9 +15,12 @@ from ..router import router
 class GetCookiesSet(APIRoute):
     """Set cookies from query parameters。"""
 
-    on_200: ClassVar[JSONResponseSpec[GetCookiesSetResponse]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=GetCookiesSetResponse
-    )
-    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
-        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
-    )
+    @property
+    def on_200(self) -> JSONResponseSpec[GetCookiesSetResponse]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=GetCookiesSetResponse)
+
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorModel]:
+        return JSONResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+        )

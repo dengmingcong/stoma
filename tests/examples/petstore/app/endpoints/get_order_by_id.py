@@ -6,7 +6,7 @@ For valid response try integer IDs with value <= 5 or > 10. Other values will ge
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated
 
 from pydantic import Field
 
@@ -23,11 +23,13 @@ class GetOrderById(APIRoute):
     For valid response try integer IDs with value <= 5 or > 10. Other values will generate exceptions.
     """
 
-    on_200_application_json: ClassVar[JSONResponseSpec[Order]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=Order
-    )
-    on_200_application_xml: ClassVar[RawResponseSpec[str]] = RawResponseSpec.text(
-        status_code=200, media_type="application/xml"
-    )
     order_id: Annotated[int, Field(serialization_alias="orderId")]
     """ID of order that needs to be fetched"""
+
+    @property
+    def on_200_application_json(self) -> JSONResponseSpec[Order]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=Order)
+
+    @property
+    def on_200_application_xml(self) -> RawResponseSpec[str]:
+        return RawResponseSpec(status_code=200, media_type="application/xml", target_type=str)

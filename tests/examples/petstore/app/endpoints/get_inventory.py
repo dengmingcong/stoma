@@ -6,8 +6,6 @@ Returns a map of status codes to quantities.
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from stoma import APIRoute, JSONResponseSpec
 
 from ..models import GetInventoryResponse
@@ -21,6 +19,6 @@ class GetInventory(APIRoute):
     Returns a map of status codes to quantities.
     """
 
-    on_200: ClassVar[JSONResponseSpec[GetInventoryResponse]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=GetInventoryResponse
-    )
+    @property
+    def on_200(self) -> JSONResponseSpec[GetInventoryResponse]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=GetInventoryResponse)

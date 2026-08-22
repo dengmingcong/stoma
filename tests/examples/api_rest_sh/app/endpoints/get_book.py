@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated
 
 from pydantic import Field
 
@@ -12,12 +12,6 @@ from ..router import router
 
 @router.get("/books/{book-id}")
 class GetBook(APIRoute):
-    on_200: ClassVar[JSONResponseSpec[Book]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=Book
-    )
-    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
-        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
-    )
     book_id: Annotated[str, Field(serialization_alias="book-id")]
     """Book identifier"""
     if_match: Annotated[list[str] | None, Header(), Field(serialization_alias="If-Match")] = None
@@ -28,3 +22,13 @@ class GetBook(APIRoute):
     """Succeeds if the server's resource date is more recent than the passed date."""
     if_unmodified_since: Annotated[str | None, Header(), Field(serialization_alias="If-Unmodified-Since")] = None
     """Succeeds if the server's resource date is older or the same as the passed date."""
+
+    @property
+    def on_200(self) -> JSONResponseSpec[Book]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=Book)
+
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorModel]:
+        return JSONResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+        )

@@ -6,8 +6,6 @@ Streams simulated server metrics as a [Server-Sent Events](https://developer.moz
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from stoma import APIRoute, JSONResponseSpec, RawResponseSpec
 
 from ..models import ErrorModel
@@ -21,9 +19,15 @@ class GetSseMetrics(APIRoute):
     Streams simulated server metrics as a [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) (SSE) stream. Each event is a JSON object with CPU, memory, connection, and request-rate fields sampled from a random walk to mimic real telemetry.
     """
 
-    on_200: ClassVar[RawResponseSpec[str]] = RawResponseSpec.text(status_code=200, media_type="text/event-stream")
-    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
-        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
-    )
     count: int | None = None
     """Number of metric events to emit before closing the stream"""
+
+    @property
+    def on_200(self) -> RawResponseSpec[str]:
+        return RawResponseSpec(status_code=200, media_type="text/event-stream", target_type=str)
+
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorModel]:
+        return JSONResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+        )

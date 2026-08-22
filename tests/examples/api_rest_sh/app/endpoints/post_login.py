@@ -6,8 +6,6 @@ Accepts an application/x-www-form-urlencoded username and password and returns a
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from stoma import APIRoute, JSONResponseSpec
 
 from ..models import ErrorModel, TokenResponseBody
@@ -21,9 +19,12 @@ class PostLogin(APIRoute):
     Accepts an application/x-www-form-urlencoded username and password and returns a mock bearer token.
     """
 
-    on_200: ClassVar[JSONResponseSpec[TokenResponseBody]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=TokenResponseBody
-    )
-    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
-        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
-    )
+    @property
+    def on_200(self) -> JSONResponseSpec[TokenResponseBody]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=TokenResponseBody)
+
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorModel]:
+        return JSONResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+        )

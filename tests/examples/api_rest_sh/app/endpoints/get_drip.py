@@ -5,8 +5,6 @@ Generated from OpenAPI: get-drip
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from stoma import APIRoute, JSONResponseSpec
 
 from ..models import ErrorModel
@@ -17,9 +15,6 @@ from ..router import router
 class GetDrip(APIRoute):
     """Slowly stream bytes。"""
 
-    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
-        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
-    )
     numbytes: int | None = None
     """Number of bytes to stream"""
     duration: str | None = None
@@ -28,3 +23,9 @@ class GetDrip(APIRoute):
     """Delay before streaming begins"""
     code: int | None = None
     """HTTP status code to return"""
+
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorModel]:
+        return JSONResponseSpec(
+            status_code=lambda c: c not in [204], media_type="application/problem+json", model=ErrorModel
+        )

@@ -5,8 +5,6 @@ Generated from OpenAPI: get-slow
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from stoma import APIRoute, JSONResponseSpec
 
 from ..models import ErrorModel, GetSlowResponse
@@ -17,11 +15,15 @@ from ..router import router
 class GetSlow(APIRoute):
     """Delay before responding。"""
 
-    on_200: ClassVar[JSONResponseSpec[GetSlowResponse]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=GetSlowResponse
-    )
-    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
-        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
-    )
     delay: str | None = None
     """Delay duration, for example 500ms or 2s"""
+
+    @property
+    def on_200(self) -> JSONResponseSpec[GetSlowResponse]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=GetSlowResponse)
+
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorModel]:
+        return JSONResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+        )

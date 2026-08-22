@@ -5,7 +5,7 @@ Generated from OpenAPI: get-anything-path
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated
 
 from pydantic import Field
 
@@ -19,12 +19,6 @@ from ..router import router
 class GetAnythingPath(APIRoute):
     """Echo request data。"""
 
-    on_200: ClassVar[JSONResponseSpec[EchoModel]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=EchoModel
-    )
-    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
-        callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
-    )
     path: str
     """Path suffix to echo"""
     status: int | None = None
@@ -37,3 +31,13 @@ class GetAnythingPath(APIRoute):
     """Succeeds if the server's resource date is more recent than the passed date."""
     if_unmodified_since: Annotated[str | None, Header(), Field(serialization_alias="If-Unmodified-Since")] = None
     """Succeeds if the server's resource date is older or the same as the passed date."""
+
+    @property
+    def on_200(self) -> JSONResponseSpec[EchoModel]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=EchoModel)
+
+    @property
+    def on_default(self) -> JSONResponseSpec[ErrorModel]:
+        return JSONResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+        )

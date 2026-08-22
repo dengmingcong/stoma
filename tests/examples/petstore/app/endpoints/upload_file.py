@@ -6,7 +6,7 @@ Upload image of the pet.
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar
+from typing import Annotated
 
 from pydantic import Field
 
@@ -23,12 +23,13 @@ class UploadFile(APIRoute):
     Upload image of the pet.
     """
 
-    on_200: ClassVar[JSONResponseSpec[ApiResponse]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=ApiResponse
-    )
     pet_id: Annotated[int, Field(serialization_alias="petId")]
     """ID of pet to update"""
     additional_metadata: Annotated[str | None, Field(serialization_alias="additionalMetadata")] = None
     """Additional Metadata"""
     content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/octet-stream"
     body: UploadFile
+
+    @property
+    def on_200(self) -> JSONResponseSpec[ApiResponse]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=ApiResponse)

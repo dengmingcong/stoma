@@ -6,8 +6,6 @@ Get user detail based on username.
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from stoma import APIRoute, JSONResponseSpec, RawResponseSpec
 
 from ..models import User
@@ -21,11 +19,13 @@ class GetUserByName(APIRoute):
     Get user detail based on username.
     """
 
-    on_200_application_json: ClassVar[JSONResponseSpec[User]] = JSONResponseSpec(
-        status_code=200, media_type="application/json", model=User
-    )
-    on_200_application_xml: ClassVar[RawResponseSpec[str]] = RawResponseSpec.text(
-        status_code=200, media_type="application/xml"
-    )
     username: str
     """The name that needs to be fetched. Use user1 for testing"""
+
+    @property
+    def on_200_application_json(self) -> JSONResponseSpec[User]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=User)
+
+    @property
+    def on_200_application_xml(self) -> RawResponseSpec[str]:
+        return RawResponseSpec(status_code=200, media_type="application/xml", target_type=str)
