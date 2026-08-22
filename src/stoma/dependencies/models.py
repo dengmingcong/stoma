@@ -1,9 +1,7 @@
 """参数依赖模型定义。"""
 
 from dataclasses import dataclass, field
-from typing import Any
 
-from pydantic import TypeAdapter
 from pydantic.fields import FieldInfo
 
 from stoma.params import Param
@@ -64,10 +62,6 @@ class Dependant:
     :vartype form_body_params: list[ModelField]
     :var file_body_params: 上传文件请求体参数字段列表（UploadFile 或 list[UploadFile]）。
     :vartype file_body_params: list[ModelField]
-    :var json_response_schema: JSON 响应校验类型，为 None 时表示不校验响应。
-    :vartype json_response_schema: type | None
-    :var json_response_schema_adapter: JSON 响应校验器缓存。
-    :vartype json_response_schema_adapter: TypeAdapter | None
     :var upload_as_multipart: 上传文件时是否以 multipart/form-data 形式发送。默认 True。
         False 表示按照 Postman body 为 binary 形式发送，适用于单文件上传接口。
     :vartype upload_as_multipart: bool
@@ -81,6 +75,4 @@ class Dependant:
     pure_body_params: list[ModelField] = field(default_factory=list)
     form_body_params: list[ModelField] = field(default_factory=list)
     file_body_params: list[ModelField] = field(default_factory=list)
-    json_response_schema: type | None = None
     upload_as_multipart: bool = field(default=True)
-    json_response_schema_adapter: TypeAdapter[Any] | None = None
