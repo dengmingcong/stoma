@@ -273,14 +273,17 @@ class GetBookById(APIRoute):
         )
 ```
 
-`sanitize_media_type` 执行以下链式替换：
+`sanitize_media_type` 执行以下两步：
 
-1. `/` → `_`（分隔 type/subtype）
-2. `+` → `_plus_`（保留 RFC 6839 structured syntax suffix 语义）
-3. `-` → `_`
-4. `.` → `_`
-5. `;` → `_`（剥离 charset 参数）
-6. 空格 → `_`
+1. 按 `;` 切分，仅清洗主类型；`;charset=...` 等参数整体丢弃。
+   例如 `text/xml; charset=utf-8` 仅清洗 `text/xml` 部分。
+2. 在主类型上链式替换：
+
+   1. `/` → `_`（分隔 type/subtype）
+   2. `+` → `_plus_`（保留 RFC 6839 structured syntax suffix 语义）
+   3. `-` → `_`
+   4. `.` → `_`
+   5. 空格 → `_`
 
 ### Raw 响应
 

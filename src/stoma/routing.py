@@ -62,7 +62,7 @@ class APIRoute(BaseModel):
 
         endpoint = GetUsers(limit=10)
         response = client.send(endpoint)
-        users = response.expect(GetUsers.on_200)  # 类型: list[UserData]
+        users = response.expect(endpoint.on_200)  # 类型: list[UserData]; 状态不匹配会抛 AssertionError
     """
 
     # Ref: https://pydantic.dev/docs/validation/latest/concepts/models/#class-variables

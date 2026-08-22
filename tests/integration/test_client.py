@@ -11,7 +11,7 @@
 """
 
 import pathlib
-from typing import Annotated, Any, ClassVar
+from typing import Annotated, Any
 
 import pytest
 
@@ -46,111 +46,139 @@ router = APIRouter()
 class GetUsers(APIRoute):
     """获取用户列表接口。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
-
     limit: int = 20
     offset: int = 0
+
+    @property
+    def on_200(self) -> JSONResponseSpec[list[UserData]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
 
 
 @router.get("/users/{user_id}")
 class GetUserById(APIRoute):
     """根据ID获取用户接口。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
-
     user_id: Annotated[int, Path()]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[UserData]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
 
 
 @router.post("/users")
 class CreateUser(APIRoute):
     """创建用户接口。"""
 
-    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", UserData)
-
     data: CreateUserRequest
+
+    @property
+    def on_201(self) -> JSONResponseSpec[UserData]:
+        return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
 
 
 @router.get("/items")
 class GetItems(APIRoute):
     """获取items接口，返回原始字典列表。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[dict[str, Any]])
-
     category: str | None = None
     limit: Annotated[int, Query()] = Field(ge=1, le=100, default=10)
+
+    @property
+    def on_200(self) -> JSONResponseSpec[list[dict[str, Any]]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[dict[str, Any]])
 
 
 @router.post("/echo")
 class EchoRequest(APIRoute):
     """回显接口，用于测试请求体。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     data: CreateUserRequest
     extra: str | None = None
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.get("/text")
 class GetText(APIRoute):
     """返回纯文本响应。"""
 
-    on_200: ClassVar[RawResponseSpec] = RawResponseSpec(200, "text/plain", target_type=bytes)
+    @property
+    def on_200(self) -> RawResponseSpec[bytes]:
+        return RawResponseSpec(status_code=200, media_type="text/plain", target_type=bytes)
 
 
 @router.get("/bytes")
 class GetBytes(APIRoute):
     """返回二进制响应。"""
 
-    on_200: ClassVar[RawResponseSpec] = RawResponseSpec(200, "application/octet-stream", target_type=bytes)
+    @property
+    def on_200(self) -> RawResponseSpec[bytes]:
+        return RawResponseSpec(status_code=200, media_type="application/octet-stream", target_type=bytes)
 
 
 @router.get("/notype")
 class GetNoType(APIRoute):
     """无 content-type 响应。"""
 
-    on_200: ClassVar[RawResponseSpec] = RawResponseSpec(200, "*", target_type=bytes)
+    @property
+    def on_200(self) -> RawResponseSpec[bytes]:
+        return RawResponseSpec(status_code=200, media_type="*", target_type=bytes)
 
 
 @router.get("/empty")
 class GetEmpty(APIRoute):
     """空响应。"""
 
-    on_204: ClassVar[RawResponseSpec] = RawResponseSpec(204, "*", target_type=bytes)
+    @property
+    def on_204(self) -> RawResponseSpec[bytes]:
+        return RawResponseSpec(status_code=204, media_type="*", target_type=bytes)
 
 
 @router.get("/problem-json")
 class GetProblemJson(APIRoute):
     """application/problem+json 响应。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/problem+json", dict[str, Any])
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/problem+json", model=dict[str, Any])
 
 
 @router.get("/server-error-json")
 class GetServerErrorJson(APIRoute):
     """500 + JSON 响应。"""
 
-    on_500: ClassVar[JSONResponseSpec] = JSONResponseSpec(500, "application/json", dict[str, Any])
+    @property
+    def on_500(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=500, media_type="application/json", model=dict[str, Any])
 
 
 @router.get("/server-error-text")
 class GetServerErrorText(APIRoute):
     """500 + 文本响应。"""
 
-    on_500: ClassVar[RawResponseSpec] = RawResponseSpec(500, "text/plain", target_type=bytes)
+    @property
+    def on_500(self) -> RawResponseSpec[bytes]:
+        return RawResponseSpec(status_code=500, media_type="text/plain", target_type=bytes)
 
 
 @router.get("/charset-json")
 class GetCharsetJson(APIRoute):
     """application/json; charset=utf-8 响应。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.get("/nonexistent")
 class NonExistent(APIRoute):
     """404 响应测试端点。"""
 
-    on_404: ClassVar[JSONResponseSpec] = JSONResponseSpec(404, "application/json", dict[str, Any])
+    @property
+    def on_404(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=404, media_type="application/json", model=dict[str, Any])
 
 
 # ===== Body Multiple Parameters 测试端点 =====
@@ -160,37 +188,45 @@ class NonExistent(APIRoute):
 class CreateUserEmbed(APIRoute):
     """Body(embed=True) 测试：data 字段嵌入到顶层。"""
 
-    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
-
     data: Annotated[CreateUserRequest, Body(embed=True)]
+
+    @property
+    def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/importance")
 class SetImportance(APIRoute):
     """标量 Body() 测试：importance 嵌入。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     importance: Annotated[int, Body(embed=True)]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/multi")
 class CreateItemMulti(APIRoute):
     """多 body 测试：item + importance，每个独立命名。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     item: CreateUserRequest
     importance: Annotated[int, Body()]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/echo-headers")
 class EchoHeadersRoute(APIRoute):
     """POST /echo-headers：Body(media_type=...) 设置 Content-Type 验证。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
-
     value: Annotated[int, Body(media_type="text/plain")]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
 
 
 @router.post("/echo-headers-override")
@@ -201,19 +237,23 @@ class EchoHeadersOverrideRoute(APIRoute):
     覆盖 Body 派生 Content-Type 的优先级。
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
-
     value: Annotated[int, Body(media_type="text/plain")]
     content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/x-custom"
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
 
 
 @router.post("/echo-body")
 class StrBodyRoute(APIRoute):
     """POST /echo-body：``Annotated[str, Body(media_type="text/plain")]`` 字符串标量 body 验证。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
-
     text: Annotated[str, Body(media_type="text/plain")]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
 
 
 # ===== APIRoute 不带泛型参数测试端点 =====
@@ -223,23 +263,29 @@ class StrBodyRoute(APIRoute):
 class HealthCheck(APIRoute):
     """健康检查端点，``on_200`` 声明响应协议。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
-
     status: str = "ok"
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
 
 
 @router.head("/probe")
 class ProbeHead(APIRoute):
     """HEAD /probe：HEAD 请求无 body，``on_200`` 用 ``*`` 通配 media type。"""
 
-    on_200: ClassVar[RawResponseSpec] = RawResponseSpec(200, "*", target_type=bytes)
+    @property
+    def on_200(self) -> RawResponseSpec[bytes]:
+        return RawResponseSpec(status_code=200, media_type="*", target_type=bytes)
 
 
 @router.options("/probe")
 class ProbeOptions(APIRoute):
     """OPTIONS /probe：探测端点。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
 
 
 @pytest.fixture
@@ -270,7 +316,7 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        users: list[UserData] = response.expect(GetUsers.on_200)
+        users: list[UserData] = response.expect(endpoint.on_200)
         assert isinstance(users, list)
         assert len(users) == 20  # 默认 limit=20
         assert all(isinstance(u, UserData) for u in users)
@@ -282,7 +328,7 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        users: list[UserData] = response.expect(GetUsers.on_200)
+        users: list[UserData] = response.expect(endpoint.on_200)
         assert isinstance(users, list)
         assert len(users) == 5
         assert users[0].id == 10
@@ -294,7 +340,7 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        user: UserData = response.expect(GetUserById.on_200)
+        user: UserData = response.expect(endpoint.on_200)
         assert isinstance(user, UserData)
         assert user.id == 42
         assert user.name == "User 42"
@@ -307,7 +353,7 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 201
-        created: UserData = response.expect(CreateUser.on_201)
+        created: UserData = response.expect(endpoint.on_201)
         assert isinstance(created, UserData)
         assert created.id == 999
         assert created.name == "John Doe"
@@ -320,7 +366,7 @@ class TestAPIRouteSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        items: list[dict[str, Any]] = response.expect(GetItems.on_200)
+        items: list[dict[str, Any]] = response.expect(endpoint.on_200)
         assert isinstance(items, list)
         assert len(items) == 5
 
@@ -334,7 +380,7 @@ class TestServersConfiguration:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        users: list[UserData] = response.expect(GetUsers.on_200)
+        users: list[UserData] = response.expect(endpoint.on_200)
         assert isinstance(users, list)
         assert len(users) == 20
 
@@ -351,7 +397,7 @@ class TestExceptionHandling:
         response = client.send(endpoint)
 
         assert response.raw.status == 404
-        data: dict[str, Any] = response.expect(NonExistent.on_404)
+        data: dict[str, Any] = response.expect(endpoint.on_404)
         assert data == {"error": "Not found"}
 
     def test_parse_error_on_invalid_json(self) -> None:
@@ -379,7 +425,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        user: UserData = response.expect(GetUserById.on_200)
+        user: UserData = response.expect(endpoint.on_200)
         assert isinstance(user, UserData)
         assert user.id == 1
 
@@ -390,7 +436,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 500
-        data: dict[str, Any] = response.expect(GetServerErrorJson.on_500)
+        data: dict[str, Any] = response.expect(endpoint.on_500)
         assert data == {"error": "internal error"}
 
     def test_text_plain(self, client: Client) -> None:
@@ -400,7 +446,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        body: bytes = response.expect(GetText.on_200)
+        body: bytes = response.expect(endpoint.on_200)
         assert body == b"hello world"
 
     def test_binary_octet_stream(self, client: Client) -> None:
@@ -410,7 +456,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        body: bytes = response.expect(GetBytes.on_200)
+        body: bytes = response.expect(endpoint.on_200)
         assert body == b"\x00\x01\x02\x03"
 
     def test_text_500(self, client: Client) -> None:
@@ -420,7 +466,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 500
-        body: bytes = response.expect(GetServerErrorText.on_500)
+        body: bytes = response.expect(endpoint.on_500)
         assert body == b"internal error"
 
     def test_no_content_type_fallback(self, client: Client) -> None:
@@ -430,7 +476,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        body: bytes = response.expect(GetNoType.on_200)
+        body: bytes = response.expect(endpoint.on_200)
         assert body == b"plain text body"
 
     def test_204_no_content(self, client: Client) -> None:
@@ -440,7 +486,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 204
-        body: bytes = response.expect(GetEmpty.on_204)
+        body: bytes = response.expect(endpoint.on_204)
         assert body == b""
 
     def test_problem_json_plus_suffix(self, client: Client) -> None:
@@ -450,7 +496,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(GetProblemJson.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"detail": "everything is fine", "status": 200}
 
     def test_charset_in_content_type(self, client: Client) -> None:
@@ -460,7 +506,7 @@ class TestResponseEnvelope:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(GetCharsetJson.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"hello": "world"}
 
     def test_raw_response_has_status_code_and_headers(self, client: Client) -> None:
@@ -497,7 +543,7 @@ class TestBodyMultipleParams:
 
         # 服务端返回 201 表示请求体格式正确（平展）
         assert response.raw.status == 201
-        created: UserData = response.expect(CreateUser.on_201)
+        created: UserData = response.expect(endpoint.on_201)
         assert created.name == "Alice"
         assert created.email == "alice@example.com"
 
@@ -509,7 +555,7 @@ class TestBodyMultipleParams:
 
         # 服务端从内嵌的 data 子对象提取，返回的是 dict
         assert response.raw.status == 201
-        data: dict[str, Any] = response.expect(CreateUserEmbed.on_201)
+        data: dict[str, Any] = response.expect(endpoint.on_201)
         assert data["name"] == "Bob"
         assert data["email"] == "bob@example.com"
 
@@ -520,7 +566,7 @@ class TestBodyMultipleParams:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(SetImportance.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data["received"] == 42
 
     def test_multiple_body_params_named(self, client: Client) -> None:
@@ -533,7 +579,7 @@ class TestBodyMultipleParams:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(CreateItemMulti.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data["name"] == "Charlie"
         assert data["importance"] == 99
 
@@ -548,7 +594,7 @@ class TestMediaTypeIntegration:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, str] = response.expect(EchoHeadersRoute.on_200)
+        data: dict[str, str] = response.expect(endpoint.on_200)
         assert "text/plain" in data["content_type"]
 
     def test_body_media_type_overridden_by_header(self, client: Client) -> None:
@@ -562,7 +608,7 @@ class TestMediaTypeIntegration:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, str] = response.expect(EchoHeadersOverrideRoute.on_200)
+        data: dict[str, str] = response.expect(endpoint.on_200)
         assert "application/x-custom" in data["content_type"]
         assert "text/plain" not in data["content_type"]
 
@@ -577,7 +623,7 @@ class TestStrBodyIntegration:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, str] = response.expect(StrBodyRoute.on_200)
+        data: dict[str, str] = response.expect(endpoint.on_200)
         assert data["body"] == "hello world 测试"
         assert "text/plain" in data["content_type"]
 
@@ -597,7 +643,7 @@ class TestClient:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        users: list[UserData] = response.expect(GetUsers.on_200)
+        users: list[UserData] = response.expect(endpoint.on_200)
         assert isinstance(users, list)
         assert len(users) == 5
 
@@ -607,7 +653,7 @@ class TestClient:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        user: UserData = response.expect(GetUserById.on_200)
+        user: UserData = response.expect(endpoint.on_200)
         assert user.id == 42
 
     def test_send_builds_query_params(self, client: Client) -> None:
@@ -616,7 +662,7 @@ class TestClient:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        users: list[UserData] = response.expect(GetUsers.on_200)
+        users: list[UserData] = response.expect(endpoint.on_200)
         assert len(users) == 3
         assert users[0].id == 10
 
@@ -626,7 +672,7 @@ class TestClient:
         response = client.send(endpoint)
 
         assert response.raw.status == 201
-        created: UserData = response.expect(CreateUser.on_201)
+        created: UserData = response.expect(endpoint.on_201)
         assert isinstance(created, UserData)
         assert created.name == "Alice"
 
@@ -652,7 +698,7 @@ class TestEndToEndFlow:
         create_endpoint = CreateUser(data=CreateUserRequest(name="Test User", email="test@example.com"))
         create_response = client.send(create_endpoint)
         assert create_response.raw.status == 201
-        created: UserData = create_response.expect(CreateUser.on_201)
+        created: UserData = create_response.expect(create_endpoint.on_201)
         assert isinstance(created, UserData)
         user_id = created.id
 
@@ -660,7 +706,7 @@ class TestEndToEndFlow:
         get_endpoint = GetUserById(user_id=user_id)
         get_response = client.send(get_endpoint)
         assert get_response.raw.status == 200
-        fetched: UserData = get_response.expect(GetUserById.on_200)
+        fetched: UserData = get_response.expect(get_endpoint.on_200)
         assert isinstance(fetched, UserData)
         # 注意：服务器返回的 name 是 "User {user_id}"，不是创建时传入的 name
         assert fetched.name == f"User {user_id}"
@@ -669,13 +715,13 @@ class TestEndToEndFlow:
         list_endpoint = GetUsers(limit=10)
         list_response = client.send(list_endpoint)
         assert list_response.raw.status == 200
-        users: list[UserData] = list_response.expect(GetUsers.on_200)
+        users: list[UserData] = list_response.expect(list_endpoint.on_200)
         assert isinstance(users, list)
         assert len(users) <= 10
 
 
 class TestAPIRouteWithoutGeneric:
-    """测试 APIRoute 通过 ``on_<status>`` ClassVar 声明响应协议。"""
+    """测试 APIRoute 通过 ``on_<status>`` @property 声明响应协议。"""
 
     def test_send_with_on_200(self, client: Client) -> None:
         """测试发送 APIRoute，通过 ``response.expect(on_200)`` 校验响应。
@@ -687,7 +733,7 @@ class TestAPIRouteWithoutGeneric:
 
         # 状态码正确
         assert response.raw.status == 200
-        data: dict[str, str] = response.expect(HealthCheck.on_200)
+        data: dict[str, str] = response.expect(endpoint.on_200)
         assert data == {"status": "healthy"}
         # query 参数正确发送
         assert "status=healthy" in response.raw.url
@@ -713,7 +759,7 @@ class TestAllMethodsSend:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, str] = response.expect(ProbeOptions.on_200)
+        data: dict[str, str] = response.expect(endpoint.on_200)
         assert data == {"method": "OPTIONS"}
 
 
@@ -724,75 +770,91 @@ class TestAllMethodsSend:
 class LoginRoute(APIRoute):
     """POST /login：多个标量 Form，端到端 urlencoded 序列化。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     username: Annotated[str, Form()]
     tags: Annotated[list[str], Form()]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/login-list")
 class LoginListRoute(APIRoute):
     """POST /login-list：单个 ``Annotated[list[str], Form()]`` 标量列表。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     tags: Annotated[list[str], Form()]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/upload")
 class UploadRoute(APIRoute):
     """POST /upload：单文件上传，验证 wire-level multipart 序列化。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     file: UploadFile
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/upload-multi")
 class UploadMultiRoute(APIRoute):
     """POST /upload-multi：多文件上传，验证 wire-level multipart 序列化。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     files: list[UploadFile]
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/upload-mix")
 class MixedFormFileRoute(APIRoute):
     """POST /upload-mix：标量 Form + UploadFile 共存，验证 wire-level multipart 序列化。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     username: Annotated[str, Form()]
     tags: Annotated[list[str], Form()]
     avatar: UploadFile
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/upload-optional")
 class UploadOptRoute(APIRoute):
     """POST /upload-optional：可选 ``UploadFile | None = None``。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     file: UploadFile | None = None
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/upload-files-optional")
 class UploadFilesOptRoute(APIRoute):
     """POST /upload-files-optional：可选 ``list[UploadFile] | None = None``。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     files: list[UploadFile] | None = None
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/upload-raw", upload_as_multipart=False)
 class UploadRawRoute(APIRoute):
     """POST /upload-raw：单文件 raw body 上传（整条 body 是文件内容）。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     file: UploadFile
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/upload-raw", upload_as_multipart=False)
@@ -804,9 +866,11 @@ class UploadRawOptRoute(APIRoute):
     - ``UploadRawOptRoute()`` 提交空 body，Playwright 自动填 octet-stream
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     file: UploadFile | None = None
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 @router.post("/upload-raw-override", upload_as_multipart=False)
@@ -817,10 +881,12 @@ class UploadRawOverrideRoute(APIRoute):
     路径不复用 /upload-raw，避免影响原测试用例。
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
-
     file: UploadFile
     content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/x-custom"
+
+    @property
+    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
+        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
 
 
 class TestFormBody:
@@ -843,7 +909,7 @@ class TestFormBody:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(LoginRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {
             "username": "alice",
             "tags": ["vip", "beta"],
@@ -862,7 +928,7 @@ class TestScalarFormList:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(LoginListRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"tags": ["alpha", "beta", "gamma"]}
 
 
@@ -887,7 +953,7 @@ class TestUploadFileBody:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {
             "filename": "test.txt",
             "size": len(content),
@@ -913,7 +979,7 @@ class TestUploadFileBody:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadMultiRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {
             "filenames": ["file1.txt", "file2.md"],
             "total_size": len("first file") + len("second file content"),
@@ -946,7 +1012,7 @@ class TestMixedFormAndFile:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(MixedFormFileRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {
             "username": "charlie",
             "tags": ["mix", "extra"],
@@ -973,7 +1039,7 @@ class TestOptionalUploadFile:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadOptRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"filename": None, "size": 0, "content_type": None}
 
     def test_upload_opt_missing(self, client: Client) -> None:
@@ -985,7 +1051,7 @@ class TestOptionalUploadFile:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadOptRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"filename": None, "size": 0, "content_type": None}
 
     def test_upload_opt_with_value(self, client: Client, tmp_path: pathlib.Path) -> None:
@@ -1002,7 +1068,7 @@ class TestOptionalUploadFile:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadOptRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {
             "filename": "opt.txt",
             "size": len(content),
@@ -1018,7 +1084,7 @@ class TestOptionalUploadFile:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadFilesOptRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"filenames": [], "total_size": 0}
 
     def test_upload_files_opt_with_value(self, client: Client, tmp_path: pathlib.Path) -> None:
@@ -1036,7 +1102,7 @@ class TestOptionalUploadFile:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadFilesOptRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {
             "filenames": ["a.txt", "b.md"],
             "total_size": len("first") + len("second"),
@@ -1064,7 +1130,7 @@ class TestRawUploadBody:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadRawRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"size": len(pdf_bytes), "content_type": "application/pdf"}
 
     def test_raw_upload_png(self, client: Client, tmp_path: pathlib.Path) -> None:
@@ -1081,7 +1147,7 @@ class TestRawUploadBody:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadRawRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"size": len(png_bytes), "content_type": "image/png"}
 
     def test_raw_upload_txt(self, client: Client, tmp_path: pathlib.Path) -> None:
@@ -1098,7 +1164,7 @@ class TestRawUploadBody:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadRawRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"size": len(txt_bytes), "content_type": "text/plain"}
 
     def test_raw_upload_optional_none(self, client: Client) -> None:
@@ -1116,7 +1182,7 @@ class TestRawUploadBody:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadRawOptRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"size": 0, "content_type": ""}
 
     def test_raw_upload_unknown_extension(self, client: Client, tmp_path: pathlib.Path) -> None:
@@ -1136,7 +1202,7 @@ class TestRawUploadBody:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadRawRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {"size": len(unknown_bytes), "content_type": "application/octet-stream"}
 
     def test_raw_upload_apiroute_content_type_override(self, client: Client, tmp_path: pathlib.Path) -> None:
@@ -1153,7 +1219,7 @@ class TestRawUploadBody:
         response = client.send(endpoint)
 
         assert response.raw.status == 200
-        data: dict[str, Any] = response.expect(UploadRawOverrideRoute.on_200)
+        data: dict[str, Any] = response.expect(endpoint.on_200)
         assert data == {
             "size": len(pdf_bytes),
             "content_type": "application/x-custom",

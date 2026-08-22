@@ -2,13 +2,9 @@
 {% endif %}
 from __future__ import annotations
 
-{% if header_fields or scalar_field or form_text_fields or uses_field_import -%}
 from typing import Annotated
-{% endif -%}
-{% if uses_field_import -%}
 from pydantic import Field
-{% endif %}
-from stoma import APIRoute{% if imported_specs %}, {{ imported_specs | join(', ') }}{% endif %}{% if header_fields %}, Header{% endif %}{% if scalar_field %}, Body{% endif %}{% if form_text_fields %}, Form{% endif %}{% if form_file_fields or (binary_file_field and not upload_as_multipart) %}, UploadFile{% endif %}
+from stoma import APIRoute, JSONResponseSpec, RawResponseSpec, Header, Body, Form, UploadFile
 
 from ..router import router
 

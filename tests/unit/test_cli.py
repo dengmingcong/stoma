@@ -85,9 +85,7 @@ class TestMakeSpecValidation:
 class TestMakeSuccess:
     """``make`` 命令的成功路径。"""
 
-    def test_generates_files_for_each_endpoint(
-        self, cli_runner: CliRunner, tmp_path: Path, valid_spec: tuple[Path, Path]
-    ) -> None:
+    def test_generates_files_for_each_endpoint(self, cli_runner: CliRunner, valid_spec: tuple[Path, Path]) -> None:
         """验证每个 endpoint 生成独立文件。"""
         spec_file, out_dir = valid_spec
 
@@ -98,9 +96,7 @@ class TestMakeSuccess:
         assert (out_dir / "endpoints" / "get_user.py").exists()
         assert (out_dir / "endpoints" / "delete_user.py").exists()
 
-    def test_generates_valid_python_syntax(
-        self, cli_runner: CliRunner, tmp_path: Path, valid_spec: tuple[Path, Path]
-    ) -> None:
+    def test_generates_valid_python_syntax(self, cli_runner: CliRunner, valid_spec: tuple[Path, Path]) -> None:
         """验证生成的代码是有效的 Python 语法。"""
         spec_file, out_dir = valid_spec
 

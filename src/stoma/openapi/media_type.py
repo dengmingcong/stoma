@@ -12,8 +12,10 @@
   ``rss+xml``）。
 - :func:`sanitize_media_type` — 将 media type 字符串转换为合法 Python
   标识符片段（用于在 renderer 中作为多 media type 区分的属性名后缀）。
-  链式替换 ``/``、``+``、``-``、``.``、``;``、空格 为 ``_``，其中 ``+``
-  替换为 ``_plus_`` 以保留语义可读性。
+  先按 ``;`` 切分丢弃参数部分（仅清洗主类型），再链式替换 ``/``、``+``、
+  ``-``、``.``、空格 为 ``_``，其中 ``+`` 替换为 ``_plus_`` 以保留语义
+  可读性。例如 ``text/xml; charset=utf-8`` → ``text_xml``
+  （而非 ``text_xml__charset_utf_8``）。
 """
 
 from __future__ import annotations
@@ -100,15 +102,15 @@ def is_text_media_type(media_type: str) -> bool:
 def sanitize_media_type(media_type: str) -> str:
     """将 media type 字符串清洗为合法 Python 标识符片段。
 
-    链式执行以下替换（顺序固定，保证确定性输出）：
+    先按 ``;`` 切分丢弃参数部分（仅清洗主类型，如 ``text/xml; charset=utf-8``
+    只清洗 ``text/xml``），再链式执行以下替换（顺序固定，保证确定性输出）：
     1. ``lower()`` 归一化大小写。
     2. ``/`` → ``_``，分隔 type/subtype。
     3. ``+`` → ``_plus_``，保留 RFC 6839 structured syntax suffix 语义。
     4. ``-`` → ``_``，如 ``json-patch+json`` → ``json_patch_plus_json``。
     5. ``.`` → ``_``，如 ``vnd.api+json`` → ``vnd_api_plus_json``。
-    6. ``;`` → ``_``，剥离 ``;charset=...`` 等参数分隔符。
-    7. 空格 → ``_``，处理 ``text/xml; charset=utf-8`` 这种带空格形式
-       （``;`` 与空格都产生 ``_``，因此中间出现连续两个下划线）。
+    6. 空格 → ``_``，处理 ``application/ld+json; charset=utf-8`` 这种
+       主类型内含空格的形式。
 
     函数为纯字符串变换，无副作用，对相同输入总是返回相同结果。
 
@@ -116,15 +118,8 @@ def sanitize_media_type(media_type: str) -> str:
         后缀、混合大小写或含 ``+``、``-``、``.`` 等字符。
     :return: 可直接用作 Python 标识符的清洗后字符串。
     """
-    return (
-        media_type.lower()
-        .replace("/", "_")
-        .replace("+", "_plus_")
-        .replace("-", "_")
-        .replace(".", "_")
-        .replace(";", "_")
-        .replace(" ", "_")
-    )
+    main = media_type.split(";", 1)[0]  # discard after ;
+    return main.lower().replace("/", "_").replace("+", "_plus_").replace("-", "_").replace(".", "_").replace(" ", "_")
 
 
 __all__ = ["is_json_media_type", "is_text_media_type", "sanitize_media_type"]

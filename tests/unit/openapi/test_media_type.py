@@ -57,12 +57,16 @@ class TestSanitizeMediaType:
         [
             ("application/json", "application_json"),
             ("application/problem+json", "application_problem_plus_json"),
-            ("text/xml; charset=utf-8", "text_xml__charset=utf_8"),
+            ("text/xml; charset=utf-8", "text_xml"),
             ("image/png", "image_png"),
+            ("application/json;charset=utf-8", "application_json"),
         ],
     )
     def test_basic_substitutions(self, media_type: str, expected: str) -> None:
-        """常见 media type 按链式规则清洗。"""
+        """常见 media type 按链式规则清洗。
+
+        ``;charset=...`` 等参数在清洗前整体丢弃，主类型才是有效输入。
+        """
         assert sanitize_media_type(media_type) == expected
 
     def test_empty_string_returns_empty(self) -> None:
