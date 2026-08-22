@@ -11,14 +11,14 @@
 """
 
 import pathlib
-from typing import Annotated, Any
+from typing import Annotated, Any, ClassVar
 
 import pytest
 
 pytest.importorskip("fastapi", reason="Mock server 测试需要 fastapi (stoma[test])")
 from pydantic import BaseModel, Field
 
-from stoma import Body, Form, Header, Path, Query, UploadFile
+from stoma import Body, Form, Header, JSONResponseSpec, Path, Query, RawResponseSpec, UploadFile
 from stoma.client import Client
 from stoma.routing import APIRoute, APIRouter
 
@@ -43,135 +43,175 @@ router = APIRouter()
 
 
 @router.get("/users")
-class GetUsers(APIRoute[list[UserData]]):
+class GetUsers(APIRoute):
     """获取用户列表接口。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[UserData])
 
     limit: int = 20
     offset: int = 0
 
 
 @router.get("/users/{user_id}")
-class GetUserById(APIRoute[UserData]):
+class GetUserById(APIRoute):
     """根据ID获取用户接口。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", UserData)
 
     user_id: Annotated[int, Path()]
 
 
 @router.post("/users")
-class CreateUser(APIRoute[UserData]):
+class CreateUser(APIRoute):
     """创建用户接口。"""
+
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", UserData)
 
     data: CreateUserRequest
 
 
 @router.get("/items")
-class GetItems(APIRoute[list[dict[str, Any]]]):
+class GetItems(APIRoute):
     """获取items接口，返回原始字典列表。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", list[dict[str, Any]])
 
     category: str | None = None
     limit: Annotated[int, Query()] = Field(ge=1, le=100, default=10)
 
 
 @router.post("/echo")
-class EchoRequest(APIRoute[dict[str, Any]]):
+class EchoRequest(APIRoute):
     """回显接口，用于测试请求体。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     data: CreateUserRequest
     extra: str | None = None
 
 
 @router.get("/text")
-class GetText(APIRoute[dict[str, Any]]):
+class GetText(APIRoute):
     """返回纯文本响应。"""
+
+    on_200: ClassVar[RawResponseSpec[bytes]] = RawResponseSpec.bytes(200, "text/plain")
 
 
 @router.get("/bytes")
-class GetBytes(APIRoute[dict[str, Any]]):
+class GetBytes(APIRoute):
     """返回二进制响应。"""
+
+    on_200: ClassVar[RawResponseSpec[bytes]] = RawResponseSpec.bytes(200, "application/octet-stream")
 
 
 @router.get("/notype")
-class GetNoType(APIRoute[dict[str, Any]]):
+class GetNoType(APIRoute):
     """无 content-type 响应。"""
+
+    on_200: ClassVar[RawResponseSpec[bytes]] = RawResponseSpec.bytes(200, "*")
 
 
 @router.get("/empty")
-class GetEmpty(APIRoute[dict[str, Any]]):
+class GetEmpty(APIRoute):
     """空响应。"""
+
+    on_204: ClassVar[RawResponseSpec[bytes]] = RawResponseSpec.bytes(204, "*")
 
 
 @router.get("/problem-json")
-class GetProblemJson(APIRoute[dict[str, Any]]):
+class GetProblemJson(APIRoute):
     """application/problem+json 响应。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/problem+json", dict[str, Any])
 
 
 @router.get("/server-error-json")
-class GetServerErrorJson(APIRoute[dict[str, Any]]):
+class GetServerErrorJson(APIRoute):
     """500 + JSON 响应。"""
+
+    on_500: ClassVar[JSONResponseSpec] = JSONResponseSpec(500, "application/json", dict[str, Any])
 
 
 @router.get("/server-error-text")
-class GetServerErrorText(APIRoute[dict[str, Any]]):
+class GetServerErrorText(APIRoute):
     """500 + 文本响应。"""
+
+    on_500: ClassVar[RawResponseSpec[bytes]] = RawResponseSpec.bytes(500, "text/plain")
 
 
 @router.get("/charset-json")
-class GetCharsetJson(APIRoute[dict[str, Any]]):
+class GetCharsetJson(APIRoute):
     """application/json; charset=utf-8 响应。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
 
 @router.get("/nonexistent")
-class NonExistent(APIRoute[dict[str, Any]]):
+class NonExistent(APIRoute):
     """404 响应测试端点。"""
+
+    on_404: ClassVar[JSONResponseSpec] = JSONResponseSpec(404, "application/json", dict[str, Any])
 
 
 # ===== Body Multiple Parameters 测试端点 =====
 
 
 @router.post("/users-embed")
-class CreateUserEmbed(APIRoute[dict[str, Any]]):
+class CreateUserEmbed(APIRoute):
     """Body(embed=True) 测试：data 字段嵌入到顶层。"""
+
+    on_201: ClassVar[JSONResponseSpec] = JSONResponseSpec(201, "application/json", dict[str, Any])
 
     data: Annotated[CreateUserRequest, Body(embed=True)]
 
 
 @router.post("/importance")
-class SetImportance(APIRoute[dict[str, Any]]):
+class SetImportance(APIRoute):
     """标量 Body() 测试：importance 嵌入。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     importance: Annotated[int, Body(embed=True)]
 
 
 @router.post("/multi")
-class CreateItemMulti(APIRoute[dict[str, Any]]):
+class CreateItemMulti(APIRoute):
     """多 body 测试：item + importance，每个独立命名。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     item: CreateUserRequest
     importance: Annotated[int, Body()]
 
 
 @router.post("/echo-headers")
-class EchoHeadersRoute(APIRoute[dict[str, str]]):
+class EchoHeadersRoute(APIRoute):
     """POST /echo-headers：Body(media_type=...) 设置 Content-Type 验证。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
 
     value: Annotated[int, Body(media_type="text/plain")]
 
 
 @router.post("/echo-headers-override")
-class EchoHeadersOverrideRoute(APIRoute[dict[str, str]]):
+class EchoHeadersOverrideRoute(APIRoute):
     """POST /echo-headers-override：Header(Content-Type) 覆盖 Body(media_type)。
 
     同时声明 Body(media_type) 和 Header(Content-Type)，验证 caller header
     覆盖 Body 派生 Content-Type 的优先级。
     """
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
+
     value: Annotated[int, Body(media_type="text/plain")]
     content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/x-custom"
 
 
 @router.post("/echo-body")
-class StrBodyRoute(APIRoute[dict[str, str]]):
+class StrBodyRoute(APIRoute):
     """POST /echo-body：``Annotated[str, Body(media_type="text/plain")]`` 字符串标量 body 验证。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
 
     text: Annotated[str, Body(media_type="text/plain")]
 
@@ -181,19 +221,25 @@ class StrBodyRoute(APIRoute[dict[str, str]]):
 
 @router.get("/health")
 class HealthCheck(APIRoute):
-    """健康检查端点，不校验响应。"""
+    """健康检查端点，``on_200`` 声明响应协议。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
 
     status: str = "ok"
 
 
 @router.head("/probe")
-class ProbeHead(APIRoute[dict[str, str]]):
-    pass
+class ProbeHead(APIRoute):
+    """HEAD /probe：HEAD 请求无 body，``on_200`` 用 ``*`` 通配 media type。"""
+
+    on_200: ClassVar[RawResponseSpec[bytes]] = RawResponseSpec.bytes(200, "*")
 
 
 @router.options("/probe")
-class ProbeOptions(APIRoute[dict[str, str]]):
-    pass
+class ProbeOptions(APIRoute):
+    """OPTIONS /probe：探测端点。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, str])
 
 
 @pytest.fixture
@@ -222,7 +268,7 @@ class TestAPIRouteSend:
 
         endpoint = GetUsers()
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetUsers.on_200)
 
         assert response.raw.status == 200
         assert isinstance(response.validated, list)
@@ -234,7 +280,7 @@ class TestAPIRouteSend:
 
         endpoint = GetUsers(limit=5, offset=10)
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetUsers.on_200)
 
         assert response.raw.status == 200
         assert isinstance(response.validated, list)
@@ -246,7 +292,7 @@ class TestAPIRouteSend:
 
         endpoint = GetUserById(user_id=42)
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetUserById.on_200)
 
         assert response.raw.status == 200
         assert isinstance(response.validated, UserData)
@@ -259,7 +305,7 @@ class TestAPIRouteSend:
 
         endpoint = CreateUser(data=CreateUserRequest(name="John Doe", email="john@example.com"))
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=CreateUser.on_201)
 
         assert response.raw.status == 201
         assert isinstance(response.validated, UserData)
@@ -272,7 +318,7 @@ class TestAPIRouteSend:
 
         endpoint = GetItems(category=None, limit=5)
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetItems.on_200)
 
         assert response.raw.status == 200
         assert isinstance(response.validated, list)
@@ -285,7 +331,7 @@ class TestServersConfiguration:
     def test_global_servers_config(self, client: Client) -> None:
         """测试全局 servers 配置（base_url 通过 context 设置）。"""
         endpoint = GetUsers()
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetUsers.on_200)
 
         assert response.raw.status == 200
         assert isinstance(response.validated, list)
@@ -301,10 +347,9 @@ class TestExceptionHandling:
         4xx/5xx 仍会按 content-type 解析 body（这里是 JSON），所以 data 字段会填充。
         """
         endpoint = NonExistent()
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=NonExistent.on_404)
 
         assert response.raw.status == 404
-        # T 是 dict[str, Any]，body 是 JSON，被解析为 dict
         assert response.validated == {"error": "Not found"}
 
     def test_parse_error_on_invalid_json(self) -> None:
@@ -330,7 +375,7 @@ class TestResponseEnvelope:
 
         endpoint = GetUserById(user_id=1)
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetUserById.on_200)
 
         assert response.raw.status == 200
         assert isinstance(response.validated, UserData)
@@ -341,73 +386,67 @@ class TestResponseEnvelope:
 
         endpoint = GetServerErrorJson()
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetServerErrorJson.on_500)
 
         assert response.raw.status == 500
-        # body 是 JSON，T 是 dict[str, Any]，会被验证为 dict
         assert response.validated == {"error": "internal error"}
 
     def test_text_plain(self, client: Client) -> None:
-        """纯文本：status 200, text/plain → model = None, raw.content 是 UTF-8 字节。"""
+        """纯文本：status 200, text/plain → ``validated`` 是 UTF-8 字节。"""
 
         endpoint = GetText()
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetText.on_200)
 
         assert response.raw.status == 200
-        assert response.validated is None  # 非 JSON，model 不填充
-        assert response.raw.body() == b"hello world"
+        assert response.validated == b"hello world"
 
     def test_binary_octet_stream(self, client: Client) -> None:
-        """二进制：status 200, application/octet-stream → model = None, raw.content 是字节。"""
+        """二进制：status 200, application/octet-stream → ``validated`` 是字节。"""
 
         endpoint = GetBytes()
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetBytes.on_200)
 
         assert response.raw.status == 200
-        assert response.validated is None
-        assert response.raw.body() == b"\x00\x01\x02\x03"
+        assert response.validated == b"\x00\x01\x02\x03"
 
     def test_text_500(self, client: Client) -> None:
-        """HTTP 500 + text body：返回 Response，model = None。"""
+        """HTTP 500 + text body：返回 Response，``validated`` 是字节。"""
 
         endpoint = GetServerErrorText()
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetServerErrorText.on_500)
 
         assert response.raw.status == 500
-        assert response.validated is None
-        assert response.raw.body() == b"internal error"
+        assert response.validated == b"internal error"
 
     def test_no_content_type_fallback(self, client: Client) -> None:
-        """无 content-type：model = None，原始字节在 raw.content。"""
+        """无 content-type：``on_200`` 用 ``*`` 通配，``validated`` 是字节。"""
 
         endpoint = GetNoType()
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetNoType.on_200)
 
         assert response.raw.status == 200
-        assert response.validated is None
-        assert response.raw.body() == b"plain text body"
+        assert response.validated == b"plain text body"
 
     def test_204_no_content(self, client: Client) -> None:
-        """204 No Content：model = None，raw.content 为空。"""
+        """204 No Content：``on_204`` 用 ``*`` 通配，``validated`` 是空字节。"""
 
         endpoint = GetEmpty()
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetEmpty.on_204)
 
         assert response.raw.status == 204
-        assert response.validated is None
-        assert response.raw.body() == b""
+        assert response.validated == b""
 
     def test_problem_json_plus_suffix(self, client: Client) -> None:
-        """application/problem+json：走 JSON 路径（+json 后缀）。"""
+        """application/problem+json：``on_200`` 显式声明 ``media_type`` 精确匹配。"""
 
         endpoint = GetProblemJson()
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetProblemJson.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"detail": "everything is fine", "status": 200}
@@ -417,7 +456,7 @@ class TestResponseEnvelope:
 
         endpoint = GetCharsetJson()
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetCharsetJson.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"hello": "world"}
@@ -427,7 +466,7 @@ class TestResponseEnvelope:
 
         endpoint = GetUserById(user_id=1)
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetUserById.on_200)
 
         assert response.raw.status == 200
         assert isinstance(response.raw.headers, dict)
@@ -454,11 +493,10 @@ class TestBodyMultipleParams:
 
         endpoint = CreateUser(data=CreateUserRequest(name="Alice", email="alice@example.com"))
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=CreateUser.on_201)
 
         # 服务端返回 201 表示请求体格式正确（平展）
         assert response.raw.status == 201
-        assert response.validated is not None
         assert response.validated.name == "Alice"
         assert response.validated.email == "alice@example.com"
 
@@ -467,11 +505,10 @@ class TestBodyMultipleParams:
 
         endpoint = CreateUserEmbed(data=CreateUserRequest(name="Bob", email="bob@example.com"))
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=CreateUserEmbed.on_201)
 
         # 服务端从内嵌的 data 子对象提取，返回的是 dict
         assert response.raw.status == 201
-        assert response.validated is not None
         assert response.validated["name"] == "Bob"
         assert response.validated["email"] == "bob@example.com"
 
@@ -480,10 +517,9 @@ class TestBodyMultipleParams:
 
         endpoint = SetImportance(importance=42)
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=SetImportance.on_200)
 
         assert response.raw.status == 200
-        assert response.validated is not None
         assert response.validated["received"] == 42
 
     def test_multiple_body_params_named(self, client: Client) -> None:
@@ -494,10 +530,9 @@ class TestBodyMultipleParams:
             importance=99,
         )
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=CreateItemMulti.on_200)
 
         assert response.raw.status == 200
-        assert response.validated is not None
         assert response.validated["name"] == "Charlie"
         assert response.validated["importance"] == 99
 
@@ -509,10 +544,9 @@ class TestMediaTypeIntegration:
         """Body(media_type="text/plain") → 服务端收到 text/plain Content-Type。"""
 
         endpoint = EchoHeadersRoute(value=42)
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=EchoHeadersRoute.on_200)
 
         assert response.raw.status == 200
-        assert response.validated is not None
         assert "text/plain" in response.validated["content_type"]
 
     def test_body_media_type_overridden_by_header(self, client: Client) -> None:
@@ -523,10 +557,9 @@ class TestMediaTypeIntegration:
         """
 
         endpoint = EchoHeadersOverrideRoute(value=99)
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=EchoHeadersOverrideRoute.on_200)
 
         assert response.raw.status == 200
-        assert response.validated is not None
         assert "application/x-custom" in response.validated["content_type"]
         assert "text/plain" not in response.validated["content_type"]
 
@@ -538,10 +571,9 @@ class TestStrBodyIntegration:
         """``Annotated[str, Body(media_type="text/plain")]`` → 服务端收到裸字符串 + text/plain Content-Type。"""
 
         endpoint = StrBodyRoute(text="hello world 测试")
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=StrBodyRoute.on_200)
 
         assert response.raw.status == 200
-        assert response.validated is not None
         assert response.validated["body"] == "hello world 测试"
         assert "text/plain" in response.validated["content_type"]
 
@@ -550,17 +582,16 @@ class TestClient:
     """Client 模式测试。
 
     验证：
-    - `client.send(endpoint)` 返回 `Response[T]`，T 从 endpoint 推断
+    - `client.send(endpoint, expect=...)` 返回 `Response[T]`，T 从 expect 推导
     - `client.dispose()` 释放 context
     - 链式 `client.send(endpoint).raw.status` 流畅
     """
 
     def test_send_returns_typed_response(self, client: Client) -> None:
-        """client.send(endpoint) 返回 Response[T]，T 从 endpoint 推断。"""
+        """client.send(endpoint) 返回 Response[T]，T 从 expect 推导。"""
         endpoint = GetUsers(limit=5)
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetUsers.on_200)
 
-        # IDE 能推断 response.validated 为 list[UserData] | None
         assert response.raw.status == 200
         assert isinstance(response.validated, list)
         assert len(response.validated) == 5
@@ -568,26 +599,24 @@ class TestClient:
     def test_send_extracts_path_params(self, client: Client) -> None:
         """路径参数正确插值。"""
         endpoint = GetUserById(user_id=42)
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetUserById.on_200)
 
         assert response.raw.status == 200
-        assert response.validated
         assert response.validated.id == 42
 
     def test_send_builds_query_params(self, client: Client) -> None:
         """查询参数正确序列化。"""
         endpoint = GetUsers(limit=3, offset=10)
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=GetUsers.on_200)
 
         assert response.raw.status == 200
-        assert response.validated
         assert len(response.validated) == 3
         assert response.validated[0].id == 10
 
     def test_send_body_preserves_pydantic_model(self, client: Client) -> None:
         """Pydantic model body 自动反序列化为 T 实例。"""
         endpoint = CreateUser(data=CreateUserRequest(name="Alice", email="a@x.com"))
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=CreateUser.on_201)
 
         assert response.raw.status == 201
         assert isinstance(response.validated, UserData)
@@ -598,8 +627,8 @@ class TestClient:
         endpoint1 = GetUsers(limit=1)
         endpoint2 = GetUserById(user_id=1)
 
-        response1 = client.send(endpoint1)
-        response2 = client.send(endpoint2)
+        response1 = client.send(endpoint1, expect=GetUsers.on_200)
+        response2 = client.send(endpoint2, expect=GetUserById.on_200)
 
         assert response1.raw.status == 200
         assert response2.raw.status == 200
@@ -613,14 +642,14 @@ class TestEndToEndFlow:
 
         # 1. 创建用户
         create_endpoint = CreateUser(data=CreateUserRequest(name="Test User", email="test@example.com"))
-        create_response = client.send(create_endpoint)
+        create_response = client.send(create_endpoint, expect=CreateUser.on_201)
         assert create_response.raw.status == 201
         assert isinstance(create_response.validated, UserData)
         user_id = create_response.validated.id
 
         # 2. 获取用户
         get_endpoint = GetUserById(user_id=user_id)
-        get_response = client.send(get_endpoint)
+        get_response = client.send(get_endpoint, expect=GetUserById.on_200)
         assert get_response.raw.status == 200
         assert isinstance(get_response.validated, UserData)
         # 注意：服务器返回的 name 是 "User {user_id}"，不是创建时传入的 name
@@ -628,40 +657,28 @@ class TestEndToEndFlow:
 
         # 3. 列出用户
         list_endpoint = GetUsers(limit=10)
-        list_response = client.send(list_endpoint)
+        list_response = client.send(list_endpoint, expect=GetUsers.on_200)
         assert list_response.raw.status == 200
         assert isinstance(list_response.validated, list)
         assert len(list_response.validated) <= 10
 
 
 class TestAPIRouteWithoutGeneric:
-    """测试 APIRoute 不带泛型参数。"""
+    """测试 APIRoute 通过 ``on_<status>`` ClassVar 声明响应协议。"""
 
-    def test_send_without_generic(self, client: Client) -> None:
-        """测试发送不带泛型参数的 APIRoute。
+    def test_send_with_on_200(self, client: Client) -> None:
+        """测试发送 APIRoute，通过 ``on_200`` 校验响应。
 
-        不校验响应，validated 始终为 None。
+        ``validated`` 按 ``on_200`` 协议填充强类型结果，不再为 ``None``。
         """
         endpoint = HealthCheck(status="healthy")
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=HealthCheck.on_200)
 
         # 状态码正确
         assert response.raw.status == 200
-        # 不校验响应，validated 始终为 None
-        assert response.validated is None
+        assert response.validated == {"status": "healthy"}
         # query 参数正确发送
         assert "status=healthy" in response.raw.url
-
-    def test_dependant_has_no_response_schema(self) -> None:
-        """验证 _get_dependant 中 json_response_schema 为 None。"""
-        dependant = HealthCheck._get_dependant()
-        assert dependant.json_response_schema is None
-        assert dependant.json_response_schema_adapter is None
-        # 参数收集正常
-        assert dependant.method == "GET"
-        assert dependant.path == "/health"
-        assert len(dependant.query_params) == 1
-        assert dependant.query_params[0].name == "status"
 
 
 class TestAllMethodsSend:
@@ -674,14 +691,14 @@ class TestAllMethodsSend:
         因此只验证 status code，不验证 body。
         """
         endpoint = ProbeHead()
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=ProbeHead.on_200)
 
         assert response.raw.status == 200
 
     def test_options_e2e(self, client: Client) -> None:
         """验证 OPTIONS /probe 端到端发送。"""
         endpoint = ProbeOptions()
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=ProbeOptions.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"method": "OPTIONS"}
@@ -691,37 +708,47 @@ class TestAllMethodsSend:
 
 
 @router.post("/login")
-class LoginRoute(APIRoute[dict[str, Any]]):
+class LoginRoute(APIRoute):
     """POST /login：多个标量 Form，端到端 urlencoded 序列化。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     username: Annotated[str, Form()]
     tags: Annotated[list[str], Form()]
 
 
 @router.post("/login-list")
-class LoginListRoute(APIRoute[dict[str, Any]]):
+class LoginListRoute(APIRoute):
     """POST /login-list：单个 ``Annotated[list[str], Form()]`` 标量列表。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     tags: Annotated[list[str], Form()]
 
 
 @router.post("/upload")
-class UploadRoute(APIRoute[dict[str, Any]]):
+class UploadRoute(APIRoute):
     """POST /upload：单文件上传，验证 wire-level multipart 序列化。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     file: UploadFile
 
 
 @router.post("/upload-multi")
-class UploadMultiRoute(APIRoute[dict[str, Any]]):
+class UploadMultiRoute(APIRoute):
     """POST /upload-multi：多文件上传，验证 wire-level multipart 序列化。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     files: list[UploadFile]
 
 
 @router.post("/upload-mix")
-class MixedFormFileRoute(APIRoute[dict[str, Any]]):
+class MixedFormFileRoute(APIRoute):
     """POST /upload-mix：标量 Form + UploadFile 共存，验证 wire-level multipart 序列化。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     username: Annotated[str, Form()]
     tags: Annotated[list[str], Form()]
@@ -729,28 +756,34 @@ class MixedFormFileRoute(APIRoute[dict[str, Any]]):
 
 
 @router.post("/upload-optional")
-class UploadOptRoute(APIRoute[dict[str, Any]]):
+class UploadOptRoute(APIRoute):
     """POST /upload-optional：可选 ``UploadFile | None = None``。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     file: UploadFile | None = None
 
 
 @router.post("/upload-files-optional")
-class UploadFilesOptRoute(APIRoute[dict[str, Any]]):
+class UploadFilesOptRoute(APIRoute):
     """POST /upload-files-optional：可选 ``list[UploadFile] | None = None``。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     files: list[UploadFile] | None = None
 
 
 @router.post("/upload-raw", upload_as_multipart=False)
-class UploadRawRoute(APIRoute[dict[str, Any]]):
+class UploadRawRoute(APIRoute):
     """POST /upload-raw：单文件 raw body 上传（整条 body 是文件内容）。"""
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     file: UploadFile
 
 
 @router.post("/upload-raw", upload_as_multipart=False)
-class UploadRawOptRoute(APIRoute[dict[str, Any]]):
+class UploadRawOptRoute(APIRoute):
     """POST /upload-raw-optional（路径复用 /upload-raw）：可选 UploadFile | None，未传时发空 body。
 
     路径复用 ``/upload-raw``（mock_app 仅一个 raw 端点）：
@@ -758,16 +791,20 @@ class UploadRawOptRoute(APIRoute[dict[str, Any]]):
     - ``UploadRawOptRoute()`` 提交空 body，Playwright 自动填 octet-stream
     """
 
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
+
     file: UploadFile | None = None
 
 
 @router.post("/upload-raw-override", upload_as_multipart=False)
-class UploadRawOverrideRoute(APIRoute[dict[str, Any]]):
+class UploadRawOverrideRoute(APIRoute):
     """POST /upload-raw-override：单文件 raw body，APIRoute 显式声明 Content-Type。
 
     验证 APIRoute Header() 覆盖自动派生的 Content-Type（FilePayload.mimeType）。
     路径不复用 /upload-raw，避免影响原测试用例。
     """
+
+    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(200, "application/json", dict[str, Any])
 
     file: UploadFile
     content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/x-custom"
@@ -791,7 +828,7 @@ class TestFormBody:
             tags=["vip", "beta"],
         )
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=LoginRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {
@@ -809,7 +846,7 @@ class TestScalarFormList:
         :param client: 共享的 Client 实例。
         """
         endpoint = LoginListRoute(tags=["alpha", "beta", "gamma"])
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=LoginListRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"tags": ["alpha", "beta", "gamma"]}
@@ -833,7 +870,7 @@ class TestUploadFileBody:
         file_path.write_text(content, encoding="utf-8")
 
         endpoint = UploadRoute(file=UploadFile(path=file_path))
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {
@@ -858,7 +895,7 @@ class TestUploadFileBody:
         endpoint = UploadMultiRoute(
             files=[UploadFile(path=file1), UploadFile(path=file2)],
         )
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadMultiRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {
@@ -891,7 +928,7 @@ class TestMixedFormAndFile:
             avatar=UploadFile(path=file_path),
         )
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=MixedFormFileRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {
@@ -917,7 +954,7 @@ class TestOptionalUploadFile:
         :param client: 共享的 Client 实例。
         """
         endpoint = UploadOptRoute(file=None)
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadOptRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"filename": None, "size": 0, "content_type": None}
@@ -928,7 +965,7 @@ class TestOptionalUploadFile:
         :param client: 共享的 Client 实例。
         """
         endpoint = UploadOptRoute()  # 缺省值 None
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadOptRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"filename": None, "size": 0, "content_type": None}
@@ -944,7 +981,7 @@ class TestOptionalUploadFile:
         file_path.write_text(content, encoding="utf-8")
 
         endpoint = UploadOptRoute(file=UploadFile(path=file_path))
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadOptRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {
@@ -959,7 +996,7 @@ class TestOptionalUploadFile:
         :param client: 共享的 Client 实例。
         """
         endpoint = UploadFilesOptRoute(files=None)
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadFilesOptRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"filenames": [], "total_size": 0}
@@ -976,7 +1013,7 @@ class TestOptionalUploadFile:
         file2.write_text("second", encoding="utf-8")
 
         endpoint = UploadFilesOptRoute(files=[UploadFile(path=file1), UploadFile(path=file2)])
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadFilesOptRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {
@@ -1003,7 +1040,7 @@ class TestRawUploadBody:
         pdf.write_bytes(pdf_bytes)
         endpoint = UploadRawRoute(file=UploadFile(path=pdf))
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadRawRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"size": len(pdf_bytes), "content_type": "application/pdf"}
@@ -1019,7 +1056,7 @@ class TestRawUploadBody:
         png.write_bytes(png_bytes)
         endpoint = UploadRawRoute(file=UploadFile(path=png))
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadRawRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"size": len(png_bytes), "content_type": "image/png"}
@@ -1035,7 +1072,7 @@ class TestRawUploadBody:
         txt.write_bytes(txt_bytes)
         endpoint = UploadRawRoute(file=UploadFile(path=txt))
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadRawRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"size": len(txt_bytes), "content_type": "text/plain"}
@@ -1052,7 +1089,7 @@ class TestRawUploadBody:
         """
         endpoint = UploadRawOptRoute()  # 缺省值 None
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadRawOptRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"size": 0, "content_type": ""}
@@ -1071,7 +1108,7 @@ class TestRawUploadBody:
         unknown.write_bytes(unknown_bytes)
         endpoint = UploadRawRoute(file=UploadFile(path=unknown))
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadRawRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {"size": len(unknown_bytes), "content_type": "application/octet-stream"}
@@ -1087,7 +1124,7 @@ class TestRawUploadBody:
         pdf.write_bytes(pdf_bytes)
         endpoint = UploadRawOverrideRoute(file=UploadFile(path=pdf))
 
-        response = client.send(endpoint)
+        response = client.send(endpoint, expect=UploadRawOverrideRoute.on_200)
 
         assert response.raw.status == 200
         assert response.validated == {
