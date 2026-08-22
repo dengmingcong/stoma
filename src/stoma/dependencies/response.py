@@ -1,14 +1,20 @@
 """API 响应封装与构造。
 
-集中 :class:`Response` 与 :func:`build_response`：
+集中 :class:`Response`、:class:`BaseResponseSpec` 与 :func:`build_response`：
 
 - :class:`Response` — 框架对外的统一响应包装（dataclass，泛型 ``T``）。
+- :class:`BaseResponseSpec` — 响应协议抽象基类（泛型 ``T``），
+  定义按状态码与 media type 严格校验响应的契约。
+  子类 :class:`JSONResponseSpec` 与 :class:`RawResponseSpec`
+  分别实现 JSON 与原始（``bytes`` / ``str``）两种响应处理。
 - :func:`build_response` — 从 Playwright ``APIResponse`` 构造 ``Response[T]``，
   按 content-type 派发解析：JSON 路径用 ``T`` 验证，其他保持 ``None``。
 """
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -59,6 +65,98 @@ class Response[T]:
 
     raw: APIResponse
     validated: T | None = None
+
+
+class BaseResponseSpec[T](ABC):
+    """响应协议抽象基类。
+
+    定义按 HTTP 状态码与 media type 严格校验响应的契约。
+    子类通过实现 :meth:`validate_response` 提供具体的响应解析逻辑，
+    通常先调用 :meth:`_assert_status` 与 :meth:`_assert_media_type`
+    做协议级强校验（不匹配抛 ``AssertionError``），
+    再做具体解析（解析失败抛 :class:`ParseError` 或 :class:`ValidationError`），
+    最后返回 ``T`` 类型的已校验数据。
+
+    使用 ``ABC`` + ``@abstractmethod``（而非 Pydantic ``BaseModel``），
+    因为 spec 不需要序列化，且 ``status_code`` 支持 ``Callable[[int], bool]``
+    谓词形式（用于 OpenAPI ``default`` / ``4XX`` / ``5XX`` 等范围通配符），
+    谓词与运行时响应对象都不属于 Pydantic 友好类型。
+
+    设计要点：
+
+    - ``status_code`` 既可是 ``int``（精确匹配 HTTP 状态码），
+      也可是 ``Callable[[int], bool]``（谓词匹配）。
+    - ``media_type`` 是精确字符串匹配（如 ``application/json``），
+      也可使用 ``*`` 通配所有 media type。
+      传入 content-type header 时会自动 strip ``;charset=...`` 等参数。
+
+    :var status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
+    :vartype status_code: int | Callable[[int], bool]
+    :var media_type: 期望的 media type（如 ``application/json``），
+        ``*`` 表示通配所有 media type。
+    :vartype media_type: str
+    """
+
+    def __init__(
+        self,
+        status_code: int | Callable[[int], bool],
+        media_type: str,
+    ) -> None:
+        """初始化响应协议基类。
+
+        :param status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
+        :param media_type: 期望的 media type（如 ``application/json``），
+            ``*`` 表示通配所有 media type。
+        """
+        self.status_code = status_code
+        self.media_type = media_type
+
+    def _assert_status(self, actual: int) -> None:
+        """断言实际状态码与 spec 匹配。
+
+        ``status_code`` 为 ``int`` 时按等值匹配；
+        为 ``Callable[[int], bool]`` 时调用谓词判断。
+        不匹配抛 ``AssertionError``。
+
+        :param actual: 实际 HTTP 状态码。
+        :raise AssertionError: 实际状态码与 spec 不匹配。
+        """
+        if callable(self.status_code):
+            assert self.status_code(actual), f"HTTP 状态码不匹配: 期望满足谓词，实际为 {actual}"
+        else:
+            assert actual == self.status_code, f"HTTP 状态码不匹配: 期望 {self.status_code}，实际为 {actual}"
+
+    def _assert_media_type(self, content_type: str) -> None:
+        """断言实际 content-type 与 spec 的 media_type 匹配。
+
+        自动 strip ``;charset=...`` 等参数，再做小写精确匹配。
+        ``media_type`` 为 ``*`` 时通配所有 media type（始终匹配）。
+
+        :param content_type: 实际 content-type header 值，可能带 ``;charset=...`` 后缀。
+        :raise AssertionError: 实际 content-type 与 spec 不匹配。
+        """
+        if self.media_type == "*":
+            return
+        main = content_type.split(";", 1)[0].strip().lower()
+        spec_media_type = self.media_type.strip().lower()
+        assert main == spec_media_type, f"Content-Type 不匹配: 期望 {self.media_type}，实际为 {main or '(空)'}"
+
+    @abstractmethod
+    def validate_response(self, response: APIResponse) -> T:
+        """校验并解析响应为 ``T`` 类型。
+
+        子类必须实现：先调用 :meth:`_assert_status` 与 :meth:`_assert_media_type`
+        做协议级强校验（不匹配抛 ``AssertionError``），
+        再做具体解析（解析失败抛 :class:`ParseError` 或 :class:`ValidationError`），
+        最后返回 ``T`` 类型的已校验数据。
+
+        :param response: Playwright 响应对象。
+        :return: 已校验的响应数据，类型为 ``T``。
+        :raise AssertionError: status 或 content-type 与 spec 不匹配。
+        :raise ParseError: 响应解析失败。
+        :raise ValidationError: 响应数据验证失败。
+        """
+        raise NotImplementedError
 
 
 def build_response[T](api_route: APIRoute[T], api_response: APIResponse) -> Response[T]:
@@ -129,4 +227,4 @@ def build_response[T](api_route: APIRoute[T], api_response: APIResponse) -> Resp
     return Response[T](raw=api_response, validated=None)
 
 
-__all__ = ["Response", "build_response"]
+__all__ = ["Response", "BaseResponseSpec", "build_response"]
