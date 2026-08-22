@@ -19,7 +19,7 @@ class GetImage(APIRoute):
     Get an image
     """
 
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
     type: str

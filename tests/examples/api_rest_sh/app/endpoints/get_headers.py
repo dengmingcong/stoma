@@ -17,9 +17,9 @@ from ..router import router
 class GetHeaders(APIRoute):
     """Return request headers。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[GetHeadersResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=GetHeadersResponse
     )
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )

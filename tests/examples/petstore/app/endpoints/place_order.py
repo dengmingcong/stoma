@@ -21,5 +21,7 @@ class PlaceOrder(APIRoute):
     Place a new order in the store.
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(status_code=200, media_type="application/json", model=Order)
+    on_200: ClassVar[JSONResponseSpec[Order]] = JSONResponseSpec(
+        status_code=200, media_type="application/json", model=Order
+    )
     body: Order

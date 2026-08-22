@@ -17,9 +17,9 @@ from ..router import router
 class ListItems(APIRoute):
     """List sample items。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[ListItemsResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=ListItemsResponse
     )
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )

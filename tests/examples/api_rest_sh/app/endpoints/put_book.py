@@ -12,7 +12,7 @@ from ..router import router
 
 @router.put("/books/{book-id}")
 class PutBook(APIRoute):
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
     book_id: Annotated[str, Field(serialization_alias="book-id")]

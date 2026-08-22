@@ -17,10 +17,10 @@ from ..router import router
 class GetBase64Encode(APIRoute):
     """Base64-url encode a value。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[GetBase64EncodeResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=GetBase64EncodeResponse
     )
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
     value: str

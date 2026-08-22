@@ -36,7 +36,7 @@ from tests.examples.api_rest_sh.app.endpoints.get_method import GetMethod
 from tests.examples.api_rest_sh.app.endpoints.options_method import OptionsMethod
 from tests.examples.api_rest_sh.app.endpoints.post_login import PostLogin
 from tests.examples.api_rest_sh.app.endpoints.post_method import PostMethod
-from tests.examples.api_rest_sh.app.models import EchoModel, Method, TokenResponseBody
+from tests.examples.api_rest_sh.app.models import Method
 
 
 def test_get_with_query_param_returns_validated(e2e_client: Client) -> None:
@@ -48,7 +48,6 @@ def test_get_with_query_param_returns_validated(e2e_client: Client) -> None:
     response = e2e_client.send(GetMethod(status=200), expect=GetMethod.on_200)
 
     assert response.raw.status == 200
-    assert isinstance(response.validated, EchoModel)
     assert response.validated.method == Method.get
     assert response.validated.path == "/get"
     assert response.validated.url is not None
@@ -64,7 +63,6 @@ def test_post_raw_json_body_returns_validated(e2e_client: Client) -> None:
     response = e2e_client.send(PostMethod(), expect=PostMethod.on_200)
 
     assert response.raw.status == 200
-    assert isinstance(response.validated, EchoModel)
     assert response.validated.method == Method.post
     assert response.validated.path == "/post"
 
@@ -78,7 +76,6 @@ def test_post_form_urlencoded_body_returns_validated(e2e_client: Client) -> None
     response = e2e_client.send(PostLogin(username="alice"), expect=PostLogin.on_200)
 
     assert response.raw.status == 200
-    assert isinstance(response.validated, TokenResponseBody)
     assert response.validated.user == "anonymous"
     assert response.validated.token_type.value == "Bearer"
     assert response.validated.token  # non-empty string from server
@@ -105,7 +102,6 @@ def test_options_returns_validated(e2e_client: Client) -> None:
     response = e2e_client.send(OptionsMethod(), expect=OptionsMethod.on_200)
 
     assert response.raw.status == 200
-    assert isinstance(response.validated, EchoModel)
     assert response.validated.method == Method.options
     assert response.validated.path == "/options"
 

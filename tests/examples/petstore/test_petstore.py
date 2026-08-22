@@ -45,7 +45,6 @@ from tests.examples.petstore.app.endpoints.get_order_by_id import GetOrderById
 from tests.examples.petstore.app.endpoints.get_user_by_name import GetUserByName
 from tests.examples.petstore.app.endpoints.login_user import LoginUser
 from tests.examples.petstore.app.endpoints.logout_user import LogoutUser
-from tests.examples.petstore.app.models import Order, User
 
 
 def test_get_order_by_id_returns_order(e2e_client: Client) -> None:
@@ -58,12 +57,15 @@ def test_get_order_by_id_returns_order(e2e_client: Client) -> None:
 
     ``expect=GetOrderById.on_200_application_json`` 选择 JSON 协议分支
     （服务端实际返回 ``application/json`` + ``Order`` JSON）。
+    ``response.validated`` 由 ClassVar 下标 ``JSONResponseSpec[Order]`` 静态推断为
+    ``Order | None``，访问 ``.status`` 等字段无需 ``isinstance`` 收窄——这是本次
+    IDE 推断修复的核心收益。
     """
     response = e2e_client.send(GetOrderById(order_id=10), expect=GetOrderById.on_200_application_json)
 
     assert response.raw.status == 200
     assert response.validated is not None
-    assert isinstance(response.validated, Order)
+    assert response.validated.status.value == "approved"
 
 
 def test_login_user_returns_token(e2e_client: Client) -> None:
@@ -106,6 +108,8 @@ def test_get_user_by_name_returns_user(e2e_client: Client) -> None:
     """GET /user/{username}：验证 path 参数插值与 User schema 校验。
 
     petstore3 对 ``user1``（spec 示例用户名）返回 200 完整 JSON；未知用户名返回 404。
+    ``response.validated`` 由 ClassVar 下标 ``JSONResponseSpec[User]`` 静态推断为
+    ``User | None``，访问 ``.username`` 等字段无需 ``isinstance`` 收窄。
     """
     response = e2e_client.send(
         GetUserByName(username="user1"),
@@ -114,7 +118,7 @@ def test_get_user_by_name_returns_user(e2e_client: Client) -> None:
 
     assert response.raw.status == 200
     assert response.validated is not None
-    assert isinstance(response.validated, User)
+    assert response.validated.username == "user1"
 
 
 def test_get_user_by_name_returns_user2(e2e_client: Client) -> None:
@@ -130,4 +134,4 @@ def test_get_user_by_name_returns_user2(e2e_client: Client) -> None:
 
     assert response.raw.status == 200
     assert response.validated is not None
-    assert isinstance(response.validated, User)
+    assert response.validated.username == "user2"

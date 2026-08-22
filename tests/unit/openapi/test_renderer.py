@@ -1621,7 +1621,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "on_200: ClassVar[JSONResponseSpec]" in content
+        assert "on_200: ClassVar[JSONResponseSpec[User]]" in content
         assert "model=User" in content
         assert "from ..models import User" in content
         assert "APIRoute[" not in content
@@ -1641,7 +1641,7 @@ components:
         get_user = next(ep for ep in endpoints if ep.operation_id == "getUser")
         _file_name, code = renderer.render(get_user)
         assert "from ..models import User" in code
-        assert "on_200: ClassVar[JSONResponseSpec]" in code
+        assert "on_200: ClassVar[JSONResponseSpec[User]]" in code
         assert "model=User" in code
         assert "APIRoute[" not in code
 
@@ -1685,7 +1685,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "list_users.py").read_text(encoding="utf-8")
-        assert "on_200: ClassVar[JSONResponseSpec]" in content
+        assert "on_200: ClassVar[JSONResponseSpec[ListUsersResponse]]" in content
         assert "model=ListUsersResponse" in content
         assert "from ..models import ListUsersResponse" in content
         assert "APIRoute[" not in content
@@ -1737,7 +1737,7 @@ paths:
         assert (out_dir / "endpoints" / "get_profile.py").exists()
         content = (out_dir / "endpoints" / "get_profile.py").read_text(encoding="utf-8")
         assert "@router.get" in content
-        assert "on_200: ClassVar[JSONResponseSpec]" in content
+        assert "on_200: ClassVar[JSONResponseSpec[GetProfileResponse]]" in content
         assert "model=GetProfileResponse" in content
         assert "from ..models import GetProfileResponse" in content
         assert "APIRoute[" not in content
@@ -1778,7 +1778,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
-        assert "on_201: ClassVar[JSONResponseSpec]" in content
+        assert "on_201: ClassVar[JSONResponseSpec[User]]" in content
         assert "model=User" in content
         assert "APIRoute[" not in content
 
@@ -1997,7 +1997,7 @@ components:
         assert "GetEntityResponse" in models
         assert "RootModel[TypeA | TypeB]" in models
         # route.py 正确引用包装类。
-        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "on_200: ClassVar[JSONResponseSpec[GetEntityResponse]]" in route
         assert "model=GetEntityResponse" in route
         assert "APIRoute[" not in route
         assert "from ..models import GetEntityResponse" in route
@@ -2062,7 +2062,7 @@ components:
         assert "GetRecordResponse" in models
         assert "RootModel[TypeA | TypeB]" in models
         # route.py 正确引用包装类。
-        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "on_200: ClassVar[JSONResponseSpec[GetRecordResponse]]" in route
         assert "model=GetRecordResponse" in route
         assert "APIRoute[" not in route
         assert "from ..models import GetRecordResponse" in route
@@ -2129,8 +2129,8 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "on_200: ClassVar[JSONResponseSpec]" in route
-        assert "on_404: ClassVar[JSONResponseSpec]" in route
+        assert "on_200: ClassVar[JSONResponseSpec[User]]" in route
+        assert "on_404: ClassVar[JSONResponseSpec[Error]]" in route
         assert "model=User" in route
         assert "model=Error" in route
         assert "from ..models import Error, User" in route
@@ -2185,8 +2185,8 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
-        assert "on_200: ClassVar[JSONResponseSpec]" in route
-        assert "on_201: ClassVar[JSONResponseSpec]" in route
+        assert "on_200: ClassVar[JSONResponseSpec[User]]" in route
+        assert "on_201: ClassVar[JSONResponseSpec[User]]" in route
         assert route.count("model=User") == 2
         assert "from ..models import User" in route
         assert route.count("from ..models import User") == 1
@@ -2244,7 +2244,7 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "on_200: ClassVar[JSONResponseSpec]" in route
+        assert "on_200: ClassVar[JSONResponseSpec[User]]" in route
         assert "model=User" in route
         assert "on_400" not in route
         assert "from ..models import User" in route
@@ -2363,9 +2363,9 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "on_200: ClassVar[JSONResponseSpec]" in route
-        assert "on_400: ClassVar[JSONResponseSpec]" in route
-        assert "on_500: ClassVar[JSONResponseSpec]" in route
+        assert "on_200: ClassVar[JSONResponseSpec[User]]" in route
+        assert "on_400: ClassVar[JSONResponseSpec[Error]]" in route
+        assert "on_500: ClassVar[JSONResponseSpec[ServerError]]" in route
         assert "model=User" in route
         assert "model=Error" in route
         assert "model=ServerError" in route
@@ -2435,8 +2435,8 @@ paths:
         assert "class GetXResponse" in models
         assert "class GetXResponse1" in models
         assert "class GetXResponse2" not in models
-        assert "on_200: ClassVar[JSONResponseSpec]" in route
-        assert "on_400: ClassVar[JSONResponseSpec]" in route
+        assert "on_200: ClassVar[JSONResponseSpec[GetXResponse]]" in route
+        assert "on_400: ClassVar[JSONResponseSpec[GetXResponse1]]" in route
         assert "model=GetXResponse" in route
         assert "model=GetXResponse1" in route
         assert "from ..models import GetXResponse, GetXResponse1" in route
@@ -2519,9 +2519,9 @@ components:
         assert "class GetXResponse" in models
         assert "class GetXResponse1" in models
         assert "class GetXResponse2" not in models
-        assert "on_200: ClassVar[JSONResponseSpec]" in route
-        assert "on_400: ClassVar[JSONResponseSpec]" in route
-        assert "on_500: ClassVar[JSONResponseSpec]" in route
+        assert "on_200: ClassVar[JSONResponseSpec[User]]" in route
+        assert "on_400: ClassVar[JSONResponseSpec[GetXResponse]]" in route
+        assert "on_500: ClassVar[JSONResponseSpec[GetXResponse1]]" in route
         assert "model=User" in route
         assert "model=GetXResponse" in route
         assert "model=GetXResponse1" in route
@@ -2602,8 +2602,8 @@ paths:
         assert "class Error" in models
         assert "class ServerError" in models
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "on_400: ClassVar[JSONResponseSpec]" in route
-        assert "on_500: ClassVar[JSONResponseSpec]" in route
+        assert "on_400: ClassVar[JSONResponseSpec[Error]]" in route
+        assert "on_500: ClassVar[JSONResponseSpec[ServerError]]" in route
         assert "model=Error" in route
         assert "model=ServerError" in route
         assert "from ..models import Error, ServerError" in route
@@ -3496,7 +3496,8 @@ class TestExtractResponseSpecs:
             media_type="application/json",
             model_name="User",
             is_json=True,
-            spec_class="JSONResponseSpec",
+            spec_class_annotation="JSONResponseSpec[User]",
+            spec_class_constructor="JSONResponseSpec",
             raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
@@ -3528,7 +3529,8 @@ class TestExtractResponseSpecs:
             media_type="application/json",
             model_name="User",
             is_json=True,
-            spec_class="JSONResponseSpec",
+            spec_class_annotation="JSONResponseSpec[User]",
+            spec_class_constructor="JSONResponseSpec",
             raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
@@ -3539,7 +3541,8 @@ class TestExtractResponseSpecs:
             media_type="text/xml",
             model_name=None,
             is_json=False,
-            spec_class="RawResponseSpec[str]",
+            spec_class_annotation="RawResponseSpec[str]",
+            spec_class_constructor="RawResponseSpec.text",
             raw_factory="text",
             status_code_or_matcher="status_code=200",
         )
@@ -3624,7 +3627,8 @@ class TestExtractResponseSpecs:
             media_type="application/json",
             model_name="User",
             is_json=True,
-            spec_class="JSONResponseSpec",
+            spec_class_annotation="JSONResponseSpec[User]",
+            spec_class_constructor="JSONResponseSpec",
             raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
@@ -3635,7 +3639,8 @@ class TestExtractResponseSpecs:
             media_type="application/problem+json",
             model_name="Problem",
             is_json=True,
-            spec_class="JSONResponseSpec",
+            spec_class_annotation="JSONResponseSpec[Problem]",
+            spec_class_constructor="JSONResponseSpec",
             raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
@@ -3780,7 +3785,8 @@ class TestRenderPassesResponseSpecDecls:
             media_type="application/json",
             model_name="User",
             is_json=True,
-            spec_class="JSONResponseSpec",
+            spec_class_annotation="JSONResponseSpec[User]",
+            spec_class_constructor="JSONResponseSpec",
             raw_factory=None,
             status_code_or_matcher="status_code=200",
         )
@@ -3946,13 +3952,14 @@ class TestRenderPassesResponseSpecDecls:
 
 
 class TestTemplateEmitsClassVarDeclarations:
-    """验证模板输出 ``on_<status>: ClassVar[<spec_class>] = <spec_class>(...)`` 形式。
+    """验证模板输出 ``on_<status>: ClassVar[<spec_class_annotation>] = <spec_class_constructor>(...)`` 形式。
 
     Wave 6.4 模板切换后，渲染结果应满足：
 
     - ``class <Name>(APIRoute):`` 不带 ``[T]`` 泛型参数。
-    - ``on_<status>: ClassVar[JSONResponseSpec] = JSONResponseSpec(...)``（JSON 路径，含 ``model=...``）。
-    - ``on_<status>: ClassVar[RawResponseSpec] = RawResponseSpec(...)``（Raw 路径，无 ``model=``）。
+    - ``on_<status>: ClassVar[JSONResponseSpec[<Model>]] = JSONResponseSpec(...)``（JSON 路径，含 ``model=...``）。
+      下标带 model 类型是 IDE 推断 ``response.validated`` 类型的关键。
+    - ``on_<status>: ClassVar[RawResponseSpec[bytes|str]] = RawResponseSpec.bytes|text(...)``（Raw 路径）。
     - ``from typing import ClassVar`` 在 ``uses_classvar_import=True`` 时出现。
     - ``from stoma import JSONResponseSpec`` / ``RawResponseSpec`` 按 ``imported_specs`` 添加。
     - 全文不含 ``APIRoute[``（带方括号的泛型语法已被淘汰）。
@@ -4022,7 +4029,11 @@ components:
         assert "APIRoute[User]" not in content
 
     def test_json_decl_emits_classvar_with_model(self, cli_runner: Any, tmp_path: Path) -> None:
-        """验证 JSON decl 渲染为 ``on_<status>: ClassVar[JSONResponseSpec] = JSONResponseSpec(..., model=...)``。"""
+        """验证 JSON decl 渲染为 ``on_<status>: ClassVar[JSONResponseSpec[<Model>]] = JSONResponseSpec(...)``。
+
+        下标中携带具体 model 是 IDE / mypy 推断 ``response.validated`` 类型的关键——
+        没有下标的裸 ``JSONResponseSpec`` 会让 generic ``T`` 退化为 ``Any``。
+        """
         spec = """\
 openapi: 3.1.0
 info:
@@ -4062,7 +4073,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(" in content
+        assert "on_200: ClassVar[JSONResponseSpec[User]] = JSONResponseSpec(" in content
         assert "model=User" in content
         assert 'media_type="application/json"' in content
         assert "status_code=200" in content
@@ -4155,7 +4166,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "post_echo.py").read_text(encoding="utf-8")
-        assert "on_default: ClassVar[JSONResponseSpec]" in content
+        assert "on_default: ClassVar[JSONResponseSpec[Error]]" in content
         assert "callable=lambda s: True" in content
         assert "model=Error" in content
 
@@ -4200,7 +4211,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "on_4xx: ClassVar[JSONResponseSpec]" in content
+        assert "on_4xx: ClassVar[JSONResponseSpec[Error]]" in content
         assert "callable=lambda s: 400 <= s < 500" in content
 
     def test_classvar_import_added_when_decls_exist(self, cli_runner: Any, tmp_path: Path) -> None:

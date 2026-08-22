@@ -21,9 +21,9 @@ class PostLogin(APIRoute):
     Accepts an application/x-www-form-urlencoded username and password and returns a mock bearer token.
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[TokenResponseBody]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=TokenResponseBody
     )
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )

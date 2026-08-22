@@ -17,6 +17,6 @@ from ..router import router
 class GetBrotli(APIRoute):
     """Return an explicitly compressed response。"""
 
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )

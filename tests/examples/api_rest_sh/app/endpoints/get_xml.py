@@ -17,6 +17,6 @@ from ..router import router
 class GetXml(APIRoute):
     """Return XML。"""
 
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )

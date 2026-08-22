@@ -23,7 +23,7 @@ class UpdatePetWithForm(APIRoute):
     Updates a pet resource based on the form data.
     """
 
-    on_200_application_json: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200_application_json: ClassVar[JSONResponseSpec[Pet]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=Pet
     )
     on_200_application_xml: ClassVar[RawResponseSpec[str]] = RawResponseSpec.text(

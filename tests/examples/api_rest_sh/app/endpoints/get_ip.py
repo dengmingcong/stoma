@@ -17,9 +17,9 @@ from ..router import router
 class GetIp(APIRoute):
     """Return the requester IP。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[GetIpResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=GetIpResponse
     )
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )

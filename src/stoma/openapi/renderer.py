@@ -142,16 +142,26 @@ class ResponseSpecDecl(NamedTuple):
     :vartype model_name: str | None
     :var is_json: ``True`` → :class:`stoma.JSONResponseSpec`；``False`` → :class:`stoma.RawResponseSpec`。
     :vartype is_json: bool
-    :var spec_class: 模板渲染时使用的 spec 类名字符串——``is_json=True`` 时为
-        ``"JSONResponseSpec"``；``is_json=False`` 时为下标化的
-        ``"RawResponseSpec[bytes]"`` 或 ``"RawResponseSpec[str]"``（作为 ClassVar
-        类型注解；裸 :class:`RawResponseSpec` 必须显式指定 ``T``，
+    :var spec_class_annotation: 模板 ``ClassVar[...]`` 注解中使用的下标化字符串——
+        ``is_json=True`` 时为 ``"JSONResponseSpec[<model_name>]"``（如
+        ``"JSONResponseSpec[EchoModel]"``），IDE/mypy 通过下标解析出 ``T`` 后，
+        ``client.send(..., expect=endpoint.on_200)`` 才能推断
+        ``response.validated`` 的具体类型；
+        ``is_json=False`` 时为下标化的 ``"RawResponseSpec[bytes]"`` 或
+        ``"RawResponseSpec[str]"``（裸 :class:`RawResponseSpec` 必须显式指定 ``T``，
         Wave 1.3 设计约束）。
-    :vartype spec_class: str
+    :vartype spec_class_annotation: str
+    :var spec_class_constructor: 模板右侧构造调用中使用的 spec 名字符串——
+        ``is_json=True`` 时为裸 ``"JSONResponseSpec"``（用于 ``JSONResponseSpec(...)``
+        构造）；``is_json=False`` 时为工厂方法路径 ``"RawResponseSpec.bytes"`` 或
+        ``"RawResponseSpec.text"``（Wave 1.3 设计禁止裸 ``RawResponseSpec(...)``，
+        必须走工厂方法）。
+    :vartype spec_class_constructor: str
     :var raw_factory: 仅 ``is_json=False`` 时有值——``"bytes"`` 或 ``"text"``，
         对应 :meth:`RawResponseSpec.bytes` / :meth:`RawResponseSpec.text` 工厂方法名；
-        ``is_json=True`` 时为 ``None``。模板据此选择工厂方法而非下标构造，
-        与用户调用点风格一致（plan 要求 factory methods for raw）。
+        ``is_json=True`` 时为 ``None``。保留此字段供派生
+        :attr:`spec_class_constructor` 使用（与用户调用点风格一致——plan 要求
+        factory methods for raw）。
     :vartype raw_factory: str | None
     :var status_code_or_matcher: 已渲染为代码生成字符串的 ``status_code`` 字面量——
         精确匹配为 ``"status_code=200"``；``"default"`` 为 ``"callable=lambda s: True"``；
@@ -166,7 +176,8 @@ class ResponseSpecDecl(NamedTuple):
     media_type: str
     model_name: str | None
     is_json: bool
-    spec_class: str
+    spec_class_annotation: str
+    spec_class_constructor: str
     raw_factory: str | None
     status_code_or_matcher: str
 
@@ -238,10 +249,10 @@ def categorize_raw_media_type(media_type: str) -> Literal["bytes", "str"]:
     运行时崩溃。
 
     返回值是类型参数名（``"bytes"`` / ``"str"``）而非工厂方法后缀
-    （``"bytes"`` / ``"text"``）——``spec_class`` 直接拼成
+    （``"bytes"`` / ``"text"``）——``spec_class_annotation`` 直接拼成
     ``"RawResponseSpec[<T>]"`` 形式（ClassVar 类型注解），
-    工厂调用在模板里通过 ``"RawResponseSpec." + raw_factory`` 派生，
-    由 :attr:`ResponseSpecDecl.raw_factory` 提供（``"bytes"`` / ``"text"``）。
+    工厂调用在模板里通过 :attr:`ResponseSpecDecl.spec_class_constructor` 派生
+    （如 ``"RawResponseSpec.text"`` / ``"RawResponseSpec.bytes"``）。
 
     分类规则（大小写不敏感，优先文本族 fallback 到字节族）：
 
@@ -836,13 +847,18 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         - 每条 decl 同时携带 ``is_json`` 标志与 ``model_name``（Raw 响应 ``model_name=None``），
           模板按此分别渲染 :class:`stoma.JSONResponseSpec` 与
           :class:`stoma.RawResponseSpec`。
-        - Raw 路径额外派生 ``spec_class``（``"RawResponseSpec[bytes]"`` /
+        - Raw 路径额外派生 ``spec_class_annotation``（``"RawResponseSpec[bytes]"`` /
           ``"RawResponseSpec[str]"``，作为 ClassVar 类型注解）与 ``raw_factory``
           （``"bytes"`` / ``"text"``，对应 :meth:`RawResponseSpec.bytes` /
           :meth:`RawResponseSpec.text` 工厂方法）。Wave 1.3 设计禁止裸
           ``RawResponseSpec(...)`` 实例化（运行时抛 :class:`TypeError`），故
           渲染器按 :func:`categorize_raw_media_type` 静态分类 media type，避免
           生成可执行但运行时崩溃的代码。
+        - JSON 路径的 ``spec_class_annotation`` 携带 ``model_name`` 下标
+          （如 ``"JSONResponseSpec[EchoModel]"``），保留 :class:`JSONResponseSpec`
+          的 ``T`` 参数。IDE / mypy 通过 ClassVar 下标解析 ``T``，从而在
+          ``client.send(..., expect=endpoint.on_200)`` 调用点把 ``response.validated``
+          推断为具体 model 类（而非裸 ``Any``）。这是 IDE 自动补全工作的关键。
         - ``attr_name`` 按该 response 的 media type 数量决定：
           单 media → ``on_<status>``；多 media → ``on_<status>_<sanitized_media>`` 消歧。
         - OpenAPI 通配符状态码（``default`` / ``4XX`` / ``5XX``）由
@@ -936,10 +952,15 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                         media_type=media_type,
                         model_name=model_name,
                         is_json=is_json,
-                        spec_class=(
-                            "JSONResponseSpec"
+                        spec_class_annotation=(
+                            f"JSONResponseSpec[{model_name}]"
                             if is_json
                             else f"RawResponseSpec[{categorize_raw_media_type(media_type)}]"
+                        ),
+                        spec_class_constructor=(
+                            "JSONResponseSpec"
+                            if is_json
+                            else f"RawResponseSpec.{raw_factory_for(categorize_raw_media_type(media_type))}"
                         ),
                         raw_factory=None if is_json else raw_factory_for(categorize_raw_media_type(media_type)),
                         status_code_or_matcher=render_status_code_kwarg(status_code),

@@ -17,9 +17,9 @@ from ..router import router
 class GetAuthBasic(APIRoute):
     """Require HTTP Basic auth。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[AuthResponseBody]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=AuthResponseBody
     )
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )

@@ -17,8 +17,10 @@ from ..router import router
 class CreateItem(APIRoute):
     """Create a sample item。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(status_code=200, media_type="application/json", model=Item)
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[Item]] = JSONResponseSpec(
+        status_code=200, media_type="application/json", model=Item
+    )
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
     body: Item

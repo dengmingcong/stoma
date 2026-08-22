@@ -19,7 +19,7 @@ from ..router import router
 class DeleteItem(APIRoute):
     """Delete a sample item。"""
 
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
     item_id: Annotated[str, Field(serialization_alias="item-id")]

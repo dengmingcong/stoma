@@ -21,7 +21,7 @@ class CreateUser(APIRoute):
     This can only be done by the logged in user.
     """
 
-    on_200_application_json: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200_application_json: ClassVar[JSONResponseSpec[User]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=User
     )
     on_200_application_xml: ClassVar[RawResponseSpec[str]] = RawResponseSpec.text(

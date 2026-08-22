@@ -12,8 +12,10 @@ from ..router import router
 
 @router.get("/books/{book-id}")
 class GetBook(APIRoute):
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(status_code=200, media_type="application/json", model=Book)
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[Book]] = JSONResponseSpec(
+        status_code=200, media_type="application/json", model=Book
+    )
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
     book_id: Annotated[str, Field(serialization_alias="book-id")]

@@ -21,7 +21,7 @@ class AddPet(APIRoute):
     Add a new pet to the store.
     """
 
-    on_200_application_json: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200_application_json: ClassVar[JSONResponseSpec[Pet]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=Pet
     )
     on_200_application_xml: ClassVar[RawResponseSpec[str]] = RawResponseSpec.text(

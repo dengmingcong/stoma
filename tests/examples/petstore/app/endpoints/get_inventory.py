@@ -21,6 +21,6 @@ class GetInventory(APIRoute):
     Returns a map of status codes to quantities.
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[GetInventoryResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=GetInventoryResponse
     )

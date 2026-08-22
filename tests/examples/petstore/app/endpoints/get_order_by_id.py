@@ -23,7 +23,7 @@ class GetOrderById(APIRoute):
     For valid response try integer IDs with value <= 5 or > 10. Other values will generate exceptions.
     """
 
-    on_200_application_json: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200_application_json: ClassVar[JSONResponseSpec[Order]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=Order
     )
     on_200_application_xml: ClassVar[RawResponseSpec[str]] = RawResponseSpec.text(

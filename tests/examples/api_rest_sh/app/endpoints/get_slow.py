@@ -17,10 +17,10 @@ from ..router import router
 class GetSlow(APIRoute):
     """Delay before responding。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[GetSlowResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=GetSlowResponse
     )
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
     delay: str | None = None

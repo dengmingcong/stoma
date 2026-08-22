@@ -28,7 +28,7 @@ class {{ class_name }}(APIRoute):
 {% endif %}
 {% if response_spec_decls %}
 {% for decl in response_spec_decls %}
-    {{ decl.attr_name }}: ClassVar[{{ decl.spec_class }}] = {{ decl.spec_class if decl.is_json else "RawResponseSpec." + decl.raw_factory }}(
+    {{ decl.attr_name }}: ClassVar[{{ decl.spec_class_annotation }}] = {{ decl.spec_class_constructor }}(
         {{ decl.status_code_or_matcher }},
         media_type="{{ decl.media_type }}"{% if decl.is_json %},
         model={{ decl.model_name }}{% endif %}

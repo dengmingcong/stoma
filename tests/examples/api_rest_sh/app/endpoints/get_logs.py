@@ -17,7 +17,7 @@ from ..router import router
 class GetLogs(APIRoute):
     """Stream newline-delimited JSON logs。"""
 
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
     count: int | None = None

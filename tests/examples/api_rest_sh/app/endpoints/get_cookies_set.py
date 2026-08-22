@@ -17,9 +17,9 @@ from ..router import router
 class GetCookiesSet(APIRoute):
     """Set cookies from query parameters。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[GetCookiesSetResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=GetCookiesSetResponse
     )
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )

@@ -21,7 +21,7 @@ class FindPetsByStatus(APIRoute):
     Multiple status values can be provided with comma separated strings.
     """
 
-    on_200_application_json: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200_application_json: ClassVar[JSONResponseSpec[FindPetsByStatusResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=FindPetsByStatusResponse
     )
     on_200_application_xml: ClassVar[RawResponseSpec[str]] = RawResponseSpec.text(

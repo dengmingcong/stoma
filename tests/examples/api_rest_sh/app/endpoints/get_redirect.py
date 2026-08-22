@@ -17,7 +17,7 @@ from ..router import router
 class GetRedirect(APIRoute):
     """Redirect a configurable number of times。"""
 
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
     n: int

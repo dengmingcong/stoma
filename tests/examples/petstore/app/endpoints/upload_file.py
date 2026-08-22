@@ -23,7 +23,7 @@ class UploadFile(APIRoute):
     Upload image of the pet.
     """
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[ApiResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=ApiResponse
     )
     pet_id: Annotated[int, Field(serialization_alias="petId")]

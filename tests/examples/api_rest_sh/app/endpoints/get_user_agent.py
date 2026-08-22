@@ -17,9 +17,9 @@ from ..router import router
 class GetUserAgent(APIRoute):
     """Return the User-Agent header。"""
 
-    on_200: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_200: ClassVar[JSONResponseSpec[GetUserAgentResponse]] = JSONResponseSpec(
         status_code=200, media_type="application/json", model=GetUserAgentResponse
     )
-    on_default: ClassVar[JSONResponseSpec] = JSONResponseSpec(
+    on_default: ClassVar[JSONResponseSpec[ErrorModel]] = JSONResponseSpec(
         callable=lambda s: True, media_type="application/problem+json", model=ErrorModel
     )
