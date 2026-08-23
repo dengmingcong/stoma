@@ -5,9 +5,9 @@
 
 from stoma.client import Client
 from stoma.dependencies.response import (
-    JSONResponseSpec,
-    RawResponseSpec,
+    EmptyResponseSpec,
     Response,
+    ResponseSpec,
 )
 from stoma.param_functions import Body, Form, Header, Path, Query
 from stoma.params import UploadFile
@@ -19,12 +19,12 @@ __all__ = [
     "APIRouter",
     "Body",
     "Client",
+    "EmptyResponseSpec",
     "Form",
     "Header",
-    "JSONResponseSpec",
     "Path",
     "Query",
-    "RawResponseSpec",
+    "ResponseSpec",
     "Response",
     "UploadFile",
 ]
