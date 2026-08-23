@@ -6,7 +6,7 @@ Place a new order in the store.
 
 from __future__ import annotations
 
-from stoma import APIRoute, JSONResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..models import Order
 from ..router import router
@@ -22,5 +22,5 @@ class PlaceOrder(APIRoute):
     body: Order
 
     @property
-    def on_200(self) -> JSONResponseSpec[Order]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=Order)
+    def on_200(self) -> ResponseSpec[Order]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=Order)

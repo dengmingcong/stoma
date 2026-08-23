@@ -18,7 +18,7 @@ import pytest
 pytest.importorskip("fastapi", reason="Mock server 测试需要 fastapi (stoma[test])")
 from pydantic import BaseModel, Field
 
-from stoma import Body, Form, Header, JSONResponseSpec, Path, Query, RawResponseSpec, UploadFile
+from stoma import Body, Form, Header, Path, Query, ResponseSpec, UploadFile
 from stoma.client import Client
 from stoma.routing import APIRoute, APIRouter
 from tests.integration.mock_server import _ServerThread
@@ -51,8 +51,8 @@ class GetUsers(APIRoute):
     offset: int = 0
 
     @property
-    def on_200(self) -> JSONResponseSpec[list[UserData]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+    def on_200(self) -> ResponseSpec[list[UserData]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
 
 @router.get("/users/{user_id}")
@@ -62,8 +62,8 @@ class GetUserById(APIRoute):
     user_id: Annotated[int, Path()]
 
     @property
-    def on_200(self) -> JSONResponseSpec[UserData]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+    def on_200(self) -> ResponseSpec[UserData]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
 
 @router.post("/users")
@@ -73,8 +73,8 @@ class CreateUser(APIRoute):
     data: CreateUserRequest
 
     @property
-    def on_201(self) -> JSONResponseSpec[UserData]:
-        return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+    def on_201(self) -> ResponseSpec[UserData]:
+        return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
 
 @router.get("/items")
@@ -85,8 +85,8 @@ class GetItems(APIRoute):
     limit: Annotated[int, Query()] = Field(ge=1, le=100, default=10)
 
     @property
-    def on_200(self) -> JSONResponseSpec[list[dict[str, Any]]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[dict[str, Any]])
+    def on_200(self) -> ResponseSpec[list[dict[str, Any]]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[dict[str, Any]])
 
 
 @router.post("/echo")
@@ -97,8 +97,8 @@ class EchoRequest(APIRoute):
     extra: str | None = None
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.get("/text")
@@ -106,8 +106,8 @@ class GetText(APIRoute):
     """返回纯文本响应。"""
 
     @property
-    def on_200(self) -> RawResponseSpec[bytes]:
-        return RawResponseSpec(status_code=200, media_type="text/plain", target_type=bytes)
+    def on_200(self) -> ResponseSpec[bytes]:
+        return ResponseSpec(status_code=200, media_type="text/plain", expected_type=bytes)
 
 
 @router.get("/bytes")
@@ -115,8 +115,8 @@ class GetBytes(APIRoute):
     """返回二进制响应。"""
 
     @property
-    def on_200(self) -> RawResponseSpec[bytes]:
-        return RawResponseSpec(status_code=200, media_type="application/octet-stream", target_type=bytes)
+    def on_200(self) -> ResponseSpec[bytes]:
+        return ResponseSpec(status_code=200, media_type="application/octet-stream", expected_type=bytes)
 
 
 @router.get("/notype")
@@ -124,8 +124,8 @@ class GetNoType(APIRoute):
     """无 content-type 响应。"""
 
     @property
-    def on_200(self) -> RawResponseSpec[bytes]:
-        return RawResponseSpec(status_code=200, media_type="*", target_type=bytes)
+    def on_200(self) -> ResponseSpec[bytes]:
+        return ResponseSpec(status_code=200, media_type="*", expected_type=bytes)
 
 
 @router.get("/empty")
@@ -133,8 +133,8 @@ class GetEmpty(APIRoute):
     """空响应。"""
 
     @property
-    def on_204(self) -> RawResponseSpec[bytes]:
-        return RawResponseSpec(status_code=204, media_type="*", target_type=bytes)
+    def on_204(self) -> ResponseSpec[bytes]:
+        return ResponseSpec(status_code=204, media_type="*", expected_type=bytes)
 
 
 @router.get("/problem-json")
@@ -142,8 +142,8 @@ class GetProblemJson(APIRoute):
     """application/problem+json 响应。"""
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/problem+json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/problem+json", expected_type=dict[str, Any])
 
 
 @router.get("/server-error-json")
@@ -151,8 +151,8 @@ class GetServerErrorJson(APIRoute):
     """500 + JSON 响应。"""
 
     @property
-    def on_500(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=500, media_type="application/json", model=dict[str, Any])
+    def on_500(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=500, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.get("/server-error-text")
@@ -160,8 +160,8 @@ class GetServerErrorText(APIRoute):
     """500 + 文本响应。"""
 
     @property
-    def on_500(self) -> RawResponseSpec[bytes]:
-        return RawResponseSpec(status_code=500, media_type="text/plain", target_type=bytes)
+    def on_500(self) -> ResponseSpec[bytes]:
+        return ResponseSpec(status_code=500, media_type="text/plain", expected_type=bytes)
 
 
 @router.get("/charset-json")
@@ -169,8 +169,8 @@ class GetCharsetJson(APIRoute):
     """application/json; charset=utf-8 响应。"""
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.get("/nonexistent")
@@ -178,8 +178,8 @@ class NonExistent(APIRoute):
     """404 响应测试端点。"""
 
     @property
-    def on_404(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=404, media_type="application/json", model=dict[str, Any])
+    def on_404(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=404, media_type="application/json", expected_type=dict[str, Any])
 
 
 # ===== Body Multiple Parameters 测试端点 =====
@@ -192,8 +192,8 @@ class CreateUserEmbed(APIRoute):
     data: Annotated[CreateUserRequest, Body(embed=True)]
 
     @property
-    def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+    def on_201(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/importance")
@@ -203,8 +203,8 @@ class SetImportance(APIRoute):
     importance: Annotated[int, Body(embed=True)]
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/multi")
@@ -215,8 +215,8 @@ class CreateItemMulti(APIRoute):
     importance: Annotated[int, Body()]
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/echo-headers")
@@ -226,8 +226,8 @@ class EchoHeadersRoute(APIRoute):
     value: Annotated[int, Body(media_type="text/plain")]
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+    def on_200(self) -> ResponseSpec[dict[str, str]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
 
 @router.post("/echo-headers-override")
@@ -242,8 +242,8 @@ class EchoHeadersOverrideRoute(APIRoute):
     content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/x-custom"
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+    def on_200(self) -> ResponseSpec[dict[str, str]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
 
 @router.post("/echo-body")
@@ -253,8 +253,8 @@ class StrBodyRoute(APIRoute):
     text: Annotated[str, Body(media_type="text/plain")]
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+    def on_200(self) -> ResponseSpec[dict[str, str]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
 
 # ===== APIRoute 不带泛型参数测试端点 =====
@@ -267,8 +267,8 @@ class HealthCheck(APIRoute):
     status: str = "ok"
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+    def on_200(self) -> ResponseSpec[dict[str, str]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
 
 @router.head("/probe")
@@ -276,8 +276,8 @@ class ProbeHead(APIRoute):
     """HEAD /probe：HEAD 请求无 body，``on_200`` 用 ``*`` 通配 media type。"""
 
     @property
-    def on_200(self) -> RawResponseSpec[bytes]:
-        return RawResponseSpec(status_code=200, media_type="*", target_type=bytes)
+    def on_200(self) -> ResponseSpec[bytes]:
+        return ResponseSpec(status_code=200, media_type="*", expected_type=bytes)
 
 
 @router.options("/probe")
@@ -285,8 +285,8 @@ class ProbeOptions(APIRoute):
     """OPTIONS /probe：探测端点。"""
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+    def on_200(self) -> ResponseSpec[dict[str, str]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
 
 @pytest.fixture
@@ -775,8 +775,8 @@ class LoginRoute(APIRoute):
     tags: Annotated[list[str], Form()]
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/login-list")
@@ -786,8 +786,8 @@ class LoginListRoute(APIRoute):
     tags: Annotated[list[str], Form()]
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/upload")
@@ -797,8 +797,8 @@ class UploadRoute(APIRoute):
     file: UploadFile
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/upload-multi")
@@ -808,8 +808,8 @@ class UploadMultiRoute(APIRoute):
     files: list[UploadFile]
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/upload-mix")
@@ -821,8 +821,8 @@ class MixedFormFileRoute(APIRoute):
     avatar: UploadFile
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/upload-optional")
@@ -832,8 +832,8 @@ class UploadOptRoute(APIRoute):
     file: UploadFile | None = None
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/upload-files-optional")
@@ -843,8 +843,8 @@ class UploadFilesOptRoute(APIRoute):
     files: list[UploadFile] | None = None
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/upload-raw", upload_as_multipart=False)
@@ -854,8 +854,8 @@ class UploadRawRoute(APIRoute):
     file: UploadFile
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/upload-raw", upload_as_multipart=False)
@@ -870,8 +870,8 @@ class UploadRawOptRoute(APIRoute):
     file: UploadFile | None = None
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 @router.post("/upload-raw-override", upload_as_multipart=False)
@@ -886,8 +886,8 @@ class UploadRawOverrideRoute(APIRoute):
     content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "application/x-custom"
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, Any]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, Any])
+    def on_200(self) -> ResponseSpec[dict[str, Any]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, Any])
 
 
 class TestFormBody:

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, Header, JSONResponseSpec
+from stoma import APIRoute, Header, ResponseSpec
 
 from ..models import Book, ErrorModel
 from ..router import router
@@ -24,11 +24,11 @@ class GetBook(APIRoute):
     """Succeeds if the server's resource date is older or the same as the passed date."""
 
     @property
-    def on_200(self) -> JSONResponseSpec[Book]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=Book)
+    def on_200(self) -> ResponseSpec[Book]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=Book)
 
     @property
-    def on_default(self) -> JSONResponseSpec[ErrorModel]:
-        return JSONResponseSpec(
-            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+    def on_default(self) -> ResponseSpec[ErrorModel]:
+        return ResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", expected_type=ErrorModel
         )

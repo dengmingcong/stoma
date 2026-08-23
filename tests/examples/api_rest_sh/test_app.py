@@ -21,7 +21,7 @@ HEAD 空 body 解析 / 畸形 multipart spec）。
   校验响应符合 OpenAPI 声明的 ``EchoModel`` / ``TokenResponseBody``。
 - 204 / 非 JSON happy-path（场景 4/6/7）：spec 对这些端点的响应声明与实际
   服务器行为不一致（204 无 body 描述、``/bytes`` 与 ``/image`` 实际返回
-  非 JSON 但 spec 仅声明 JSON），使用手工构造的 ``RawResponseSpec``
+  非 JSON 但 spec 仅声明 JSON），使用手工构造的 ``ResponseSpec``
   协议接收字节内容。
 
 注意：渲染器生成的 ``on_<status>`` 是实例 ``@property``（不是 ``ClassVar``），
@@ -31,7 +31,7 @@ HEAD 空 body 解析 / 畸形 multipart spec）。
 
 from __future__ import annotations
 
-from stoma import RawResponseSpec
+from stoma import ResponseSpec
 from stoma.client import Client
 from tests.examples.api_rest_sh.app.endpoints.delete_book import DeleteBook
 from tests.examples.api_rest_sh.app.endpoints.get_accept_image import GetAcceptImage
@@ -96,13 +96,13 @@ def test_delete_with_path_param_returns_204(e2e_client: Client) -> None:
 
     spec 的 ``204`` 仅描述 ``"No Content"`` 无 body schema，渲染器仅发射
     ``on_default``（要求 ``application/problem+json``），与实际响应不符。
-    用 ``RawResponseSpec(204, "*", target_type=bytes)`` 显式接收空字节。
+    用 ``ResponseSpec(204, "*", expected_type=bytes)`` 显式接收空字节。
     """
     endpoint = DeleteBook(book_id="123")
     response = e2e_client.send(endpoint)
 
     assert response.raw.status == 204
-    body: bytes = response.expect(RawResponseSpec(204, "*", target_type=bytes))
+    body: bytes = response.expect(ResponseSpec(204, "*", expected_type=bytes))
     assert body == b""
 
 
@@ -122,13 +122,13 @@ def test_get_with_path_param_returns_octet_stream(e2e_client: Client) -> None:
 
     spec 的 ``/bytes/{n}`` 仅声明 ``application/json``（base64 string），
     实际服务器返回 ``application/octet-stream``。用
-    ``RawResponseSpec(200, "*", target_type=bytes)`` 接收字节。
+    ``ResponseSpec(200, "*", expected_type=bytes)`` 接收字节。
     """
     endpoint = GetBytes(n=100)
     response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    body: bytes = response.expect(RawResponseSpec(200, "*", target_type=bytes))
+    body: bytes = response.expect(ResponseSpec(200, "*", expected_type=bytes))
     assert isinstance(body, bytes)
     assert len(body) >= 50
     content_type = response.raw.headers.get("content-type", "")
@@ -140,13 +140,13 @@ def test_get_accept_header_returns_image(e2e_client: Client) -> None:
 
     路径 ``/image`` 根据 Accept 头返回 ``image/*``。spec 仅声明
     ``application/json``（base64 string），与实际响应不符。用
-    ``RawResponseSpec(200, "*", target_type=bytes)`` 接收字节。
+    ``ResponseSpec(200, "*", expected_type=bytes)`` 接收字节。
     """
     endpoint = GetAcceptImage()
     response = e2e_client.send(endpoint)
 
     assert response.raw.status == 200
-    body: bytes = response.expect(RawResponseSpec(200, "*", target_type=bytes))
+    body: bytes = response.expect(ResponseSpec(200, "*", expected_type=bytes))
     assert isinstance(body, bytes)
     content_type = response.raw.headers.get("content-type", "")
     assert "image" in content_type

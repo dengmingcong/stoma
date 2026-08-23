@@ -22,7 +22,7 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel, Field
 
-from stoma import Body, Form, Header, JSONResponseSpec, Path, Query, UploadFile
+from stoma import Body, Form, Header, Path, Query, ResponseSpec, UploadFile
 from stoma.dependencies.request import RequestBodyKind, _serialize_body_params
 from stoma.routing import APIRoute, APIRouter
 
@@ -89,8 +89,8 @@ def test_collect_query_params() -> None:
         keyword: Annotated[str | None, Query()] = None
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     # 默认值
     endpoint1 = GetUsers()
@@ -118,8 +118,8 @@ def test_collect_path_params() -> None:
         post_id: Annotated[int, Path()]
 
         @property
-        def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+        def on_200(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
     endpoint = GetUserPost(user_id=123, post_id=456)
     params = collect_params(endpoint)
@@ -139,8 +139,8 @@ def test_collect_header_params() -> None:
         accept: Annotated[str, Header()] = "application/json"
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = GetUsers(
         authorization="Bearer token123",
@@ -166,8 +166,8 @@ def test_collect_body_data() -> None:
         body: Annotated[UserCreateRequest, Body()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     user_data = UserCreateRequest(name="Alice", email="alice@example.com", age=30)
     endpoint = CreateUser(body=user_data)
@@ -192,8 +192,8 @@ def test_collect_mixed_params() -> None:
         body: Annotated[dict[str, str], Body()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, str])
+        def on_201(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, str])
 
     post_data = {"title": "Hello World", "content": "Test content"}
     endpoint = CreateUserPost(
@@ -226,8 +226,8 @@ def test_collect_params_with_no_annotations() -> None:
         internal_flag: bool = True
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = GetUsers(limit=10, internal_flag=False)
     params = collect_params(endpoint)
@@ -247,8 +247,8 @@ def test_param_alias() -> None:
         page_num: Annotated[int, Query(), Field(serialization_alias="pageNum", default=1)]
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = GetUsers(page_size=50, page_num=2)
     params = collect_params(endpoint)
@@ -271,8 +271,8 @@ def test_multiple_body_params() -> None:
         data2: Annotated[dict[str, int], Body()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = PostData(data1={"a": 1}, data2={"b": 2})
     body_data = _serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
@@ -289,8 +289,8 @@ def test_single_pydantic_body_flat() -> None:
         data: UserCreateRequest
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = CreateUser(data=UserCreateRequest(name="Alice", email="alice@example.com", age=30))
     body_data = _serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
@@ -307,8 +307,8 @@ def test_single_pydantic_body_embed_true() -> None:
         data: Annotated[UserCreateRequest, Body(embed=True)]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = CreateUserEmbed(data=UserCreateRequest(name="Bob", email="bob@example.com"))
     body_data = _serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
@@ -325,8 +325,8 @@ def test_single_scalar_body_embedded() -> None:
         importance: Annotated[int, Body(embed=True)]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = SetImportance(importance=5)
     body_data = _serialize_body_params(endpoint, endpoint._get_dependant()).raw_data.value
@@ -344,8 +344,8 @@ def test_multiple_body_pydantic_and_scalar() -> None:
         importance: Annotated[int, Body()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = CreateItem(
         item=UserCreateRequest(name="Charlie", email="charlie@example.com"),
@@ -370,10 +370,10 @@ def test_api_route_with_on_200_only() -> None:
         status: str = "ok"
 
         @property
-        def on_200(self) -> JSONResponseSpec[dict]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+        def on_200(self) -> ResponseSpec[dict]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
-    assert isinstance(HealthCheck().on_200, JSONResponseSpec)
+    assert isinstance(HealthCheck().on_200, ResponseSpec)
     assert HealthCheck().on_200.status_code == 200
 
     dependant = HealthCheck._get_dependant()
@@ -391,8 +391,8 @@ def test_pure_form_mutual_exclusion_raise() -> None:
             note: Annotated[str, Form()]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
 
 # ===== 自动识别 / 缓存 / 跨路由 =====
@@ -407,8 +407,8 @@ def test_auto_recognize_path_params() -> None:
         limit: int = 10
 
         @property
-        def on_200(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+        def on_200(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
     dependant = GetUser._get_dependant()
 
@@ -434,8 +434,8 @@ def test_auto_recognize_body_params() -> None:
         token: str
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     dependant = CreateUser._get_dependant()
 
@@ -462,8 +462,8 @@ def test_auto_recognize_query_params() -> None:
         keyword: str | None = None
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     dependant = GetUsers._get_dependant()
 
@@ -490,8 +490,8 @@ def test_explicit_header_params() -> None:
         limit: int = 20
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     dependant = GetUsers._get_dependant()
 
@@ -517,8 +517,8 @@ def test_caching_mechanism() -> None:
         limit: int = 10
 
         @property
-        def on_200(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+        def on_200(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
     # 装饰器已自动调用 ``_get_dependant`` 建立缓存
     assert GetUser._dependant is not None
@@ -556,8 +556,8 @@ def test_complex_mixed_params() -> None:
         data: UserCreateRequest
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, str])
+        def on_201(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, str])
 
     dependant = UpdateUserPost._get_dependant()
 
@@ -599,8 +599,8 @@ def test_path_param_extraction() -> None:
         include_profile: bool = False
 
         @property
-        def on_200(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+        def on_200(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
     dependant = GetTeamMember._get_dependant()
 
@@ -628,8 +628,8 @@ def test_param_recognition_across_routes() -> None:
         limit: int = 10
 
         @property
-        def on_200(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+        def on_200(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
     @router.post("/posts/{post_id}")
     class UpdatePost(APIRoute):
@@ -637,8 +637,8 @@ def test_param_recognition_across_routes() -> None:
         content: str
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, str])
+        def on_201(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, str])
 
     dependant1 = GetUser._get_dependant()
     dependant2 = UpdatePost._get_dependant()
@@ -673,8 +673,8 @@ def test_basemodel_subclass_recognition() -> None:
         query_param: str = "default"  # 不是 BaseModel
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, str])
+        def on_201(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, str])
 
     dependant = PostData._get_dependant()
 
@@ -707,8 +707,8 @@ def test_sequence_types_recognition() -> None:
         count: int  # 标量类型 → query
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, str])
+        def on_201(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, str])
 
     dependant = PostItems._get_dependant()
 
@@ -737,8 +737,8 @@ def test_dataclass_recognition() -> None:
         active: bool  # 标量类型 → query
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, str])
+        def on_201(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, str])
 
     dependant = PostDataclass._get_dependant()
 
@@ -764,8 +764,8 @@ def test_union_type_recognition() -> None:
         name: str
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, str])
+        def on_201(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, str])
 
     dependant = PostUnion._get_dependant()
 
@@ -804,8 +804,8 @@ def test_form_marked_uploadfile_raises() -> None:
         file: Annotated[UploadFile, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     with pytest.raises(ValueError, match="Form 不支持的字段类型"):
         UploadFileEndpoint._get_dependant(method="POST", path="/upload")
@@ -818,8 +818,8 @@ def test_form_marked_list_uploadfile_raises() -> None:
         files: Annotated[list[UploadFile], Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     with pytest.raises(ValueError, match="Form 不支持的字段类型"):
         UploadFilesEndpoint._get_dependant(method="POST", path="/upload")
@@ -832,8 +832,8 @@ def test_form_marked_path_raises() -> None:
         file_path: Annotated[pathlib.Path, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     with pytest.raises(ValueError, match="Form 不支持的字段类型"):
         UploadPathEndpoint._get_dependant(method="POST", path="/upload")
@@ -847,8 +847,8 @@ def test_form_marked_str_routes_to_form_body_params() -> None:
         name: Annotated[str, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     categories = get_param_categories(SubmitStrEndpoint)
     assert "name" in categories["form_body_params"]
@@ -863,8 +863,8 @@ def test_form_marked_list_str_routes_to_form_body_params() -> None:
         tags: Annotated[list[str], Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     categories = get_param_categories(SubmitStrListEndpoint)
     assert "tags" in categories["form_body_params"]
@@ -879,8 +879,8 @@ def test_form_scalar_optional() -> None:
         name: Annotated[str | None, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     categories = get_param_categories(SubmitOptionalStrEndpoint)
     assert "name" in categories["form_body_params"]
@@ -895,8 +895,8 @@ def test_form_scalar_list_optional() -> None:
         tags: Annotated[list[str] | None, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     categories = get_param_categories(SubmitOptionalStrListEndpoint)
     assert "tags" in categories["form_body_params"]
@@ -911,8 +911,8 @@ def test_unmarked_uploadfile_routes_to_file_body_params() -> None:
         file: UploadFile
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     categories = get_param_categories(UnmarkedUploadEndpoint)
     assert "file" in categories["file_body_params"]
@@ -928,8 +928,8 @@ def test_mixed_form_marked_params() -> None:
         name: Annotated[str, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     categories = get_param_categories(MixedEndpoint)
     assert categories["file_body_params"] == ["file"]
@@ -950,8 +950,8 @@ def test_form_basemodel_raises_in_routing() -> None:
         data: Annotated[UserCreateRequest, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     with pytest.raises(ValueError, match="Form 不支持的字段类型"):
         SubmitFormEndpoint._get_dependant(method="POST", path="/submit")
@@ -970,8 +970,8 @@ def test_form_bytes_annotation_raises_in_routing() -> None:
         payload: Annotated[bytes, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     with pytest.raises(ValueError, match=r"Form 不支持的字段类型.*json\.dumps"):
         BytesFormEndpoint._get_dependant(method="POST", path="/form-bytes")
@@ -986,8 +986,8 @@ def test_form_list_bytes_annotation_raises_in_routing() -> None:
         payloads: Annotated[list[bytes], Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+        def on_201(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
     with pytest.raises(ValueError, match=r"Form 不支持的字段类型.*json\.dumps"):
         BytesListFormEndpoint._get_dependant(method="POST", path="/form-bytes-list")
@@ -1029,8 +1029,8 @@ class TestUploadAsMultipartFlag:
 
         class R(APIRoute):
             @property
-            def on_201(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict)
+            def on_201(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 
         with pytest.raises(ValueError, match="upload_as_multipart=False 要求 body 恰好包含一个 UploadFile 字段"):
             R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
@@ -1043,8 +1043,8 @@ class TestUploadAsMultipartFlag:
             file2: UploadFile
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict)
+            def on_201(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 
         with pytest.raises(ValueError, match="实际有 2 个"):
             R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
@@ -1056,8 +1056,8 @@ class TestUploadAsMultipartFlag:
             files: list[UploadFile]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict)
+            def on_201(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 
         with pytest.raises(ValueError, match="不能是 list/Form 包装"):
             R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
@@ -1070,8 +1070,8 @@ class TestUploadAsMultipartFlag:
             data: Annotated[str, Form()]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict)
+            def on_201(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 
         with pytest.raises(ValueError, match="不允许 Form 字段"):
             R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
@@ -1089,8 +1089,8 @@ class TestUploadAsMultipartFlag:
             data: Annotated[dict, Body()]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict)
+            def on_201(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 
         with pytest.raises(
             ValueError,
@@ -1110,8 +1110,8 @@ class TestUploadAsMultipartFlag:
             file: UploadFile | None = None
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict)
+            def on_201(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 
         d = R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
         assert d.upload_as_multipart is False
@@ -1128,8 +1128,8 @@ class TestUploadAsMultipartFlag:
             file: UploadFile
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict)
+            def on_201(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 
         d = R._get_dependant(method="POST", path="/x", upload_as_multipart=False)
         assert d.upload_as_multipart is False
@@ -1143,8 +1143,8 @@ class TestUploadAsMultipartFlag:
             file: UploadFile
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict)
+            def on_201(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 
         d = R._get_dependant(method="POST", path="/x")
         assert d.upload_as_multipart is True
@@ -1163,8 +1163,8 @@ def test_body_embed_ignored_with_multiple_params() -> None:
         b: Annotated[int, Body(embed=True)]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     body = _serialize_body_params(
         MultiEmbed(a="x", b=1),
@@ -1210,8 +1210,8 @@ class TestAPIRouterPrefix:
             limit: Annotated[int, Query()] = 20
 
             @property
-            def on_200(self) -> JSONResponseSpec[list[UserData]]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+            def on_200(self) -> ResponseSpec[list[UserData]]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
         dependant = GetUsers._get_dependant()
 
@@ -1226,8 +1226,8 @@ class TestAPIRouterPrefix:
         @router_v3.get("/store/inventory")
         class GetInventory(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+            def on_200(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
         dependant = GetInventory._get_dependant()
 
@@ -1243,8 +1243,8 @@ class TestAPIRouterPrefix:
         @router_v1.get("/users")
         class GetUsersV1(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[list[UserData]]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+            def on_200(self) -> ResponseSpec[list[UserData]]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
         @router_v2.post("/users")
         class CreateUserV2(APIRoute):
@@ -1252,8 +1252,8 @@ class TestAPIRouterPrefix:
             email: str
 
             @property
-            def on_201(self) -> JSONResponseSpec[UserData]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=UserData)
+            def on_201(self) -> ResponseSpec[UserData]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=UserData)
 
         dep_v1 = GetUsersV1._get_dependant()
         dep_v2 = CreateUserV2._get_dependant()
@@ -1274,8 +1274,8 @@ class TestAPIRouterPrefix:
             id: int
 
             @property
-            def on_200(self) -> JSONResponseSpec[UserData]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+            def on_200(self) -> ResponseSpec[UserData]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
         dependant = GetUserById._get_dependant()
 
@@ -1300,23 +1300,23 @@ class _ReservedRouteModel(BaseModel):
 
 
 def test_property_on_allowed() -> None:
-    """``@property def on_200(self) -> JSONResponseSpec[Model]: return JSONResponseSpec(...)`` 不抛错（渲染器生成的合法代码）。
+    """``@property def on_200(self) -> ResponseSpec[Model]: return ResponseSpec(...)`` 不抛错（渲染器生成的合法代码）。
 
     ``on_*`` 字段绑定到 :class:`BaseResponseSpec` 实例时，校验跳过；
     这是渲染器生成 endpoint 文件时的合法模式（``tests/examples/**/app/endpoints/*.py``）。
     """
 
-    from stoma.dependencies.response import JSONResponseSpec
+    from stoma.dependencies.response import ResponseSpec
 
     class GeneratedRoute(APIRoute):
         @property
-        def on_200(self) -> JSONResponseSpec[_ReservedRouteModel]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=_ReservedRouteModel)
+        def on_200(self) -> ResponseSpec[_ReservedRouteModel]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=_ReservedRouteModel)
 
     # 类定义不抛错；实例化正常
     endpoint = GeneratedRoute()
     assert endpoint is not None
-    assert isinstance(GeneratedRoute().on_200, JSONResponseSpec)
+    assert isinstance(GeneratedRoute().on_200, ResponseSpec)
     assert GeneratedRoute().on_200.status_code == 200
 
 

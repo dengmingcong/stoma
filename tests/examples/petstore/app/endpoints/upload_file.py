@@ -10,7 +10,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, Header, JSONResponseSpec, UploadFile
+from stoma import APIRoute, Header, ResponseSpec, UploadFile
 
 from ..models import ApiResponse
 from ..router import router
@@ -31,5 +31,5 @@ class UploadFile(APIRoute):
     body: UploadFile
 
     @property
-    def on_200(self) -> JSONResponseSpec[ApiResponse]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=ApiResponse)
+    def on_200(self) -> ResponseSpec[ApiResponse]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=ApiResponse)

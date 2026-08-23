@@ -5,7 +5,7 @@ Generated from OpenAPI: get-slow
 
 from __future__ import annotations
 
-from stoma import APIRoute, JSONResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..models import ErrorModel, GetSlowResponse
 from ..router import router
@@ -19,11 +19,11 @@ class GetSlow(APIRoute):
     """Delay duration, for example 500ms or 2s"""
 
     @property
-    def on_200(self) -> JSONResponseSpec[GetSlowResponse]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=GetSlowResponse)
+    def on_200(self) -> ResponseSpec[GetSlowResponse]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=GetSlowResponse)
 
     @property
-    def on_default(self) -> JSONResponseSpec[ErrorModel]:
-        return JSONResponseSpec(
-            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+    def on_default(self) -> ResponseSpec[ErrorModel]:
+        return ResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", expected_type=ErrorModel
         )

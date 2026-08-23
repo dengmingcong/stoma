@@ -18,7 +18,7 @@ from playwright.sync_api import FormData
 from pydantic import BaseModel, Field
 from pydantic.fields import FieldInfo
 
-from stoma import Body, Form, JSONResponseSpec, Path, Query, UploadFile
+from stoma import Body, Form, Path, Query, ResponseSpec, UploadFile
 from stoma.dependencies import ModelField
 from stoma.dependencies.request import (
     RawPayload,
@@ -55,8 +55,8 @@ def test_form_scalar_passes_value() -> None:
         username: Annotated[str, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = LoginForm(username="alice")
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -73,8 +73,8 @@ def test_form_int() -> None:
         age: Annotated[int, Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = AgeForm(age=42)
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -91,8 +91,8 @@ def test_form_scalar_list_append_multiple() -> None:
         tags: Annotated[list[str], Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = TagsForm(tags=["a", "b"])
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -109,8 +109,8 @@ def test_form_scalar_list_field() -> None:
         tags: Annotated[list[str], Form()]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = ScalarListForm(tags=["a", "b"])
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -133,8 +133,8 @@ def test_uploadfile_single(tmp_path: pathlib.Path) -> None:
         file: UploadFile
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = UploadSingle(file=UploadFile(path=file_path))
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -156,8 +156,8 @@ def test_uploadfile_list(tmp_path: pathlib.Path) -> None:
         files: list[UploadFile]
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = UploadList(files=[UploadFile(path=file1), UploadFile(path=file2)])
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -174,8 +174,8 @@ def test_uploadfile_optional_none() -> None:
         file: UploadFile | None = None
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = UploadOptNone(file=None)
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -192,8 +192,8 @@ def test_uploadfile_optional_missing() -> None:
         file: UploadFile | None = None
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = UploadOptMissing()  # 缺省值 None
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -213,8 +213,8 @@ def test_uploadfile_optional_with_value(tmp_path: pathlib.Path) -> None:
         file: UploadFile | None = None
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = UploadOptValue(file=UploadFile(path=file_path))
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -231,8 +231,8 @@ def test_uploadfile_list_optional_none() -> None:
         files: list[UploadFile] | None = None
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = UploadFilesOptNone(files=None)
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -249,8 +249,8 @@ def test_uploadfile_list_optional_empty() -> None:
         files: list[UploadFile] | None = None
 
         @property
-        def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-            return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+        def on_201(self) -> ResponseSpec[dict[str, Any]]:
+            return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
     endpoint = UploadFilesOptEmpty(files=[])
     body = _serialize_body_params(endpoint, endpoint._get_dependant())
@@ -328,8 +328,8 @@ class TestRawPayloadAndMediaType:
             value: Annotated[int, Body(media_type="text/plain")]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             ScalarMedia(value=5),
@@ -348,8 +348,8 @@ class TestRawPayloadAndMediaType:
             value: Annotated[int, Body()]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             ScalarDefault(value=42),
@@ -369,8 +369,8 @@ class TestRawPayloadAndMediaType:
             age: Annotated[int, Body(media_type="text/plain")]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             MultiMedia(name="alice", age=30),
@@ -388,8 +388,8 @@ class TestRawPayloadAndMediaType:
             value: Annotated[int, Body(embed=True, media_type="text/plain")]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             EmbedMedia(value=7),
@@ -413,8 +413,8 @@ class TestRawPayloadAndMediaType:
             data: Annotated[LocalUserCreateRequest, Body(media_type="application/xml")]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             BM(data=LocalUserCreateRequest(name="x", email="y@z.com")),
@@ -432,8 +432,8 @@ class TestRawPayloadAndMediaType:
             values: Annotated[list[int], Body(media_type="text/plain")]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             ListMedia(values=[1, 2, 3]),
@@ -451,8 +451,8 @@ class TestRawPayloadAndMediaType:
             importance: Annotated[int, Body()]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             ScalarBare(importance=99),
@@ -469,8 +469,8 @@ class TestRawPayloadAndMediaType:
             importance: Annotated[int, Body(embed=False)]
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             ScalarNoEmbed(importance=10),
@@ -493,8 +493,8 @@ class TestRawPayloadAndMediaType:
             data: LocalUserCreateRequest
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             BMDefault(data=LocalUserCreateRequest(name="alice", email="a@b.com")),
@@ -517,8 +517,8 @@ def test_interpolate_single_path_param() -> None:
         user_id: Annotated[int, Path()]
 
         @property
-        def on_200(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+        def on_200(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
     endpoint = GetUser(user_id=123)
     interpolated_path = _interpolate_path_params(endpoint, endpoint._get_dependant())
@@ -535,8 +535,8 @@ def test_interpolate_multiple_path_params() -> None:
         post_id: Annotated[int, Path()]
 
         @property
-        def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+        def on_200(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
     endpoint = GetUserPost(user_id=123, post_id=456)
     interpolated_path = _interpolate_path_params(endpoint, endpoint._get_dependant())
@@ -553,8 +553,8 @@ def test_interpolate_path_with_string_param() -> None:
         comment_id: Annotated[int, Path()]
 
         @property
-        def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+        def on_200(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
     endpoint = GetPostComment(slug="hello-world", comment_id=789)
     interpolated_path = _interpolate_path_params(endpoint, endpoint._get_dependant())
@@ -572,8 +572,8 @@ def test_interpolate_path_with_mixed_params() -> None:
         version: Annotated[int, Path()]
 
         @property
-        def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+        def on_200(self) -> ResponseSpec[dict[str, str]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
     endpoint = UpdateResource(user_id=42, resource_id="abc123", version=2)
     interpolated_path = _interpolate_path_params(endpoint, endpoint._get_dependant())
@@ -590,8 +590,8 @@ def test_interpolate_path_no_params() -> None:
         offset: int = 0
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = ListUsers(limit=10, offset=5)
     interpolated_path = _interpolate_path_params(endpoint, endpoint._get_dependant())
@@ -607,8 +607,8 @@ def test_interpolate_path_preserves_base_path() -> None:
         user_id: Annotated[int, Path()]
 
         @property
-        def on_200(self) -> JSONResponseSpec[UserData]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+        def on_200(self) -> ResponseSpec[UserData]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
     endpoint = GetUserV1(user_id=999)
     interpolated_path = _interpolate_path_params(endpoint, endpoint._get_dependant())
@@ -627,8 +627,8 @@ def test_serialize_single_query_param() -> None:
         limit: Annotated[int, Query()] = 20
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = GetUsers(limit=10)
     query_params = _collect_query_params(endpoint, endpoint._get_dependant())
@@ -646,8 +646,8 @@ def test_serialize_multiple_query_params() -> None:
         keyword: Annotated[str | None, Query()] = None
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = GetUsers(limit=50, offset=10, keyword="test")
     query_params = _collect_query_params(endpoint, endpoint._get_dependant())
@@ -666,8 +666,8 @@ def test_serialize_query_params_skip_none() -> None:
         filter_type: Annotated[str | None, Query()] = None
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = Search(query="hello", limit=25, filter_type=None)
     query_params = _collect_query_params(endpoint, endpoint._get_dependant())
@@ -686,8 +686,8 @@ def test_serialize_query_params_with_alias() -> None:
         page_num: Annotated[int, Query()] = Field(serialization_alias="pageNum", default=1)
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = GetUsers(page_size=50, page_num=2)
     query_params = _collect_query_params(endpoint, endpoint._get_dependant())
@@ -705,8 +705,8 @@ def test_serialize_query_params_with_boolean() -> None:
         verified: Annotated[bool, Query()] = False
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = GetUsers(active=True, verified=False)
     query_params = _collect_query_params(endpoint, endpoint._get_dependant())
@@ -724,8 +724,8 @@ def test_serialize_query_params_with_default_values() -> None:
         offset: Annotated[int, Query()] = 0
 
         @property
-        def on_200(self) -> JSONResponseSpec[list[UserData]]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+        def on_200(self) -> ResponseSpec[list[UserData]]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
     endpoint = GetUsers()
     query_params = _collect_query_params(endpoint, endpoint._get_dependant())
@@ -744,8 +744,8 @@ def test_serialize_query_params_type_conversion() -> None:
         name: Annotated[str, Query()] = "default"
 
         @property
-        def on_200(self) -> JSONResponseSpec[dict]:
-            return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+        def on_200(self) -> ResponseSpec[dict]:
+            return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
     endpoint = GetData(count=42, ratio=3.14, name="test")
     query_params = _collect_query_params(endpoint, endpoint._get_dependant())

@@ -6,7 +6,7 @@ Streams a bounded Server-Sent Events feed with a simple `type`, `user.id`, `mess
 
 from __future__ import annotations
 
-from stoma import APIRoute, JSONResponseSpec, RawResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..models import ErrorModel
 from ..router import router
@@ -23,11 +23,11 @@ class GetEvents(APIRoute):
     """Number of events to emit"""
 
     @property
-    def on_200(self) -> RawResponseSpec[str]:
-        return RawResponseSpec(status_code=200, media_type="text/event-stream", target_type=str)
+    def on_200(self) -> ResponseSpec[str]:
+        return ResponseSpec(status_code=200, media_type="text/event-stream", expected_type=str)
 
     @property
-    def on_default(self) -> JSONResponseSpec[ErrorModel]:
-        return JSONResponseSpec(
-            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+    def on_default(self) -> ResponseSpec[ErrorModel]:
+        return ResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", expected_type=ErrorModel
         )

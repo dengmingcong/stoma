@@ -23,7 +23,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from stoma import Body, Header, JSONResponseSpec, Path, Query
+from stoma import Body, Header, Path, Query, ResponseSpec
 from stoma.routing import APIRoute, APIRouter
 
 
@@ -77,8 +77,8 @@ class GetUsers(APIRoute):
     token: Annotated[str, Header()] = Field(serialization_alias="Authorization", description="认证令牌")
 
     @property
-    def on_200(self) -> JSONResponseSpec[list[UserData]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+    def on_200(self) -> ResponseSpec[list[UserData]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
 
 # ===== 验收场景 2: 按状态码声明响应协议 =====
@@ -95,8 +95,8 @@ class GetUserById(APIRoute):
     user_id: Annotated[int, Path()] = Field(description="用户 ID", ge=1)
 
     @property
-    def on_200(self) -> JSONResponseSpec[UserData]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+    def on_200(self) -> ResponseSpec[UserData]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
 
 # ===== 验收场景 3: BaseModel 自动 __init__ 生成（零样板代码）=====
@@ -116,8 +116,8 @@ class CreateUser(APIRoute):
     body: Annotated[UserCreateRequest, Body()] = Field(description="用户创建请求")
 
     @property
-    def on_200(self) -> JSONResponseSpec[UserData]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+    def on_200(self) -> ResponseSpec[UserData]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
 
 # ===== 验收场景 4: 命名空间隔离（用户字段名为 method、path 等）=====
@@ -137,8 +137,8 @@ class DebugEndpoint(APIRoute):
     servers: Annotated[list[str] | None, Query()] = Field(description="用户自定义的 servers 字段", default=None)
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+    def on_200(self) -> ResponseSpec[dict[str, str]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
 
 # ===== 测试 PUT 方法 =====
@@ -150,8 +150,8 @@ class UpdateUser(APIRoute):
     body: Annotated[UserCreateRequest, Body()]
 
     @property
-    def on_200(self) -> JSONResponseSpec[UserData]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+    def on_200(self) -> ResponseSpec[UserData]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
 
 # ===== 测试 PATCH 方法 =====
@@ -163,8 +163,8 @@ class PartialUpdateUser(APIRoute):
     body: Annotated[UserUpdateRequest, Body()]
 
     @property
-    def on_200(self) -> JSONResponseSpec[UserData]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+    def on_200(self) -> ResponseSpec[UserData]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
 
 # ===== 测试 DELETE 方法 =====
@@ -177,8 +177,8 @@ class DeleteUser(APIRoute):
     token: Annotated[str | None, Header()] = Field(serialization_alias="Authorization", default=None)
 
     @property
-    def on_200(self) -> JSONResponseSpec[dict[str, str]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict[str, str])
+    def on_200(self) -> ResponseSpec[dict[str, str]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict[str, str])
 
 
 # ===== 测试多个查询参数和复杂验证 =====
@@ -198,8 +198,8 @@ class SearchUsers(APIRoute):
     x_request_id: Annotated[str | None, Header()] = Field(serialization_alias="X-Request-ID", default=None)
 
     @property
-    def on_200(self) -> JSONResponseSpec[list[UserData]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[UserData])
+    def on_200(self) -> ResponseSpec[list[UserData]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[UserData])
 
 
 # ===== 手动测试代码 =====
@@ -333,8 +333,8 @@ class TestAllMethods:
         @router.get("/x")
         class X(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+            def on_200(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "GET"
@@ -346,8 +346,8 @@ class TestAllMethods:
         @router.post("/x")
         class X(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+            def on_200(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "POST"
@@ -359,8 +359,8 @@ class TestAllMethods:
         @router.put("/x")
         class X(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+            def on_200(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "PUT"
@@ -372,8 +372,8 @@ class TestAllMethods:
         @router.patch("/x")
         class X(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+            def on_200(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "PATCH"
@@ -385,8 +385,8 @@ class TestAllMethods:
         @router.delete("/x")
         class X(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+            def on_200(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "DELETE"
@@ -398,8 +398,8 @@ class TestAllMethods:
         @router.head("/x")
         class X(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+            def on_200(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "HEAD"
@@ -411,8 +411,8 @@ class TestAllMethods:
         @router.options("/x")
         class X(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+            def on_200(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "OPTIONS"
@@ -424,8 +424,8 @@ class TestAllMethods:
         @router.trace("/x")
         class X(APIRoute):
             @property
-            def on_200(self) -> JSONResponseSpec[dict]:
-                return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+            def on_200(self) -> ResponseSpec[dict]:
+                return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
         meta = X()._get_dependant()
         assert meta.method == "TRACE"

@@ -10,7 +10,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, JSONResponseSpec, RawResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..models import Pet
 from ..router import router
@@ -31,9 +31,9 @@ class UpdatePetWithForm(APIRoute):
     """Status of pet that needs to be updated"""
 
     @property
-    def on_200_application_json(self) -> JSONResponseSpec[Pet]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=Pet)
+    def on_200_application_json(self) -> ResponseSpec[Pet]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=Pet)
 
     @property
-    def on_200_application_xml(self) -> RawResponseSpec[str]:
-        return RawResponseSpec(status_code=200, media_type="application/xml", target_type=str)
+    def on_200_application_xml(self) -> ResponseSpec[str]:
+        return ResponseSpec(status_code=200, media_type="application/xml", expected_type=str)

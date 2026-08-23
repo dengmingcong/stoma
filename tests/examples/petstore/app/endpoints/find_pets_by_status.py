@@ -6,7 +6,7 @@ Multiple status values can be provided with comma separated strings.
 
 from __future__ import annotations
 
-from stoma import APIRoute, JSONResponseSpec, RawResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..models import FindPetsByStatusResponse
 from ..router import router
@@ -23,9 +23,9 @@ class FindPetsByStatus(APIRoute):
     """Status values that need to be considered for filter"""
 
     @property
-    def on_200_application_json(self) -> JSONResponseSpec[FindPetsByStatusResponse]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=FindPetsByStatusResponse)
+    def on_200_application_json(self) -> ResponseSpec[FindPetsByStatusResponse]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=FindPetsByStatusResponse)
 
     @property
-    def on_200_application_xml(self) -> RawResponseSpec[str]:
-        return RawResponseSpec(status_code=200, media_type="application/xml", target_type=str)
+    def on_200_application_xml(self) -> ResponseSpec[str]:
+        return ResponseSpec(status_code=200, media_type="application/xml", expected_type=str)

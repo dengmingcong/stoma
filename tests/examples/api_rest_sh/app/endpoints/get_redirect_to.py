@@ -5,7 +5,7 @@ Generated from OpenAPI: get-redirect-to
 
 from __future__ import annotations
 
-from stoma import APIRoute, JSONResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..models import ErrorModel
 from ..router import router
@@ -21,8 +21,8 @@ class GetRedirectTo(APIRoute):
     """3xx redirect status code to send"""
 
     @property
-    def on_default(self) -> JSONResponseSpec[ErrorModel]:
-        return JSONResponseSpec(
+    def on_default(self) -> ResponseSpec[ErrorModel]:
+        return ResponseSpec(
             status_code=lambda c: (
                 c
                 not in [
@@ -129,5 +129,5 @@ class GetRedirectTo(APIRoute):
                 ]
             ),
             media_type="application/problem+json",
-            model=ErrorModel,
+            expected_type=ErrorModel,
         )

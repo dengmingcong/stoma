@@ -19,7 +19,7 @@ from typing import Any, Optional, Union
 import pytest
 from pydantic import BaseModel
 
-from stoma import JSONResponseSpec, UploadFile
+from stoma import ResponseSpec, UploadFile
 from stoma.dependencies.annotation import (
     field_annotation_is_complex,
     validate_binary_body_annotation,
@@ -75,8 +75,8 @@ class TestBinaryBodySerialization:
             file: UploadFile
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         return R
 
@@ -119,8 +119,8 @@ class TestBinaryBodySerialization:
             file: UploadFile | None = None
 
             @property
-            def on_201(self) -> JSONResponseSpec[dict[str, Any]]:
-                return JSONResponseSpec(status_code=201, media_type="application/json", model=dict[str, Any])
+            def on_201(self) -> ResponseSpec[dict[str, Any]]:
+                return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict[str, Any])
 
         body = _serialize_body_params(
             R(),

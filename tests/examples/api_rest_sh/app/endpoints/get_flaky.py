@@ -5,7 +5,7 @@ Generated from OpenAPI: get-flaky
 
 from __future__ import annotations
 
-from stoma import APIRoute, JSONResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..models import ErrorModel, GetFlakyResponse
 from ..router import router
@@ -21,11 +21,11 @@ class GetFlaky(APIRoute):
     """Counter key used to isolate retry sequences"""
 
     @property
-    def on_200(self) -> JSONResponseSpec[GetFlakyResponse]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=GetFlakyResponse)
+    def on_200(self) -> ResponseSpec[GetFlakyResponse]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=GetFlakyResponse)
 
     @property
-    def on_default(self) -> JSONResponseSpec[ErrorModel]:
-        return JSONResponseSpec(
-            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+    def on_default(self) -> ResponseSpec[ErrorModel]:
+        return ResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", expected_type=ErrorModel
         )

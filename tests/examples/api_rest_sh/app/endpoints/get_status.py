@@ -9,7 +9,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, JSONResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..models import ErrorModel
 from ..router import router
@@ -29,8 +29,8 @@ class GetStatus(APIRoute):
     """X-Retry-In header value"""
 
     @property
-    def on_default(self) -> JSONResponseSpec[ErrorModel]:
-        return JSONResponseSpec(
+    def on_default(self) -> ResponseSpec[ErrorModel]:
+        return ResponseSpec(
             status_code=lambda c: (
                 c
                 not in [
@@ -537,5 +537,5 @@ class GetStatus(APIRoute):
                 ]
             ),
             media_type="application/problem+json",
-            model=ErrorModel,
+            expected_type=ErrorModel,
         )

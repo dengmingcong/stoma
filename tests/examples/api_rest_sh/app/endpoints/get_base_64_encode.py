@@ -5,7 +5,7 @@ Generated from OpenAPI: get-base64-encode
 
 from __future__ import annotations
 
-from stoma import APIRoute, JSONResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..models import ErrorModel, GetBase64EncodeResponse
 from ..router import router
@@ -18,11 +18,11 @@ class GetBase64Encode(APIRoute):
     value: str
 
     @property
-    def on_200(self) -> JSONResponseSpec[GetBase64EncodeResponse]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=GetBase64EncodeResponse)
+    def on_200(self) -> ResponseSpec[GetBase64EncodeResponse]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=GetBase64EncodeResponse)
 
     @property
-    def on_default(self) -> JSONResponseSpec[ErrorModel]:
-        return JSONResponseSpec(
-            status_code=lambda c: c not in [200], media_type="application/problem+json", model=ErrorModel
+    def on_default(self) -> ResponseSpec[ErrorModel]:
+        return ResponseSpec(
+            status_code=lambda c: c not in [200], media_type="application/problem+json", expected_type=ErrorModel
         )

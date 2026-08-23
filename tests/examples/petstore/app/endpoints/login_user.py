@@ -6,7 +6,7 @@ Log into the system.
 
 from __future__ import annotations
 
-from stoma import APIRoute, RawResponseSpec
+from stoma import APIRoute, ResponseSpec
 
 from ..router import router
 
@@ -24,5 +24,5 @@ class LoginUser(APIRoute):
     """The password for login in clear text"""
 
     @property
-    def on_200_application_xml(self) -> RawResponseSpec[str]:
-        return RawResponseSpec(status_code=200, media_type="application/xml", target_type=str)
+    def on_200_application_xml(self) -> ResponseSpec[str]:
+        return ResponseSpec(status_code=200, media_type="application/xml", expected_type=str)
