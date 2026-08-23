@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from stoma import APIRoute, ResponseSpec
 
-from ..models import ErrorModel
+from ..models import ErrorModel, GetSseMetricsResponse
 from ..router import router
 
 
@@ -23,11 +23,17 @@ class GetSseMetrics(APIRoute):
     """Number of metric events to emit before closing the stream"""
 
     @property
-    def on_200(self) -> ResponseSpec[str]:
-        return ResponseSpec(status_code=200, media_type="text/event-stream", expected_type=str)
+    def on_200(self) -> ResponseSpec[GetSseMetricsResponse]:
+        return ResponseSpec(
+            status_code=200,
+            media_type="text/event-stream",
+            expected_type=GetSseMetricsResponse,
+        )
 
     @property
     def on_default(self) -> ResponseSpec[ErrorModel]:
         return ResponseSpec(
-            status_code=lambda c: c not in [200], media_type="application/problem+json", expected_type=ErrorModel
+            status_code=lambda c: c not in [200],
+            media_type="application/problem+json",
+            expected_type=ErrorModel,
         )

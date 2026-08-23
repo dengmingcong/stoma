@@ -10,7 +10,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, Header
+from stoma import APIRoute, EmptyResponseSpec, Header
 
 from ..router import router
 
@@ -25,3 +25,21 @@ class DeletePet(APIRoute):
     pet_id: Annotated[int, Field(serialization_alias="petId")]
     """Pet id to delete"""
     api_key: Annotated[str | None, Header()] = None
+
+    @property
+    def on_200(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=200,
+        )
+
+    @property
+    def on_400(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=400,
+        )
+
+    @property
+    def on_default(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=lambda c: c not in [200, 400],
+        )

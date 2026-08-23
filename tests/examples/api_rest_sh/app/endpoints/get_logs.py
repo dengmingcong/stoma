@@ -5,7 +5,7 @@ Generated from OpenAPI: get-logs
 
 from __future__ import annotations
 
-from stoma import APIRoute, ResponseSpec
+from stoma import APIRoute, EmptyResponseSpec, ResponseSpec
 
 from ..models import ErrorModel
 from ..router import router
@@ -19,7 +19,15 @@ class GetLogs(APIRoute):
     """Number of log lines to emit"""
 
     @property
+    def on_200(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=200,
+        )
+
+    @property
     def on_default(self) -> ResponseSpec[ErrorModel]:
         return ResponseSpec(
-            status_code=lambda c: c not in [200], media_type="application/problem+json", expected_type=ErrorModel
+            status_code=lambda c: c not in [200],
+            media_type="application/problem+json",
+            expected_type=ErrorModel,
         )

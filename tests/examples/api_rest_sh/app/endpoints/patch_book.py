@@ -10,7 +10,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, Header, ResponseSpec
+from stoma import APIRoute, EmptyResponseSpec, Header, ResponseSpec
 
 from ..models import ErrorModel, PatchBookRequest
 from ..router import router
@@ -36,7 +36,15 @@ class PatchBook(APIRoute):
     body: PatchBookRequest
 
     @property
+    def on_204(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=204,
+        )
+
+    @property
     def on_default(self) -> ResponseSpec[ErrorModel]:
         return ResponseSpec(
-            status_code=lambda c: c not in [204], media_type="application/problem+json", expected_type=ErrorModel
+            status_code=lambda c: c not in [204],
+            media_type="application/problem+json",
+            expected_type=ErrorModel,
         )

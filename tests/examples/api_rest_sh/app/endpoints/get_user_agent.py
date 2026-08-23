@@ -17,10 +17,16 @@ class GetUserAgent(APIRoute):
 
     @property
     def on_200(self) -> ResponseSpec[GetUserAgentResponse]:
-        return ResponseSpec(status_code=200, media_type="application/json", expected_type=GetUserAgentResponse)
+        return ResponseSpec(
+            status_code=200,
+            media_type="application/json",
+            expected_type=GetUserAgentResponse,
+        )
 
     @property
     def on_default(self) -> ResponseSpec[ErrorModel]:
         return ResponseSpec(
-            status_code=lambda c: c not in [200], media_type="application/problem+json", expected_type=ErrorModel
+            status_code=lambda c: c not in [200],
+            media_type="application/problem+json",
+            expected_type=ErrorModel,
         )

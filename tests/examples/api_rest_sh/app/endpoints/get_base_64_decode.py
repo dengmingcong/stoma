@@ -19,10 +19,16 @@ class GetBase64Decode(APIRoute):
 
     @property
     def on_200(self) -> ResponseSpec[GetBase64DecodeResponse]:
-        return ResponseSpec(status_code=200, media_type="application/json", expected_type=GetBase64DecodeResponse)
+        return ResponseSpec(
+            status_code=200,
+            media_type="application/json",
+            expected_type=GetBase64DecodeResponse,
+        )
 
     @property
     def on_default(self) -> ResponseSpec[ErrorModel]:
         return ResponseSpec(
-            status_code=lambda c: c not in [200], media_type="application/problem+json", expected_type=ErrorModel
+            status_code=lambda c: c not in [200],
+            media_type="application/problem+json",
+            expected_type=ErrorModel,
         )

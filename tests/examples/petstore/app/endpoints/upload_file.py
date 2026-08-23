@@ -10,7 +10,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, Header, ResponseSpec, UploadFile
+from stoma import APIRoute, EmptyResponseSpec, Header, ResponseSpec, UploadFile
 
 from ..models import ApiResponse
 from ..router import router
@@ -32,4 +32,26 @@ class UploadFile(APIRoute):
 
     @property
     def on_200(self) -> ResponseSpec[ApiResponse]:
-        return ResponseSpec(status_code=200, media_type="application/json", expected_type=ApiResponse)
+        return ResponseSpec(
+            status_code=200,
+            media_type="application/json",
+            expected_type=ApiResponse,
+        )
+
+    @property
+    def on_400(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=400,
+        )
+
+    @property
+    def on_404(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=404,
+        )
+
+    @property
+    def on_default(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=lambda c: c not in [200, 400, 404],
+        )

@@ -9,7 +9,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from stoma import APIRoute, ResponseSpec
+from stoma import APIRoute, EmptyResponseSpec, ResponseSpec
 
 from ..models import ErrorModel
 from ..router import router
@@ -23,7 +23,15 @@ class DeleteItem(APIRoute):
     """Item identifier"""
 
     @property
+    def on_204(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=204,
+        )
+
+    @property
     def on_default(self) -> ResponseSpec[ErrorModel]:
         return ResponseSpec(
-            status_code=lambda c: c not in [204], media_type="application/problem+json", expected_type=ErrorModel
+            status_code=lambda c: c not in [204],
+            media_type="application/problem+json",
+            expected_type=ErrorModel,
         )
