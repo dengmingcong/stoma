@@ -3,10 +3,14 @@
 - :class:`Response` — 框架对外的统一响应包装（dataclass），
   通过 :meth:`Response.expect` 选择响应协议并解析为强类型结果。
 - :class:`BaseResponseSpec` — 响应协议抽象基类（泛型 ``T``），
-  定义按 HTTP 状态码与 media type 严格校验响应的契约；
-  :class:`JSONResponseSpec` / :class:`RawResponseSpec`
-  为其具体实现，分别处理 JSON 与原始（``bytes`` / ``str``）两种响应，
-  通过 :meth:`validate_response` 返回强类型的 ``T`` 实例。
+  定义按 HTTP 状态码与 media type 严格校验响应的契约。
+- :class:`ResponseSpec` — 通用响应协议（泛型 ``T``），
+  处理 JSON / 标量 / 二进制等已知类型的响应：通过 ``expected_type`` 决定派发路径——
+  ``expected_type is bytes`` 时直接返回 ``response.body()`` 的原始字节；
+  其他 ``expected_type``（如 Pydantic 模型、``int``、``str``、``dict`` 等）走
+  :meth:`pydantic.TypeAdapter.validate_json` 路径。
+- :class:`EmptyResponseSpec` — 空响应协议，仅校验 HTTP 状态码，
+  适用于 204 No Content、无响应 schema 或无法确定类型的描述性响应。
 
 调用模式从「 ``Client.send`` 校验 + 填充 ``response.validated`` 」
 改为「 ``Client.send`` 只发请求 → ``response.expect(spec)`` 触发校验」，
@@ -23,7 +27,7 @@ from typing import Any
 from playwright.sync_api import APIResponse
 from pydantic import TypeAdapter
 
-from stoma.exceptions import ParseError, ValidationError
+from stoma.exceptions import ValidationError
 
 
 @dataclass
@@ -72,8 +76,7 @@ class Response:
         :param spec: 本次响应所采用的协议（``BaseResponseSpec`` 子类实例）。
         :return: 已校验并解析的响应数据，类型为 ``T``。
         :raise AssertionError: status 或 content-type 与 spec 不匹配。
-        :raise ParseError: 响应解析失败（JSON 解码失败、文本解码失败等）。
-        :raise ValidationError: 响应数据验证失败。
+        :raise ValidationError: 响应解析或校验失败。
         """
         return spec.validate_response(self.raw)
 
@@ -85,7 +88,7 @@ class BaseResponseSpec[T](ABC):
     子类通过实现 :meth:`validate_response` 提供具体的响应解析逻辑，
     通常先调用 :meth:`_assert_status` 与 :meth:`_assert_media_type`
     做协议级强校验（不匹配抛 ``AssertionError``），
-    再做具体解析（解析失败抛 :class:`ParseError` 或 :class:`ValidationError`），
+    再做具体解析（解析失败抛 :class:`ValidationError`），
     最后返回 ``T`` 类型的已校验数据。
 
     使用 ``ABC`` + ``@abstractmethod``（而非 Pydantic ``BaseModel``），
@@ -158,91 +161,105 @@ class BaseResponseSpec[T](ABC):
 
         子类必须实现：先调用 :meth:`_assert_status` 与 :meth:`_assert_media_type`
         做协议级强校验（不匹配抛 ``AssertionError``），
-        再做具体解析（解析失败抛 :class:`ParseError` 或 :class:`ValidationError`），
+        再做具体解析（解析失败抛 :class:`ValidationError`），
         最后返回 ``T`` 类型的已校验数据。
 
         :param response: Playwright 响应对象。
         :return: 已校验的响应数据，类型为 ``T``。
         :raise AssertionError: status 或 content-type 与 spec 不匹配。
-        :raise ParseError: 响应解析失败。
-        :raise ValidationError: 响应数据验证失败。
+        :raise ValidationError: 响应解析或校验失败。
         """
         raise NotImplementedError
 
 
-class JSONResponseSpec[T](BaseResponseSpec[T]):
-    """JSON 响应协议。
+class ResponseSpec[T](BaseResponseSpec[T]):
+    """通用响应协议。
 
     在 :class:`BaseResponseSpec` 的协议级强校验基础上，
-    用 :class:`pydantic.TypeAdapter` 按 ``model`` 校验 JSON body，
-    并返回强类型的 ``T`` 实例。
+    按 ``expected_type`` 派发响应处理：
+
+    - ``expected_type is bytes`` → 直接返回 ``response.body()`` 的原始字节，
+      适用于图片、protobuf、二进制下载等。
+    - 其他 ``expected_type``（如 Pydantic 模型、``int``、``str``、``dict`` 等）
+      → :class:`pydantic.TypeAdapter.validate_json` 按 ``expected_type`` 校验
+      JSON body 并返回强类型 ``T`` 实例。
 
     设计要点：
 
-    - ``adapter``：构造时通过 :class:`pydantic.TypeAdapter` 编译 ``model``，
-      :meth:`validate_response` 直接复用同一适配器实例，
+    - **统一 adapter 派发**：构造时通过 :class:`pydantic.TypeAdapter` 编译
+      ``expected_type``，``validate_response`` 直接复用同一适配器实例，
       避免每次调用都重新构造。
-    - 异常映射：JSON 解析失败抛 :class:`ParseError`（带原始 ``response_text``）；
-      Pydantic 校验失败抛 stoma :class:`ValidationError`（带 Pydantic ``errors``）。
+    - **bytes 走特殊路径**：JSON 解码要求 UTF-8 文本，二进制数据无法被
+      ``validate_json`` 解析，所以 ``bytes`` 必须先短路返回 ``response.body()``
+      而非走 JSON 路径。
+    - **统一异常类型**：JSON 解析失败与 Pydantic schema 不匹配都映射为
+      :class:`ValidationError`，上层只需捕获一种异常类型。
 
     :var status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
     :vartype status_code: int | Callable[[int], bool]
     :var media_type: 期望的 media type（如 ``application/json``），
         ``*`` 表示通配所有 media type。
     :vartype media_type: str
-    :var adapter: Pydantic :class:`TypeAdapter` 实例，按 ``model`` 校验 body。
+    :var expected_type: 期望验证为的类型（如 Pydantic 模型类、``int``、``str``、``bytes``）。
+    :vartype expected_type: type[T]
+    :var adapter: Pydantic :class:`TypeAdapter` 实例，按 ``expected_type`` 校验 body。
     :vartype adapter: TypeAdapter[T]
+
+    Example::
+
+        # JSON 对象响应（如用户数据）。
+        spec = ResponseSpec(200, "application/json", UserData)
+        result = response.expect(spec)  # → UserData
+
+        # JSON 标量响应（如计数）。
+        spec = ResponseSpec(200, "application/json", int)
+        result = response.expect(spec)  # → int
+
+        # 字节响应（如图片下载）。
+        spec = ResponseSpec(200, "image/png", bytes)
+        result = response.expect(spec)  # → bytes
     """
 
     def __init__(
         self,
         status_code: int | Callable[[int], bool],
         media_type: str,
-        model: type[T],
+        expected_type: type[T],
     ) -> None:
-        """初始化 JSON 响应协议。
+        """初始化通用响应协议。
 
         :param status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
         :param media_type: 期望的 media type（如 ``application/json``），
             ``*`` 表示通配所有 media type。
-        :param model: 用于校验响应 body 的 Pydantic 模型类。
+        :param expected_type: 期望验证为的类型（如 Pydantic 模型类、``int``、``str``、``bytes``）。
         """
         super().__init__(status_code, media_type)
-        self.adapter: TypeAdapter[T] = TypeAdapter(model)
+        self.expected_type: type[T] = expected_type
+        self.adapter: TypeAdapter[T] = TypeAdapter(expected_type)
 
     def validate_response(self, response: APIResponse) -> T:
-        """校验并解析 JSON 响应为 ``T`` 类型实例。
+        """校验并解析响应为 ``T`` 类型实例。
 
         流程：
 
         1. 调用 :meth:`_assert_status` 与 :meth:`_assert_media_type` 做协议级强校验。
-        2. 调用 ``response.json()`` 解析 body；解析失败抛 :class:`ParseError`，
-           并把 ``response.text()`` 作为 ``response_text`` 透传给调用方排错。
-        3. 调用 ``self.adapter.validate_python(payload)`` 按 ``model`` 校验；
-           校验失败抛 stoma :class:`ValidationError`（带 Pydantic ``errors``）。
+        2. ``expected_type is bytes`` → 直接返回 ``response.body()``；
+           其他 ``expected_type`` → 调用 ``self.adapter.validate_json(response.body())``
+           按 ``expected_type`` 校验，失败抛 :class:`ValidationError`（带 Pydantic ``errors``）。
 
         :param response: Playwright 响应对象。
-        :return: 已校验的 Pydantic 模型实例，类型为 ``T``。
+        :return: 已校验的响应数据，类型为 ``T``。
         :raise AssertionError: status 或 content-type 与 spec 不匹配。
-        :raise ParseError: JSON 解析失败。
-        :raise ValidationError: 响应数据验证失败。
+        :raise ValidationError: 响应解析或校验失败。
         """
         self._assert_status(response.status)
         self._assert_media_type(response.headers.get("content-type", ""))
 
-        try:
-            payload: Any = response.json()
-        except Exception as e:
-            fallback_text = ""
-            try:
-                fallback_text = response.text() if hasattr(response, "text") else ""
-            except Exception:
-                pass
-            msg = f"响应 JSON 解析失败: {e}"
-            raise ParseError(msg, response_text=fallback_text) from e
+        if self.expected_type is bytes:
+            return response.body()
 
         try:
-            validated = self.adapter.validate_python(payload)
+            return self.adapter.validate_json(response.body())
         except Exception as e:
             msg = f"响应数据验证失败: {e}"
             errors: list[dict[str, Any]] = []
@@ -251,118 +268,50 @@ class JSONResponseSpec[T](BaseResponseSpec[T]):
                 errors = list(e.errors())
             raise ValidationError(msg, errors=errors) from e
 
-        return validated
 
+class EmptyResponseSpec(BaseResponseSpec[None]):
+    """空响应协议。
 
-class RawResponseSpec[T](BaseResponseSpec[T]):
-    """原始（``bytes`` / ``str``）响应协议。
+    仅校验 HTTP 状态码，不解析响应体。适用于：
 
-    在 :class:`BaseResponseSpec` 的协议级强校验基础上，
-    用 :class:`pydantic.TypeAdapter` 按 ``target_type`` 派发原始响应处理：
-
-    - ``target_type = bytes`` → ``TypeAdapter(bytes)`` 返回 ``response.body()`` 的字节内容。
-    - ``target_type = str`` → ``TypeAdapter(str)`` 把 ``response.body()`` 解码为 ``str``；
-      解码失败（``UnicodeDecodeError``）被包装为 :class:`ParseError`。
+    - 204 No Content 等无 body 的响应。
+    - OpenAPI 描述中仅有 ``description``、无 ``content`` / 无 ``schema`` 的 status code，
+      框架无法为其派生强类型时的兜底。
+    - 调用方只关心请求成功与否、不需要解析 body 的场景。
 
     设计要点：
 
-    - **类型参数显式传值**：``target_type`` 是构造时必填的位置参数。
-      调用 ``RawResponseSpec(status_code, media_type)``（漏掉 ``target_type``）
-      会由 Python 抛出 ``TypeError`` 提示缺参；同时如果 ``target_type`` 传入非
-      ``bytes`` / ``str``，构造期就抛 ``TypeError`` 给出「必须 subscript
-      ``RawResponseSpec[T]`` with bytes or str」提示——把错误挡在边界。
-    - **统一 adapter 派发**：用 Pydantic :class:`TypeAdapter` 统一处理 bytes / str 两种路径，
-      ``validate_response`` 中无需 ``if target is bytes / str`` 分支，
-      直接 ``self.adapter.validate_python(response.body())`` 由 Pydantic 完成类型适配。
-    - **强校验**：先走 :meth:`_assert_status` 与 :meth:`_assert_media_type`
-      协议级检查；不通过抛 ``AssertionError``。
-    - **裸字节路径** (``T=bytes``) ：``response.body()`` 不做解码，
-      直接返回 bytes，适用于图片、protobuf、二进制下载等。
-    - **文本路径** (``T=str``) ：``TypeAdapter(str).validate_python(bytes_data)``
-      按 Pydantic lax 模式做 UTF-8 解码；非 UTF-8 内容抛 ``UnicodeDecodeError``，
-      被包装为 :class:`ParseError` 而非透传，统一上层异常类型。
+    - **覆写 ``__init__``**：仅接收 ``status_code``，不接收 ``media_type``。
+      内部以 ``media_type="*"`` 占位——空响应协议不关心媒体类型，
+      屏蔽调用方对 ``media_type`` 的输入以减少误用。
+    - **仅断言 status**：``validate_response`` 不做 media type 与 body 校验，
+      任何 content-type 与 body 内容都被忽略。
 
     :var status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
     :vartype status_code: int | Callable[[int], bool]
-    :var media_type: 期望的 media type（如 ``application/octet-stream``），
-        ``*`` 表示通配所有 media type。
-    :vartype media_type: str
-    :var adapter: Pydantic :class:`TypeAdapter` 实例，按 ``target_type`` 派发 bytes / str。
-    :vartype adapter: TypeAdapter[T]
 
     Example::
 
-        # 字节响应（如图片下载）。
-        spec = RawResponseSpec(200, "image/png", bytes)
-        result = response.expect(spec)  # → bytes
-
-        # 文本响应（如纯文本接口）。
-        spec = RawResponseSpec(200, "text/plain; charset=utf-8", str)
-        result = response.expect(spec)  # → str
+        spec = EmptyResponseSpec(204)
+        response.expect(spec)  # 仅校验 status == 204，忽略 body。
     """
 
-    def __init__(
-        self,
-        status_code: int | Callable[[int], bool],
-        media_type: str,
-        target_type: type[T],
-    ) -> None:
-        """初始化原始响应协议。
+    def __init__(self, status_code: int | Callable[[int], bool]) -> None:
+        """初始化空响应协议。
 
         :param status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
-        :param media_type: 期望的 media type（如 ``application/octet-stream``），
-            ``*`` 表示通配所有 media type。
-        :param target_type: 目标类型，必须是 ``bytes`` 或 ``str``。
-        :raise TypeError: ``target_type`` 不是 ``bytes`` 或 ``str``（提示
-            「必须 subscript ``RawResponseSpec[T]`` with bytes or str」）。
         """
-        if target_type is not bytes and target_type is not str:
-            msg = (
-                f"RawResponseSpec 仅支持 bytes / str 类型参数，必须 subscript "
-                f"RawResponseSpec[T] with bytes or str，得到 {target_type!r}"
-            )
-            raise TypeError(msg)
-        super().__init__(status_code, media_type)
-        self.adapter: TypeAdapter[T] = TypeAdapter(target_type)
+        super().__init__(status_code, media_type="*")
 
-    def validate_response(self, response: APIResponse) -> T:
-        """校验并解析响应为 ``bytes`` 或 ``str``。
+    def validate_response(self, response: APIResponse) -> None:
+        """仅校验 HTTP 状态码。
 
-        流程：
-
-        1. 调用 :meth:`_assert_status` 与 :meth:`_assert_media_type` 做协议级强校验。
-        2. 调用 ``self.adapter.validate_python(response.body())``：Pydantic
-           ``TypeAdapter`` 按 ``target_type`` 自动派发——``bytes`` 透传字节、
-           ``str`` 按 UTF-8 解码。
-        3. ``UnicodeDecodeError``（仅 ``target_type=str`` 时可能发生）包装为
-           :class:`ParseError`，不向上透传原生异常。
-           注意：Pydantic v2 在 bytes → str 强制转换失败时把
-           ``UnicodeDecodeError`` 包装为自己的 ``ValidationError``（错误类型
-           ``string_unicode``）而非直接抛出——此时也按 ``ParseError`` 透传，
-           保证上层异常类型统一。
+        不校验 media type，也不解析 body。任何 content-type 与 body 内容都被忽略。
 
         :param response: Playwright 响应对象。
-        :return: 已解析的响应内容，类型为 ``T``（``bytes`` 或 ``str``）。
-        :raise AssertionError: status 或 content-type 与 spec 不匹配。
-        :raise ParseError: ``T=str`` 时响应 body 非 UTF-8 编码。
+        :raise AssertionError: 实际状态码与 spec 不匹配。
         """
         self._assert_status(response.status)
-        self._assert_media_type(response.headers.get("content-type", ""))
-
-        try:
-            return self.adapter.validate_python(response.body())
-        except UnicodeDecodeError as e:
-            msg = f"响应文本解码失败: {e}"
-            raise ParseError(msg) from e
-        except Exception as e:
-            # Pydantic v2 在 bytes→str 转换失败时，把 UnicodeDecodeError 包装为
-            # 自己的 ValidationError（type='string_unicode'），这里识别后透传为 ParseError。
-            if hasattr(e, "errors"):
-                for err in e.errors():
-                    if err.get("type") == "string_unicode":
-                        msg = f"响应文本解码失败: {err.get('msg', '')}"
-                        raise ParseError(msg) from e
-            raise
 
 
-__all__ = ["Response", "BaseResponseSpec", "JSONResponseSpec", "RawResponseSpec"]
+__all__ = ["Response", "BaseResponseSpec", "ResponseSpec", "EmptyResponseSpec"]
