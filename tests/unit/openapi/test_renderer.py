@@ -32,14 +32,10 @@ from pydantic import BaseModel, ConfigDict
 from typer.testing import CliRunner
 
 from stoma.cli import app
-from stoma.openapi.models import Endpoint
+from stoma.openapi.models import Endpoint, ResponseSpecDecl
 from stoma.openapi.parser import make_openapi_parser
-from stoma.openapi.renderer import (
-    EndpointRenderer,
-    ResponseSpecDecl,
-    make_endpoint_renderer,
-    render_status_code_kwarg,
-)
+from stoma.openapi.renderer import make_endpoint_renderer
+from stoma.openapi.status_code import parse_status_key, render_status_code_kwarg
 from stoma.openapi.version import Reference31
 
 # ============================================================
@@ -3669,15 +3665,15 @@ class TestExtractResponseSpecs:
         assert decl.annotation == "ResponseSpec[Error]"
 
     def test_extract_parse_status_key_all_wildcards(self) -> None:
-        """``_parse_status_key`` 对 ``1XX`` / ``2XX`` / ``3XX`` / ``4XX`` / ``5XX`` 全覆盖生成 range lambda。"""
+        """``parse_status_key`` 对 ``1XX`` / ``2XX`` / ``3XX`` / ``4XX`` / ``5XX`` 全覆盖生成 range lambda。"""
         for digit, base in [(1, 100), (2, 200), (3, 300), (4, 400), (5, 500)]:
-            attr, code = EndpointRenderer._parse_status_key(f"{digit}XX", [])
+            attr, code = parse_status_key(f"{digit}XX", [])
             assert attr == f"on_{digit}xx"
             assert code == f"lambda c: {base} <= c < {base + 100}"
 
     def test_extract_parse_status_key_default_excludes_int_codes(self) -> None:
-        """``_parse_status_key("default", other)`` 生成的 lambda 排除 ``other`` 中的 int code。"""
-        attr, code = EndpointRenderer._parse_status_key("default", [200, 404])
+        """``parse_status_key("default", other)`` 生成的 lambda 排除 ``other`` 中的 int code。"""
+        attr, code = parse_status_key("default", [200, 404])
         assert attr == "on_default"
         assert code == "lambda c: c not in [200, 404]"
 

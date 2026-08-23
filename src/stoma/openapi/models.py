@@ -1,7 +1,12 @@
 """OpenAPI 生成器的中间表示（IR）模型。
 
-本模块定义 ``Endpoint`` —— 表示单个 OpenAPI 接口（路径 + 方法 + 参数 +
-请求体 + 响应）的不可变快照，供代码生成阶段使用。
+本模块定义两个核心数据结构：
+
+- :class:`Endpoint` —— 表示单个 OpenAPI 接口（路径 + 方法 + 参数 +
+  请求体 + 响应）的不可变快照，供代码生成阶段使用。
+- :class:`ResponseSpecDecl` —— 单条响应声明（按 ``status_code + media_type`` 唯一）
+  的渲染产物，由 :class:`stoma.openapi.renderer.EndpointRenderer` 生成，
+  供 :mod:`stoma.openapi.templates.endpoint` 模板消费。
 
 通用化设计
 ==========
@@ -17,7 +22,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 from pydantic import BaseModel
 
@@ -32,6 +37,7 @@ __all__ = [
     "BinaryRequestBodyFields",
     "ScalarRequestBodyFields",
     "RequestBodyFields",
+    "ResponseSpecDecl",
 ]
 
 
@@ -204,3 +210,62 @@ class Endpoint[ParameterT: BaseModel, RequestBodyT: BaseModel, ResponseT: BaseMo
     responses: dict[str, ResponseT] | None
     spec_version: SpecVersion
     expanded_raw_request_body: dict[str, Any] | None = None
+
+
+class ResponseSpecDecl(NamedTuple):
+    """单条响应声明（按 ``status_code + media_type`` 唯一）的渲染产物。
+
+    由 :meth:`EndpointRenderer._extract_response_specs` 生成，供
+    :mod:`stoma.openapi.templates.endpoint` 模板按
+    ``@property def on_<attr_name>(self) -> <annotation>: return <class>(...)``
+    形式输出。按 ``media_type`` 是否为 ``None`` 派生两条渲染路径：
+
+    - ``media_type`` 非空（content 存在，可派生类型）→ :class:`stoma.ResponseSpec`，
+      ``annotation`` 为 ``"ResponseSpec[<expected_type>]"``（如
+      ``"ResponseSpec[int]"`` / ``"ResponseSpec[User]"``），
+      模板拼装 ``ResponseSpec(status_code=..., media_type="<media_type>", expected_type=<expected_type>)``。
+    - ``media_type`` 为空（无 content 或 schema 无法派生类型）→ :class:`stoma.EmptyResponseSpec`，
+      ``annotation`` 为 ``"EmptyResponseSpec"``，``expected_type`` 为 ``None``，
+      模板拼装 ``EmptyResponseSpec(status_code=...)``。
+
+    状态码为 ``int`` 时模板输出 ``status_code=200``；
+    为 lambda 源字符串（如 ``"lambda c: c not in [200]"``）时模板输出
+    ``status_code=lambda c: ...``（lambda 前缀保留，模板不再走
+    :func:`render_status_code_kwarg`，由模板条件分支直接拼装）。
+
+    :var attr_name: ``@property`` 方法名（如 ``on_200`` / ``on_4xx`` /
+        ``on_default`` / ``on_200_application_xml``）。
+    :vartype attr_name: str
+    :var annotation: ``@property`` 返回类型注解字符串——有 content 时为
+        ``"ResponseSpec[<expected_type>]"``（如 ``"ResponseSpec[int]"`` /
+        ``"ResponseSpec[User]"``），无 content 时为 ``"EmptyResponseSpec"``。
+        IDE/mypy 通过下标解析出 ``T`` 后，
+        ``response.expect(endpoint.on_200)`` 才能推断返回值的具体类型。
+    :vartype annotation: str
+    :var status_code: 状态码值——精确匹配为 ``int``，通配符为 lambda 源字符串
+        （``"lambda c: c not in [200]"`` / ``"lambda c: 400 <= c < 500"``）。
+        模板据此直接拼装 ``status_code=<int|lambda>``。
+    :vartype status_code: int | str
+    :var media_type: 期望的 media type 字符串（如 ``application/json`` /
+        ``image/png``）。为 ``None`` 表示该 status code 无 content——
+        走 :class:`stoma.EmptyResponseSpec` 路径。
+    :vartype media_type: str | None
+    :var expected_type: ``expected_type`` 参数的渲染值——有 content 时为类型
+        字符串表达（标量 ``"int"`` / ``"float"`` / ``"str"`` / ``"bool"``、
+        二进制 ``"bytes"``、对象模型名 ``"User"``），无 content 时为 ``None``。
+    :vartype expected_type: str | None
+    :var import_model: 需要在 route 文件中 ``from ..models import ...`` 的
+        model 名（PascalCase 字符串）。仅场景 5（Reference）与场景 6
+        （inline object）派发时填充，其他场景（Empty / primitive / binary）
+        为 ``None``——这些场景的 ``expected_type`` 要么是 Python 内置类型
+        （如 ``"int"`` / ``"bytes"``）要么是 ``None``，无需 import。模板不直接
+        消费本字段，仅 :meth:`EndpointRenderer.render` 用于收集 ``imported``。
+    :vartype import_model: str | None
+    """
+
+    attr_name: str
+    annotation: str
+    status_code: int | str
+    media_type: str | None
+    expected_type: str | None
+    import_model: str | None = None

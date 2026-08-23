@@ -328,7 +328,7 @@ class DownloadFile(APIRoute):
 
 ## 通配符状态码渲染
 
-OpenAPI 的 `default`、`4XX`、`5XX` 等通配符无法用精确整数匹配，渲染器将其转换为 `status_code=lambda s: ...` 谓词形式，由 `render_status_code_kwarg`（`renderer.py` 第 188-214 行）生成。
+OpenAPI 的 `default`、`4XX`、`5XX` 等通配符无法用精确整数匹配，渲染器将其转换为 `status_code=lambda s: ...` 谓词形式，由 `render_status_code_kwarg`（`status_code.py`）生成。
 
 ### `default`
 

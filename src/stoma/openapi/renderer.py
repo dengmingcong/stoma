@@ -19,7 +19,7 @@ import warnings
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, NamedTuple, Protocol
+from typing import Any, Protocol
 
 from jinja2 import Environment, FileSystemLoader, Template
 from pydantic import BaseModel
@@ -41,6 +41,7 @@ from stoma.openapi.models import (
     JSONRequestBodyFields,
     MultipartFormRequestBodyFields,
     RequestBodyFields,
+    ResponseSpecDecl,
     ScalarRequestBodyFields,
     UrlencodedFormRequestBodyFields,
 )
@@ -56,6 +57,7 @@ from stoma.openapi.schema import (
     is_binary_schema_dict,
     is_primitive_schema_dict,
 )
+from stoma.openapi.status_code import parse_status_key, render_status_code_kwarg  # noqa: F401
 from stoma.openapi.type_mapping import is_primitive_json_type, python_type_name
 from stoma.openapi.version import Reference30, Reference31, SpecVersion
 
@@ -113,93 +115,6 @@ class GenerationError:
     def location(self) -> str:
         """定位字符串，``"<METHOD> <PATH>"`` 形式。"""
         return f"{self.method} {self.path}"
-
-
-def render_status_code_kwarg(status_code: int | str) -> str:
-    """将 ``status_code`` 渲染为构造调用的关键字参数片段。
-
-    输出已含参数名 ``status_code=`` 前缀，模板直接嵌入。两种形态：
-
-    - 精确匹配 ``int``（如 ``200``）→ ``"status_code=200"``。
-    - lambda 源字符串（以 ``"lambda c: "`` 起头，如
-      ``"lambda c: c not in [200]"`` / ``"lambda c: 400 <= c < 500"``）→
-      ``"status_code=lambda c: c not in [200]"``。
-
-    在 :class:`stoma.BaseResponseSpec` v2 重构后，``status_code`` 参数既可
-    接 ``int`` 也可直接接 ``Callable``，``callable=`` 别名已被移除，
-    因此 lambda 走 ``status_code=lambda ...`` 关键字也合法——模板统一用
-    ``status_code=`` 一条关键字处理两种情形。
-
-    :param status_code: 精确匹配为 ``int``；通配符为 lambda 源字符串
-        （``"lambda c: <predicate>"``）。
-    :return: 可直接嵌入模板的代码片段字符串。
-    :raise ValueError: ``status_code`` 既非 ``int``、也非以 ``"lambda c: "`` 起头的源字符串。
-    """
-    if isinstance(status_code, int):
-        return f"status_code={status_code}"
-    if isinstance(status_code, str) and status_code.startswith("lambda c: "):
-        return f"status_code={status_code}"
-    msg = f"Cannot render status_code {status_code!r} to code-generation kwarg"
-    raise ValueError(msg)
-
-
-class ResponseSpecDecl(NamedTuple):
-    """单条响应声明（按 ``status_code + media_type`` 唯一）的渲染产物。
-
-    由 :meth:`EndpointRenderer._extract_response_specs` 生成，供
-    :mod:`stoma.openapi.templates.endpoint` 模板按
-    ``@property def on_<attr_name>(self) -> <annotation>: return <class>(...)``
-    形式输出。按 ``media_type`` 是否为 ``None`` 派生两条渲染路径：
-
-    - ``media_type`` 非空（content 存在，可派生类型）→ :class:`stoma.ResponseSpec`，
-      ``annotation`` 为 ``"ResponseSpec[<expected_type>]"``（如
-      ``"ResponseSpec[int]"`` / ``"ResponseSpec[User]"``），
-      模板拼装 ``ResponseSpec(status_code=..., media_type="<media_type>", expected_type=<expected_type>)``。
-    - ``media_type`` 为空（无 content 或 schema 无法派生类型）→ :class:`stoma.EmptyResponseSpec`，
-      ``annotation`` 为 ``"EmptyResponseSpec"``，``expected_type`` 为 ``None``，
-      模板拼装 ``EmptyResponseSpec(status_code=...)``。
-
-    状态码为 ``int`` 时模板输出 ``status_code=200``；
-    为 lambda 源字符串（如 ``"lambda c: c not in [200]"``）时模板输出
-    ``status_code=lambda c: ...``（lambda 前缀保留，模板不再走
-    :func:`render_status_code_kwarg`，由模板条件分支直接拼装）。
-
-    :var attr_name: ``@property`` 方法名（如 ``on_200`` / ``on_4xx`` /
-        ``on_default`` / ``on_200_application_xml``）。
-    :vartype attr_name: str
-    :var annotation: ``@property`` 返回类型注解字符串——有 content 时为
-        ``"ResponseSpec[<expected_type>]"``（如 ``"ResponseSpec[int]"`` /
-        ``"ResponseSpec[User]"``），无 content 时为 ``"EmptyResponseSpec"``。
-        IDE/mypy 通过下标解析出 ``T`` 后，
-        ``response.expect(endpoint.on_200)`` 才能推断返回值的具体类型。
-    :vartype annotation: str
-    :var status_code: 状态码值——精确匹配为 ``int``，通配符为 lambda 源字符串
-        （``"lambda c: c not in [200]"`` / ``"lambda c: 400 <= c < 500"``）。
-        模板据此直接拼装 ``status_code=<int|lambda>``。
-    :vartype status_code: int | str
-    :var media_type: 期望的 media type 字符串（如 ``application/json`` /
-        ``image/png``）。为 ``None`` 表示该 status code 无 content——
-        走 :class:`stoma.EmptyResponseSpec` 路径。
-    :vartype media_type: str | None
-    :var expected_type: ``expected_type`` 参数的渲染值——有 content 时为类型
-        字符串表达（标量 ``"int"`` / ``"float"`` / ``"str"`` / ``"bool"``、
-        二进制 ``"bytes"``、对象模型名 ``"User"``），无 content 时为 ``None``。
-    :vartype expected_type: str | None
-    :var import_model: 需要在 route 文件中 ``from ..models import ...`` 的
-        model 名（PascalCase 字符串）。仅场景 5（Reference）与场景 6
-        （inline object）派发时填充，其他场景（Empty / primitive / binary）
-        为 ``None``——这些场景的 ``expected_type`` 要么是 Python 内置类型
-        （如 ``"int"`` / ``"bytes"``）要么是 ``None``，无需 import。模板不直接
-        消费本字段，仅 :meth:`EndpointRenderer.render` 用于收集 ``imported``。
-    :vartype import_model: str | None
-    """
-
-    attr_name: str
-    annotation: str
-    status_code: int | str
-    media_type: str | None
-    expected_type: str | None
-    import_model: str | None = None
 
 
 class EndpointRenderer[ReferenceT: _ReferenceLike]:
@@ -699,51 +614,6 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         )
         return ScalarRequestBodyFields(scalar_field=scalar_field)
 
-    @staticmethod
-    def _parse_status_key(
-        status_key: str,
-        other_int_codes: list[int],
-    ) -> tuple[str, int | str]:
-        """解析 OpenAPI 状态码 key 为 ``(attr_base, status_code)``。
-
-        ``status_code`` 字段携带的语义：
-
-        - 精确匹配为 ``int``——模板中以 ``status_code=200`` 形式嵌入；
-        - 通配符为 lambda 源字符串（``"lambda c: c not in [200]"`` /
-          ``"lambda c: 400 <= c < 500"``）——模板中以
-          ``status_code=lambda c: c not in [200]`` 形式嵌入。
-
-        三类形态：
-
-        - ``"default"`` → ``attr_base="on_default"``，
-          ``status_code="lambda c: c not in [<other_int_codes>]"``。
-          ``other_int_codes`` 是同一 endpoint 中已声明的所有 int 状态码（不含
-          任何 wildcard），按升序排序——``default`` 反向谓词负责排除这些 code，
-          与 OpenAPI「未列出的 status 走 default」语义一致。当无其他 int code
-          时生成 ``lambda c: c not in []``，语义等价于 ``lambda c: True``。
-        - 通配符 ``"1XX"`` / ``"NXX"``（大小写不敏感）→ ``attr_base="on_4xx"``
-          等（小写），``status_code=f"lambda c: {start} <= c < {end}"``
-          （半开区间，含 ``start``、不含 ``end``）。
-        - 3 位数字（``"200"`` / ``"404"`` 等）→ ``attr_base="on_200"``、
-          ``status_code=200``（``int``）。
-
-        :param status_key: OpenAPI responses 字典的 key 字符串。
-        :param other_int_codes: 同一 endpoint 中已声明的所有 int 状态码列表，
-            仅在 ``status_key == "default"`` 时使用——``default`` lambda 排除
-            这些 code。
-        :return: 二元组 ``(attr_base, status_code)``。
-        """
-        if status_key == "default":
-            excluded = sorted(other_int_codes)
-            excluded_str = ", ".join(str(c) for c in excluded)
-            return "on_default", f"lambda c: c not in [{excluded_str}]"
-        upper = status_key.upper()
-        if len(upper) == 3 and upper[1:] == "XX" and upper[0] in "12345":
-            digit = int(upper[0])
-            return f"on_{digit}xx", f"lambda c: {digit * 100} <= c < {digit * 100 + 100}"
-        code = int(status_key)
-        return f"on_{code}", code
-
     def _extract_response_specs(
         self,
         responses: dict[str, Any] | None,
@@ -793,9 +663,10 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
           object，场景 5 + 6）——scalar Python 类型（``int`` / ``str`` /
           ``float`` / ``bool``）与 ``bytes`` 是内置类型，无需检查。
         - **OpenAPI 通配符状态码**（``default`` / ``4XX`` / ``5XX``）经
-          :meth:`_parse_status_key` 转换为 lambda 源字符串；模板拼成
-          ``status_code=lambda c: ...`` 形式（v2 :class:`stoma.BaseResponseSpec`
-          ``status_code`` 字段已直接接受 Callable，不再需要 ``callable=`` 别名）。
+          :func:`stoma.openapi.status_code.parse_status_key` 转换为 lambda
+          源字符串；模板拼成 ``status_code=lambda c: ...`` 形式
+          （v2 :class:`stoma.BaseResponseSpec` ``status_code`` 字段已直接接受
+          Callable，不再需要 ``callable=`` 别名）。
         - **去重保护**：同一 ``(status_key, media_type)`` 重复出现时跳过第二条并
           发 ``UserWarning``（罕见但需处理——规范 ``dict`` 本身不允许 key 重复，
           但允许 dict 子类返回重复 items）。
@@ -824,7 +695,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
         for status_key, response in responses.items():
             content = getattr(response, "content", None) or {}
-            attr_base, status_code = self._parse_status_key(
+            attr_base, status_code = parse_status_key(
                 status_key,
                 other_int_codes=int_status_codes,
             )
