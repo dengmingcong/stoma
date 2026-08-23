@@ -120,19 +120,19 @@ $ stoma make --spec specs/001-generate-api/contracts/openapi.yaml --out src/exam
 ```python
 class GetBookById(APIRoute):
     @property
-    def on_200(self) -> JSONResponseSpec[BookResponse]:
-        return JSONResponseSpec(
+    def on_200(self) -> ResponseSpec[BookResponse]:
+        return ResponseSpec(
             status_code=200,
             media_type="application/json",
-            model=BookResponse,
+            expected_type=BookResponse,
         )
 
     @property
-    def on_404(self) -> JSONResponseSpec[ErrorResponse]:
-        return JSONResponseSpec(
+    def on_404(self) -> ResponseSpec[ErrorResponse]:
+        return ResponseSpec(
             status_code=404,
             media_type="application/json",
-            model=ErrorResponse,
+            expected_type=ErrorResponse,
         )
 ```
 
@@ -164,20 +164,20 @@ elif response.raw.status == 404:
 
 ```python
 @property
-def on_200(self) -> JSONResponseSpec[BookResponse]:
-    return JSONResponseSpec(
+def on_200(self) -> ResponseSpec[BookResponse]:
+    return ResponseSpec(
         status_code=200,
         media_type="application/json",
-        model=BookResponse,
+        expected_type=BookResponse,
     )
 
 
 @property
-def on_200_application_problem_plus_json(self) -> JSONResponseSpec[ErrorResponse]:
-    return JSONResponseSpec(
+def on_200_application_problem_plus_json(self) -> ResponseSpec[ErrorResponse]:
+    return ResponseSpec(
         status_code=200,
         media_type="application/problem+json",
-        model=ErrorResponse,
+        expected_type=ErrorResponse,
     )
 ```
 

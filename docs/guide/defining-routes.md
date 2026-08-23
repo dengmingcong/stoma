@@ -5,7 +5,7 @@
 ```python
 from typing import Annotated
 
-from stoma import APIRoute, APIRouter, JSONResponseSpec
+from stoma import APIRoute, APIRouter, ResponseSpec
 
 router = APIRouter(prefix="/api/v1")
 
@@ -13,8 +13,8 @@ router = APIRouter(prefix="/api/v1")
 @router.get("/users")
 class GetUsers(APIRoute):
     @property
-    def on_200(self) -> JSONResponseSpec[list[dict]]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=list[dict])
+    def on_200(self) -> ResponseSpec[list[dict]]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=list[dict])
 
     limit: int = 20
 
@@ -22,8 +22,8 @@ class GetUsers(APIRoute):
 @router.get("/users/{user_id}")
 class GetUserById(APIRoute):
     @property
-    def on_200(self) -> JSONResponseSpec[dict]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+    def on_200(self) -> ResponseSpec[dict]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
     user_id: int
 
@@ -31,8 +31,8 @@ class GetUserById(APIRoute):
 @router.post("/users")
 class CreateUser(APIRoute):
     @property
-    def on_200(self) -> JSONResponseSpec[dict]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+    def on_200(self) -> ResponseSpec[dict]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
     name: str
     email: str
@@ -41,8 +41,8 @@ class CreateUser(APIRoute):
 @router.patch("/users/{user_id}")
 class PatchUser(APIRoute):
     @property
-    def on_200(self) -> JSONResponseSpec[dict]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+    def on_200(self) -> ResponseSpec[dict]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
     user_id: int
     email: str | None = None
@@ -51,8 +51,8 @@ class PatchUser(APIRoute):
 @router.delete("/users/{user_id}")
 class DeleteUser(APIRoute):
     @property
-    def on_200(self) -> JSONResponseSpec[dict]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=dict)
+    def on_200(self) -> ResponseSpec[dict]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 
     user_id: int
 ```

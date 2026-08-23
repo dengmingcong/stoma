@@ -13,7 +13,7 @@ from stoma import Response
 | `raw` | `playwright.sync_api.APIResponse` | 原始 HTTP 响应，始终可用 |
 | `expect` | `Callable[[ResponseSpec[T]], T]` | 按 spec 校验响应体并返回解析后的数据，类型为 `T` |
 
-`raw` 始终可用，`expect` 方法需要传入对应的 `ResponseSpec` 才能返回校验后的数据。`BaseResponseSpec` 是响应协议的抽象基类，`JSONResponseSpec` 处理 JSON 响应，`RawResponseSpec[bytes]` 处理原始字节响应。
+`raw` 始终可用，`expect` 方法需要传入对应的 `ResponseSpec` 才能返回校验后的数据。`BaseResponseSpec` 是响应协议的抽象基类，`ResponseSpec` 处理 JSON、标量、二进制等已知类型的响应。
 
 ```python
 from playwright.sync_api import sync_playwright as pw
@@ -51,10 +51,10 @@ elif response.raw.status == 404:
 
 ## JSON 响应与 Pydantic 校验
 
-使用 `JSONResponseSpec` 声明 JSON 响应协议。`JSONResponseSpec` 在 `BaseResponseSpec` 的基础上，通过 Pydantic `TypeAdapter` 按声明的 model 校验响应体，并返回强类型的 `T` 实例。
+使用 `ResponseSpec` 声明响应协议。`ResponseSpec` 在 `BaseResponseSpec` 的基础上，按 `expected_type` 派发响应处理：当 `expected_type` 是 `bytes` 时直接返回 `response.body()` 的原始字节；其他 `expected_type`（如 Pydantic 模型、`int`、`str`、`dict` 等）通过 Pydantic `TypeAdapter.validate_json` 按 `expected_type` 校验响应体，并返回强类型的 `T` 实例。
 
 ```python
-from stoma.dependencies.response import JSONResponseSpec
+from stoma.dependencies.response import ResponseSpec
 from pydantic import BaseModel
 
 
@@ -65,7 +65,7 @@ class UserData(BaseModel):
 
 
 # 声明 JSON 响应协议
-spec = JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+spec = ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 ```
 
 ### Happy 路径
@@ -88,7 +88,7 @@ with pw() as p:
 
 ### 错误路径
 
-如果 JSON 解析成功但数据不符合 model 的定义，则抛出 `ValidationError`（stoma 的异常类，不是 pydantic 的）。`e.errors` 包含 Pydantic 校验错误的完整列表，格式为 `list[dict]`，每个 dict 包含 `loc`、`msg`、`type` 等键。
+如果 JSON 解析失败或数据不符合 `expected_type` 的定义，则抛出 `ValidationError`（stoma 的异常类，不是 pydantic 的）。`e.errors` 包含 Pydantic 校验错误的完整列表，格式为 `list[dict]`，每个 dict 包含 `loc`、`msg`、`type` 等键。
 
 ```python
 from playwright.sync_api import sync_playwright as pw
@@ -109,21 +109,21 @@ with pw() as p:
             print(err["loc"], err["msg"], err["type"])
 ```
 
-## 非 JSON 响应（字节 / 文本）
+## 字节与文本响应
 
-使用 `RawResponseSpec[bytes]` 声明原始字节响应协议。`RawResponseSpec` 在 `BaseResponseSpec` 的基础上，直接返回 `response.body()` 的字节内容。
+`ResponseSpec` 按 `expected_type` 派发响应处理。当 `expected_type` 是 `bytes` 时直接返回 `response.body()` 的原始字节，绕开 JSON 解码；其他类型（包括 `str`、Pydantic 模型、`int`、`dict` 等）走 `validate_json` 路径按 `expected_type` 校验响应体。
 
 ```python
-from stoma.dependencies.response import RawResponseSpec
+from stoma.dependencies.response import ResponseSpec
 
 # 声明字节响应协议，适用于图片、PDF、zip 等二进制内容
-spec = RawResponseSpec(status_code=200, media_type="image/png", target_type=bytes)
+spec = ResponseSpec(status_code=200, media_type="image/png", expected_type=bytes)
 
-# 如果确定是纯文本响应，可用 str 类型
-text_spec = RawResponseSpec(status_code=200, media_type="text/plain", target_type=str)
+# 文本类响应按 expected_type 走 validate_json：响应体需是 JSON 字符串字面量（如 "hello"）
+text_spec = ResponseSpec(status_code=200, media_type="text/plain", expected_type=str)
 ```
 
-调用时，`response.expect(spec)` 直接返回 bytes 或 str：
+调用时，`response.expect(spec)` 直接返回对应类型：
 
 ```python
 response = client.send(image_endpoint)
@@ -140,12 +140,12 @@ if response.raw.status == 200:
 ```python
 class GetBookById(APIRoute):
     @property
-    def on_200(self) -> JSONResponseSpec[BookResponse]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=BookResponse)
+    def on_200(self) -> ResponseSpec[BookResponse]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=BookResponse)
 
     @property
-    def on_404(self) -> JSONResponseSpec[ErrorResponse]:
-        return JSONResponseSpec(status_code=404, media_type="application/json", model=ErrorResponse)
+    def on_404(self) -> ResponseSpec[ErrorResponse]:
+        return ResponseSpec(status_code=404, media_type="application/json", expected_type=ErrorResponse)
 
     book_id: int
 ```

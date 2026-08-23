@@ -67,7 +67,7 @@ merged_headers: dict[str, str] = {**derived_headers, **(request.headers or {})}
 from typing import Annotated
 
 from pydantic import Field
-from stoma import Header, APIRoute, Client, JSONResponseSpec
+from stoma import Header, APIRoute, Client, ResponseSpec
 from playwright.sync_api import sync_playwright
 
 
@@ -75,8 +75,8 @@ class GetUserById(APIRoute):
     """根据 ID 获取用户接口，动态传入 token。"""
 
     @property
-    def on_200(self) -> JSONResponseSpec[UserData]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=UserData)
+    def on_200(self) -> ResponseSpec[UserData]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=UserData)
 
     user_id: int
     authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]

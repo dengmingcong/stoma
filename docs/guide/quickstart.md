@@ -21,7 +21,7 @@ pip install stoma[cli]
 from typing import Annotated
 
 from pydantic import BaseModel, Field
-from stoma import APIRoute, APIRouter, JSONResponseSpec
+from stoma import APIRoute, APIRouter, ResponseSpec
 
 
 class User(BaseModel):
@@ -58,8 +58,8 @@ class GetUserByName(APIRoute):
     """
 
     @property
-    def on_200(self) -> JSONResponseSpec[User]:
-        return JSONResponseSpec(status_code=200, media_type="application/json", model=User)
+    def on_200(self) -> ResponseSpec[User]:
+        return ResponseSpec(status_code=200, media_type="application/json", expected_type=User)
 
     username: str
     """The name that needs to be fetched. Use user1 for testing"""
@@ -69,7 +69,7 @@ class GetUserByName(APIRoute):
 * `@router.get("/user/{username}")` - 定义接口的请求方法（`GET`）和路径（`/user/{username}`），其中包含一个路径参数 `username`。最终接口路径为 `/api/v3/user/{username}`。
 * `class GetUserByName(APIRoute):` - 定义接口，Stoma 中一个接口必须是 `APIRoute` 子类。
     - `APIRoute` 是 pydantic `BaseModel` 子类，定义接口和定义 pydantic 模型是相同的书写方式。
-    - 通过 `@property def on_<status_code>(self) -> JSONResponseSpec[T]` 声明响应协议。当接口响应 Header `Content-Type` 是 JSON（如 `application/json`）时，调用方通过 `response.expect(...)` 按声明的模型校验响应体并返回对应实例，示例中校验后类型为 `User`。
+    - 通过 `@property def on_<status_code>(self) -> ResponseSpec[T]` 声明响应协议。当接口响应 Header `Content-Type` 是 JSON（如 `application/json`）时，调用方通过 `response.expect(...)` 按声明的 `expected_type` 校验响应体并返回对应实例，示例中校验后类型为 `User`。
 * `username: str` - Path 参数。如果字段名和路径参数相同，会被识别为 Path 参数。
 
 
