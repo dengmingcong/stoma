@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 from pydantic import Field
-from stoma import APIRoute, JSONResponseSpec, RawResponseSpec, Header, Body, Form, UploadFile
+from stoma import APIRoute, ResponseSpec, EmptyResponseSpec, Header, Body, Form, UploadFile
 
 from ..router import router
 
@@ -52,11 +52,16 @@ class {{ class_name }}(APIRoute):
 {% for decl in response_spec_decls %}
     @property
     def {{ decl.attr_name }}(self) -> {{ decl.annotation }}:
-        return {{ decl.constructor }}(
-            {{ decl.status_code_or_matcher }},
-            media_type="{{ decl.media_type }}"{% if decl.is_json %},
-            model={{ decl.model_name }}{% elif decl.target_type %},
-            target_type={{ decl.target_type }}{% endif %}
+{% if decl.media_type is none %}
+        return EmptyResponseSpec(
+            status_code={{ decl.status_code }},
         )
+{% else %}
+        return ResponseSpec(
+            status_code={{ decl.status_code }},
+            media_type="{{ decl.media_type }}",
+            expected_type={{ decl.expected_type }},
+        )
+{% endif %}
 {% endfor %}
 {% endif %}
