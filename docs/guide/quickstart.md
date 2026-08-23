@@ -19,10 +19,8 @@ pip install stoma[cli]
 
 ```python
 from typing import Annotated
-
 from pydantic import BaseModel, Field
 from stoma import APIRoute, APIRouter, ResponseSpec
-
 
 class User(BaseModel):
     id: Annotated[int | None, Field(examples=[10])] = None
@@ -46,32 +44,32 @@ class User(BaseModel):
     Example: 1
     """
 
-
 router = APIRouter(prefix="/api/v3")
-
 
 @router.get("/user/{username}")
 class GetUserByName(APIRoute):
-    """Get user by user name.
+    """Get user by user name.。
 
     Get user detail based on username.
     """
 
-    @property
-    def on_200(self) -> ResponseSpec[User]:
-        return ResponseSpec(status_code=200, media_type="application/json", expected_type=User)
-
     username: str
     """The name that needs to be fetched. Use user1 for testing"""
+
+    @property
+    def on_200(self) -> ResponseSpec[User]:
+        return ResponseSpec(
+            status_code=200,
+            media_type="application/json",
+            expected_type=User,
+        )
 ```
 
 * `router = APIRouter(prefix="/api/v3")` - 实例化 `APIRouter`，并为所有关联接口设置公共的路径前缀 `/api/v3`。
 * `@router.get("/user/{username}")` - 定义接口的请求方法（`GET`）和路径（`/user/{username}`），其中包含一个路径参数 `username`。最终接口路径为 `/api/v3/user/{username}`。
-* `class GetUserByName(APIRoute):` - 定义接口，Stoma 中一个接口必须是 `APIRoute` 子类。
-    - `APIRoute` 是 pydantic `BaseModel` 子类，定义接口和定义 pydantic 模型是相同的书写方式。
-    - 通过 `@property def on_<status_code>(self) -> ResponseSpec[T]` 声明响应协议。当接口响应 Header `Content-Type` 是 JSON（如 `application/json`）时，调用方通过 `response.expect(...)` 按声明的 `expected_type` 校验响应体并返回对应实例，示例中校验后类型为 `User`。
-* `username: str` - Path 参数。如果字段名和路径参数相同，会被识别为 Path 参数。
-
+* `class GetUserByName(APIRoute):` - 定义接口，Stoma 中一个接口必须是 `APIRoute` 子类。同时 `APIRoute` 是 Pydantic `BaseModel` 子类，所以 Stoma 中定义接口和定义 Pydantic 模型是相同的书写方式。
+    -  `username: str` - Path 参数。如果字段名和路径参数相同，会被识别为 Path 参数。
+    - `property on_200` - 声明 Status Code 为 200 时的响应协议。
 
 ## 调用接口
 
@@ -85,18 +83,16 @@ with sync_playwright() as p:
 
     endpoint = GetUserByName(username="user1")
     response = client.send(endpoint)
-
-    if response.raw.status == 200:
-        user = response.expect(endpoint.on_200)  # 显式校验，类型为 User
-        assert isinstance(user, User)
+    user = response.expect(endpoint.on_200)
+    assert user.username == "user1"
 ```
 
 * Stoma 内部使用 Playwright [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext) 发送请求并管理 Cookie 等，Playwright 的所有特性均可以正常使用。
-* Stoma 将所有接口定义为 pydantic 模型，IDE 可以自动联想所有参数。
+* Stoma 将所有接口定义为 Pydantic 模型，IDE 可以自动联想所有参数。
     ![alt text](../assets/guide/quickstart/ide-autocomplete-param.png)
-    还可查看参数的说明。
+    鼠标悬浮时还可查看参数的说明。
     ![alt text](../assets/guide/quickstart/hover-param.png)
-* Stoma 通过 `on_<status_code>` 声明响应协议，实现了 IDE 可以对响应自动联想。
+* `Client.send()` 返回 `Response` 实例，`Response` 实例的 `expect()` 方法预期一个响应协议，会按照协议对 Status Code、Media type 校验，并使用 `pydantic.TypeAdapter` 将返回体转换为响应协议指定的模型，利用泛型特性实现 IDE 自动联想。
     ![alt text](../assets/guide/quickstart/ide-autocomplete-response.png)
 
 ## 回顾
