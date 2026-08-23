@@ -69,7 +69,7 @@ class GetUserByName(APIRoute):
 * `@router.get("/user/{username}")` - 定义接口的请求方法（`GET`）和路径（`/user/{username}`），其中包含一个路径参数 `username`。最终接口路径为 `/api/v3/user/{username}`。
 * `class GetUserByName(APIRoute):` - 定义接口，Stoma 中一个接口必须是 `APIRoute` 子类。同时 `APIRoute` 是 Pydantic `BaseModel` 子类，所以 Stoma 中定义接口和定义 Pydantic 模型是相同的书写方式。
     -  `username: str` - Path 参数。如果字段名和路径参数相同，会被识别为 Path 参数。
-    - `property on_200` - 声明 Status Code 为 200 时的响应协议。
+    - `property on_200` - 声明 status code 为 200 时的响应协议。
 
 ## 调用接口
 
