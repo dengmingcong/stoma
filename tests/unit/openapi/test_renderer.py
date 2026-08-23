@@ -912,7 +912,7 @@ class TestClassBodyPass:
     """验证 class body `pass` 占位逻辑：仅在 body 完全为空（无 docstring + 无字段）时插入 `pass`。"""
 
     def test_empty_class_body_inserts_pass(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 endpoint 无 docstring（无 summary/description）、无 requestBody、无 parameters 时 class body 插入 ``pass``。"""
+        """验证 endpoint 无 docstring、无 requestBody、无 parameters 时 class body 插入 ``pass``。"""
         spec = """\
 openapi: 3.1.0
 info:
@@ -1200,8 +1200,9 @@ class TestMakeRequestBodyFormMultipart:
         compile(content, "upload_with_form.py", "exec")
 
     def test_scalar_json_integer(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 ``application/json`` 含 integer scalar schema 生成 ``body: Annotated[int, Body(media_type='application/json')]``。
+        """验证 ``application/json`` 含 integer scalar schema 时生成 ``Annotated[int, Body]``。
 
+        完整生成为 ``body: Annotated[int, Body(media_type='application/json')]``；
         字段名固定为 ``body``（不受 ``operation_id`` 是否 snake_case 影响），避免
         非 snake_case 时追加 ``Field(serialization_alias=...)`` 的副作用。
         Content-Type 由 ``Body(media_type=...)`` 提供，renderer 不生成 Header field。
@@ -1243,8 +1244,9 @@ components:
         compile(content, "set_importance.py", "exec")
 
     def test_scalar_json_string(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 ``application/json`` 含 string scalar schema 生成 ``body: Annotated[str, Body(media_type='application/json')]``。
+        """验证 ``application/json`` 含 string scalar schema 时生成 ``Annotated[str, Body]``。
 
+        完整生成为 ``body: Annotated[str, Body(media_type='application/json')]``；
         字段名固定为 ``body``（不受 ``operation_id`` 是否 snake_case 影响）。
         Content-Type 由 ``Body(media_type=...)`` 提供，renderer 不生成 Header field。
         """
@@ -1623,8 +1625,8 @@ components:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
         assert "@property" in content
-        assert "def on_200(self) -> JSONResponseSpec[User]:" in content
-        assert "model=User" in content
+        assert "def on_200(self) -> ResponseSpec[User]:" in content
+        assert "expected_type=User" in content
         assert "from ..models import User" in content
         assert "APIRoute[" not in content
         assert "ClassVar[" not in content
@@ -1644,8 +1646,8 @@ components:
         get_user = next(ep for ep in endpoints if ep.operation_id == "getUser")
         _file_name, code = renderer.render(get_user)
         assert "from ..models import User" in code
-        assert "def on_200(self) -> JSONResponseSpec[User]:" in code
-        assert "model=User" in code
+        assert "def on_200(self) -> ResponseSpec[User]:" in code
+        assert "expected_type=User" in code
         assert "APIRoute[" not in code
         assert "ClassVar[" not in code
 
@@ -1689,8 +1691,8 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "list_users.py").read_text(encoding="utf-8")
-        assert "def on_200(self) -> JSONResponseSpec[ListUsersResponse]:" in content
-        assert "model=ListUsersResponse" in content
+        assert "def on_200(self) -> ResponseSpec[ListUsersResponse]:" in content
+        assert "expected_type=ListUsersResponse" in content
         assert "from ..models import ListUsersResponse" in content
         assert "APIRoute[" not in content
 
@@ -1741,8 +1743,8 @@ paths:
         assert (out_dir / "endpoints" / "get_profile.py").exists()
         content = (out_dir / "endpoints" / "get_profile.py").read_text(encoding="utf-8")
         assert "@router.get" in content
-        assert "def on_200(self) -> JSONResponseSpec[GetProfileResponse]:" in content
-        assert "model=GetProfileResponse" in content
+        assert "def on_200(self) -> ResponseSpec[GetProfileResponse]:" in content
+        assert "expected_type=GetProfileResponse" in content
         assert "from ..models import GetProfileResponse" in content
         assert "APIRoute[" not in content
 
@@ -1782,12 +1784,18 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
-        assert "def on_201(self) -> JSONResponseSpec[User]:" in content
-        assert "model=User" in content
+        assert "def on_201(self) -> ResponseSpec[User]:" in content
+        assert "expected_type=User" in content
         assert "APIRoute[" not in content
 
     def test_response_without_content(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 response 只有 description 没有 content 时生成 None 类型。"""
+        """验证 response 只有 description 没有 content（204 No Content）时生成 :class:`EmptyResponseSpec` decl。
+
+        Phase 3 修复：旧行为是无 content 时 status code 被静默丢弃、生成裸
+        ``APIRoute)``；新行为是每个 status code 都生成 ``on_<status>`` 属性，
+        无 content → ``EmptyResponseSpec(status_code=204)``，让 204 的语义
+        在 route 文件中显式可见。
+        """
         spec = """\
 openapi: 3.1.0
 info:
@@ -1816,8 +1824,15 @@ paths:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "delete_item.py").read_text(encoding="utf-8")
-        # 无 content-type 为 json 的响应，不生成泛型参数。
-        assert "APIRoute)" in content
+        # 204 派发 1 条 EmptyResponseSpec decl——@property 形式 + 单参数构造。
+        assert "@property" in content
+        assert "def on_204(self) -> EmptyResponseSpec:" in content
+        assert "return EmptyResponseSpec(" in content
+        assert "status_code=204" in content
+        # EmptyResponseSpec 在 stoma 包导出，模板无条件 import 该名字（line 7 of endpoint.py.jinja2）。
+        assert "from stoma import APIRoute, EmptyResponseSpec" in content
+        # 全文不应出现 ``APIRoute[...]`` 泛型语法（Phase 3 不再使用）。
+        assert "APIRoute[" not in content
 
     def test_response_with_non_snake_case_fields(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 顶层字段非 snake_case 时自动追加 ``alias=<origin>``。
@@ -2001,8 +2016,8 @@ components:
         assert "GetEntityResponse" in models
         assert "RootModel[TypeA | TypeB]" in models
         # route.py 正确引用包装类。
-        assert "def on_200(self) -> JSONResponseSpec[GetEntityResponse]:" in route
-        assert "model=GetEntityResponse" in route
+        assert "def on_200(self) -> ResponseSpec[GetEntityResponse]:" in route
+        assert "expected_type=GetEntityResponse" in route
         assert "APIRoute[" not in route
         assert "from ..models import GetEntityResponse" in route
 
@@ -2066,8 +2081,8 @@ components:
         assert "GetRecordResponse" in models
         assert "RootModel[TypeA | TypeB]" in models
         # route.py 正确引用包装类。
-        assert "def on_200(self) -> JSONResponseSpec[GetRecordResponse]:" in route
-        assert "model=GetRecordResponse" in route
+        assert "def on_200(self) -> ResponseSpec[GetRecordResponse]:" in route
+        assert "expected_type=GetRecordResponse" in route
         assert "APIRoute[" not in route
         assert "from ..models import GetRecordResponse" in route
 
@@ -2133,10 +2148,10 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "def on_200(self) -> JSONResponseSpec[User]:" in route
-        assert "def on_404(self) -> JSONResponseSpec[Error]:" in route
-        assert "model=User" in route
-        assert "model=Error" in route
+        assert "def on_200(self) -> ResponseSpec[User]:" in route
+        assert "def on_404(self) -> ResponseSpec[Error]:" in route
+        assert "expected_type=User" in route
+        assert "expected_type=Error" in route
         assert "from ..models import Error, User" in route
         assert "APIRoute[" not in route
 
@@ -2189,9 +2204,9 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "create_user.py").read_text(encoding="utf-8")
-        assert "def on_200(self) -> JSONResponseSpec[User]:" in route
-        assert "def on_201(self) -> JSONResponseSpec[User]:" in route
-        assert route.count("model=User") == 2
+        assert "def on_200(self) -> ResponseSpec[User]:" in route
+        assert "def on_201(self) -> ResponseSpec[User]:" in route
+        assert route.count("expected_type=User") == 2
         assert "from ..models import User" in route
         assert route.count("from ..models import User") == 1
         assert "import User, User" not in route
@@ -2248,20 +2263,25 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "def on_200(self) -> JSONResponseSpec[User]:" in route
-        assert "model=User" in route
+        assert "def on_200(self) -> ResponseSpec[User]:" in route
+        assert "expected_type=User" in route
         assert "on_400" not in route
         assert "from ..models import User" in route
         assert "APIRoute[" not in route
 
     def test_response_with_only_non_json_status_codes(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证所有 status 都只有 description、无 ``application/json`` 时，route 保持裸 ``APIRoute)``。
+        """验证所有 status 都只有 description、无 ``application/json`` 时派发 ``EmptyResponseSpec``。
+
+        Phase 3 修复：旧行为是所有 status 都被丢弃、route 无任何响应声明；
+        新行为是每个 status code 都生成 ``on_<status>`` 属性（``EmptyResponseSpec``）
+        ——``200`` 和 ``204`` 两个 status 都必须显式出现，不能再静默丢弃。
 
         行为契约：
 
-        - 所有 status 均无 ``application/json`` content（典型：纯 health check 接口）。
-        - 不输出 ``APIRoute[...]`` 泛型语法，保持裸 ``APIRoute)``。
+        - 每个 status 都生成独立的 ``@property def on_<status>(self) -> EmptyResponseSpec:``
+          + ``return EmptyResponseSpec(status_code=<status>)`` 构造。
         - ``from .models import ...`` 行不出现（无响应模型需要 import）。
+        - ``EmptyResponseSpec`` 由模板无条件 import（``stoma`` 顶级导出）。
         """
         spec = """\
 openapi: 3.1.0
@@ -2287,12 +2307,16 @@ paths:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "health_check.py").read_text(encoding="utf-8")
-        # 裸 ``APIRoute)``，无泛型参数。
-        assert "APIRoute)" in route
-        # 不输出 ``APIRoute[...]`` 形式。
-        assert "APIRoute[" not in route
+        # 200 + 204 都必须派发 EmptyResponseSpec decl——任一缺失即视为「静默丢弃」回归。
+        assert "@property" in route
+        assert "def on_200(self) -> EmptyResponseSpec:" in route
+        assert "def on_204(self) -> EmptyResponseSpec:" in route
+        assert "status_code=200" in route
+        assert "status_code=204" in route
         # 没有响应模型可 import，不应有 ``from .models import ...`` 行。
         assert "from ..models import" not in route
+        # 全文不应出现 ``APIRoute[...]`` 泛型语法。
+        assert "APIRoute[" not in route
 
     def test_response_with_three_status_codes_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 200 + 400 + 500 三个 ``$ref`` 都参与 Union，且 import 行三个都列出。
@@ -2367,12 +2391,12 @@ components:
 
         assert result.exit_code == 0, result.output
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "def on_200(self) -> JSONResponseSpec[User]:" in route
-        assert "def on_400(self) -> JSONResponseSpec[Error]:" in route
-        assert "def on_500(self) -> JSONResponseSpec[ServerError]:" in route
-        assert "model=User" in route
-        assert "model=Error" in route
-        assert "model=ServerError" in route
+        assert "def on_200(self) -> ResponseSpec[User]:" in route
+        assert "def on_400(self) -> ResponseSpec[Error]:" in route
+        assert "def on_500(self) -> ResponseSpec[ServerError]:" in route
+        assert "expected_type=User" in route
+        assert "expected_type=Error" in route
+        assert "expected_type=ServerError" in route
         assert "from ..models import Error, ServerError, User" in route
         assert "APIRoute[" not in route
 
@@ -2439,10 +2463,10 @@ paths:
         assert "class GetXResponse" in models
         assert "class GetXResponse1" in models
         assert "class GetXResponse2" not in models
-        assert "def on_200(self) -> JSONResponseSpec[GetXResponse]:" in route
-        assert "def on_400(self) -> JSONResponseSpec[GetXResponse1]:" in route
-        assert "model=GetXResponse" in route
-        assert "model=GetXResponse1" in route
+        assert "def on_200(self) -> ResponseSpec[GetXResponse]:" in route
+        assert "def on_400(self) -> ResponseSpec[GetXResponse1]:" in route
+        assert "expected_type=GetXResponse" in route
+        assert "expected_type=GetXResponse1" in route
         assert "from ..models import GetXResponse, GetXResponse1" in route
         assert "APIRoute[" not in route
         # import 行同时列出两者。
@@ -2523,16 +2547,16 @@ components:
         assert "class GetXResponse" in models
         assert "class GetXResponse1" in models
         assert "class GetXResponse2" not in models
-        assert "def on_200(self) -> JSONResponseSpec[User]:" in route
-        assert "def on_400(self) -> JSONResponseSpec[GetXResponse]:" in route
-        assert "def on_500(self) -> JSONResponseSpec[GetXResponse1]:" in route
-        assert "model=User" in route
-        assert "model=GetXResponse" in route
-        assert "model=GetXResponse1" in route
+        assert "def on_200(self) -> ResponseSpec[User]:" in route
+        assert "def on_400(self) -> ResponseSpec[GetXResponse]:" in route
+        assert "def on_500(self) -> ResponseSpec[GetXResponse1]:" in route
+        assert "expected_type=User" in route
+        assert "expected_type=GetXResponse" in route
+        assert "expected_type=GetXResponse1" in route
         assert "from ..models import GetXResponse, GetXResponse1, User" in route
         assert "APIRoute[" not in route
 
-    def test_response_with_only_error_status_codes_generates_models(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_error_status_codes_still_generate_models(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证仅有 4xx/5xx JSON 响应（无 200/201）时仍生成 ``models.py`` 与对应 route import。
 
         行为契约：
@@ -2606,19 +2630,19 @@ paths:
         assert "class Error" in models
         assert "class ServerError" in models
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "def on_400(self) -> JSONResponseSpec[Error]:" in route
-        assert "def on_500(self) -> JSONResponseSpec[ServerError]:" in route
-        assert "model=Error" in route
-        assert "model=ServerError" in route
+        assert "def on_400(self) -> ResponseSpec[Error]:" in route
+        assert "def on_500(self) -> ResponseSpec[ServerError]:" in route
+        assert "expected_type=Error" in route
+        assert "expected_type=ServerError" in route
         assert "from ..models import Error, ServerError" in route
         assert "APIRoute[" not in route
 
-    def test_parser_has_json_payloads_true_when_only_error_responses(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_parser_has_json_payloads_with_only_errors(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """直接走 parser 探测 ``has_json_payloads``，验证错误响应纳入判定。
 
         行为契约：
 
-        - 与 ``test_response_with_only_error_status_codes_generates_models``
+        - 与 ``test_error_status_codes_still_generate_models``
           互补，直接走 ``make_openapi_parser`` 验证 ``parser.has_json_payloads``
           属性值，避免 CLI 副作用掩盖判定错误。
         - 这是 MUST DO 中的「Probe misleading-success-output」步骤。
@@ -3416,6 +3440,29 @@ class _FakeMediaType:
     media_type_schema: Any = None
 
 
+@dataclass
+class _FakeDictSchema:
+    """测试夹具：模拟 primitive / binary schema 的 ``model_dump`` 行为。
+
+    渲染器 :meth:`EndpointRenderer._extract_response_specs` 通过
+    ``schema.model_dump(mode="json", exclude_none=True)`` 拿 dict 后判定
+    :func:`is_primitive_schema_dict` / :func:`is_binary_schema_dict`——
+    primitive 与 binary 的 schema 在 OpenAPI 里是 dict 形态（``{"type":"integer"}``
+    / ``{"type":"string","format":"binary"}``），没有 Pydantic ``$ref`` 可用，
+    因此本夹具把传入 dict 通过 ``model_dump`` 直接返回。
+
+    与 ``_make_ref`` 的差异：``_make_ref`` 返回的 :class:`Reference31` 走
+    ``isinstance(schema, self.Reference)`` 命中 Reference 路径；本夹具故意
+    不是 :class:`Reference31` 子类，确保 primitive / binary 检测能命中。
+    """
+
+    schema: dict[str, Any]
+
+    def model_dump(self, mode: str = "python", exclude_none: bool = True) -> dict[str, Any]:
+        """返回构造时传入的 schema dict，与渲染器期望的 ``mode`` / ``exclude_none`` 形参对齐。"""
+        return dict(self.schema)
+
+
 class _FakeResponse(BaseModel):
     """测试夹具：OpenAPI Response 对象的最小化 BaseModel。
 
@@ -3481,9 +3528,9 @@ class TestExtractResponseSpecs:
         """200 + 单 JSON media → 1 条 decl，attr_name=``on_200``。
 
         基准场景：单 status、单 media type、最常见的 happy path；
-        验证 9 字段 :class:`ResponseSpecDecl` 的精确形状（int 状态码 +
-        ``status_code=200`` 字面形式 + JSONResponseSpec[<Model>] 注解 +
-        ``status_code_or_matcher`` 已包含 ``status_code=`` 前缀）。
+        验证 5 字段 :class:`ResponseSpecDecl` 的精确形状（int 状态码 200 +
+        Reference 末段 PascalCase ``User`` 作为 ``expected_type`` +
+        ``annotation="ResponseSpec[User]"``）。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
@@ -3498,14 +3545,10 @@ class TestExtractResponseSpecs:
         decl = decls[0]
         assert decl == ResponseSpecDecl(
             attr_name="on_200",
+            annotation="ResponseSpec[User]",
             status_code=200,
             media_type="application/json",
-            model_name="User",
-            is_json=True,
-            target_type=None,
-            annotation="JSONResponseSpec[User]",
-            constructor="JSONResponseSpec",
-            status_code_or_matcher="status_code=200",
+            expected_type="User",
         )
         assert renderer.errors == []
 
@@ -3513,8 +3556,9 @@ class TestExtractResponseSpecs:
         """200 + JSON + text/xml → 2 条 decl，attrs 按 sanitize 后的 media_type 消歧。
 
         验证多 media type 时 attr_name 必须加后缀消歧——避免两个 decl
-        都用 ``on_200`` 引发「duplicate method」语法错误。Raw 路径的
-        ``target_type`` 按 media type 启发式派生（text/* → ``"str"``）。
+        都用 ``on_200`` 引发「duplicate method」语法错误。无 schema 的
+        ``text/xml`` 走场景 2（schema 缺失 → EmptyResponseSpec 兜底），
+        ``media_type=None`` / ``expected_type=None``。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
@@ -3531,25 +3575,17 @@ class TestExtractResponseSpecs:
         assert len(decls) == 2
         assert decls[0] == ResponseSpecDecl(
             attr_name="on_200_application_json",
+            annotation="ResponseSpec[User]",
             status_code=200,
             media_type="application/json",
-            model_name="User",
-            is_json=True,
-            target_type=None,
-            annotation="JSONResponseSpec[User]",
-            constructor="JSONResponseSpec",
-            status_code_or_matcher="status_code=200",
+            expected_type="User",
         )
         assert decls[1] == ResponseSpecDecl(
             attr_name="on_200_text_xml",
+            annotation="EmptyResponseSpec",
             status_code=200,
-            media_type="text/xml",
-            model_name=None,
-            is_json=False,
-            target_type="str",
-            annotation="RawResponseSpec[str]",
-            constructor="RawResponseSpec",
-            status_code_or_matcher="status_code=200",
+            media_type=None,
+            expected_type=None,
         )
         assert renderer.errors == []
 
@@ -3558,7 +3594,9 @@ class TestExtractResponseSpecs:
 
         验证 OpenAPI ``default`` 通配符被转换为 ``lambda c: c not in [...]``
         源字符串（无其他 int 状态码时退化为 ``c not in []``，等价 ``True``），
-        attr_name 不含数字而是字面 ``on_default``。
+        attr_name 不含数字而是字面 ``on_default``。``status_code`` 字段在
+        5 字段 decl 形态中直接存 lambda 源字符串，模板负责拼装 ``status_code=``
+        前缀（不再走 :func:`render_status_code_kwarg`）。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
@@ -3574,18 +3612,16 @@ class TestExtractResponseSpecs:
         assert decl.attr_name == "on_default"
         assert decl.status_code == "lambda c: c not in []"
         assert decl.media_type == "application/json"
-        assert decl.model_name == "Error"
-        assert decl.is_json is True
-        assert decl.target_type is None
-        assert decl.annotation == "JSONResponseSpec[Error]"
-        assert decl.constructor == "JSONResponseSpec"
-        assert decl.status_code_or_matcher == "status_code=lambda c: c not in []"
+        assert decl.expected_type == "Error"
+        assert decl.annotation == "ResponseSpec[Error]"
 
     def test_extract_default_with_other_int_codes(self) -> None:
         """``default`` + 其他 int 状态码 → default lambda 排除已声明的 int code。
 
         验证 ``default`` lambda 排除同一 endpoint 内已声明的精确 int 状态码——
         ``200`` + ``default`` 时，default lambda 生成 ``c not in [200]``。
+        5 字段 decl 形态下 ``status_code`` 字段直接存 lambda 源字符串（不含
+        ``status_code=`` 前缀）。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
@@ -3605,13 +3641,13 @@ class TestExtractResponseSpecs:
         default_decl = next(d for d in decls if d.attr_name == "on_default")
         # exclude lists sorted ascending
         assert default_decl.status_code == "lambda c: c not in [200, 404]"
-        assert default_decl.status_code_or_matcher == "status_code=lambda c: c not in [200, 404]"
 
     def test_extract_4xx_wildcard(self) -> None:
         """``4XX`` 通配符 → 1 条 decl，attr_name=``on_4xx``、lambda 覆盖 ``400 <= c < 500``。
 
         验证 OpenAPI 范围通配符被转换为 lambda 源字符串 ``"lambda c: 400 <= c < 500"``。
-        attr_name 全小写 ``on_4xx``。
+        attr_name 全小写 ``on_4xx``，5 字段 decl 形态下 ``status_code``
+        字段直接存 lambda 源字符串。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
@@ -3627,12 +3663,8 @@ class TestExtractResponseSpecs:
         assert decl.attr_name == "on_4xx"
         assert decl.status_code == "lambda c: 400 <= c < 500"
         assert decl.media_type == "application/json"
-        assert decl.model_name == "Error"
-        assert decl.is_json is True
-        assert decl.target_type is None
-        assert decl.annotation == "JSONResponseSpec[Error]"
-        assert decl.constructor == "JSONResponseSpec"
-        assert decl.status_code_or_matcher == "status_code=lambda c: 400 <= c < 500"
+        assert decl.expected_type == "Error"
+        assert decl.annotation == "ResponseSpec[Error]"
 
     def test_extract_parse_status_key_all_wildcards(self) -> None:
         """``_parse_status_key`` 对 ``1XX`` / ``2XX`` / ``3XX`` / ``4XX`` / ``5XX`` 全覆盖生成 range lambda。"""
@@ -3653,6 +3685,7 @@ class TestExtractResponseSpecs:
         验证本 refactor 的核心修复——旧 :meth:`_get_json_response_types` 只取
         第一个 JSON media type，新方法必须遍历所有 JSON 家族 media type
         （含 RFC 6839 ``+json`` structured syntax suffix）。
+        5 字段 decl 形态：``expected_type`` 是 ref 末段 PascalCase。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
@@ -3669,25 +3702,17 @@ class TestExtractResponseSpecs:
         assert len(decls) == 2
         assert decls[0] == ResponseSpecDecl(
             attr_name="on_200_application_json",
+            annotation="ResponseSpec[User]",
             status_code=200,
             media_type="application/json",
-            model_name="User",
-            is_json=True,
-            target_type=None,
-            annotation="JSONResponseSpec[User]",
-            constructor="JSONResponseSpec",
-            status_code_or_matcher="status_code=200",
+            expected_type="User",
         )
         assert decls[1] == ResponseSpecDecl(
             attr_name="on_200_application_problem_plus_json",
+            annotation="ResponseSpec[Problem]",
             status_code=200,
             media_type="application/problem+json",
-            model_name="Problem",
-            is_json=True,
-            target_type=None,
-            annotation="JSONResponseSpec[Problem]",
-            constructor="JSONResponseSpec",
-            status_code_or_matcher="status_code=200",
+            expected_type="Problem",
         )
         assert renderer.errors == []
 
@@ -3717,7 +3742,7 @@ class TestExtractResponseSpecs:
             decls = renderer._extract_response_specs(responses, endpoint)
         assert len(decls) == 1
         assert decls[0].attr_name == "on_200"
-        assert decls[0].model_name == "User"
+        assert decls[0].expected_type == "User"
         # 第二次重复 emit UserWarning，不走 GenerationError。
         user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
         assert len(user_warnings) == 1
@@ -3734,10 +3759,282 @@ class TestExtractResponseSpecs:
         assert renderer.errors == []
 
     def test_extract_returns_empty_when_content_is_empty(self) -> None:
-        """responses 含但 ``content`` 为空 → 返回空列表（无 media type 可声明）。"""
+        """responses 含但 ``content`` 为空 → 返回 1 条 :class:`EmptyResponseSpec` decl（场景 1）。
+
+        Phase 3 修复：旧行为是无 content 时 status code 被静默丢弃，返回空列表
+        ——导致 204 No Content 等端点无任何响应声明，route 文件无法表达「这个
+        status 也属于该 endpoint」的语义。新行为是每个 status code 都生成
+        ``EmptyResponseSpec`` decl，``media_type=None`` / ``expected_type=None``。
+        """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint({"200": _FakeResponse(content={})})
-        assert renderer._extract_response_specs(endpoint.responses, endpoint) == []
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            annotation="EmptyResponseSpec",
+            status_code=200,
+            media_type=None,
+            expected_type=None,
+        )
+
+    def test_extract_json_scalar_int(self) -> None:
+        """``{"type":"integer"}`` JSON schema → 1 条 :class:`ResponseSpec` decl，``expected_type="int"``（场景 3）。
+
+        验证 primitive scalar 检测：JSON Schema ``type=integer`` 通过
+        :func:`is_primitive_schema_dict` 命中场景 3，``python_type_name`` 把
+        ``"integer"`` 映射为 ``"int"``，decl 5 字段精确等于
+        ``ResponseSpecDecl(attr_name="on_200", annotation="ResponseSpec[int]", ...)``。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "application/json": _FakeMediaType(
+                            media_type_schema=_FakeDictSchema({"type": "integer"}),
+                        ),
+                    },
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            annotation="ResponseSpec[int]",
+            status_code=200,
+            media_type="application/json",
+            expected_type="int",
+        )
+        assert renderer.errors == []
+
+    def test_extract_json_scalar_str(self) -> None:
+        """``{"type":"string"}`` JSON schema → 1 条 decl，``expected_type="str"``（场景 3）。
+
+        验证 ``type=string`` 在不含 ``format=binary`` 时归 primitive（string
+        是 JSON_PRIMITIVE_TYPES 成员），不走 binary 检测路径——
+        ``is_binary_schema_dict`` 要求同时 ``type=string`` + ``format=binary``。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "application/json": _FakeMediaType(
+                            media_type_schema=_FakeDictSchema({"type": "string"}),
+                        ),
+                    },
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            annotation="ResponseSpec[str]",
+            status_code=200,
+            media_type="application/json",
+            expected_type="str",
+        )
+        assert renderer.errors == []
+
+    def test_extract_json_scalar_float(self) -> None:
+        """``{"type":"number"}`` JSON schema → 1 条 decl，``expected_type="float"``（场景 3）。
+
+        验证 ``type=number`` 映射为 Python ``float``（不是 ``Decimal`` /
+        ``double`` 等别名），与 :data:`JSON_TYPE_TO_PYTHON` 单一来源对齐。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "application/json": _FakeMediaType(
+                            media_type_schema=_FakeDictSchema({"type": "number"}),
+                        ),
+                    },
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            annotation="ResponseSpec[float]",
+            status_code=200,
+            media_type="application/json",
+            expected_type="float",
+        )
+        assert renderer.errors == []
+
+    def test_extract_json_scalar_bool(self) -> None:
+        """``{"type":"boolean"}`` JSON schema → 1 条 decl，``expected_type="bool"``（场景 3）。
+
+        验证 ``type=boolean`` 映射为 Python ``bool``。primitive scalar 检测
+        必须先于 binary 短路——若 binary 检测先执行，``type=boolean`` 不会被
+        误归为 ``bytes``（binary 仅在 ``type=string`` + ``format=binary``
+        时命中，boolean 不触发）。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "application/json": _FakeMediaType(
+                            media_type_schema=_FakeDictSchema({"type": "boolean"}),
+                        ),
+                    },
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            annotation="ResponseSpec[bool]",
+            status_code=200,
+            media_type="application/json",
+            expected_type="bool",
+        )
+        assert renderer.errors == []
+
+    def test_extract_binary_schema(self) -> None:
+        """``{"type":"string","format":"binary"}`` 在 ``image/png`` → 1 条 decl，``expected_type="bytes"``（场景 4）。
+
+        验证 binary 检测必须在 primitive 之前——``type=string`` 同样命中
+        primitive 集合，若不先短路 binary，会被误归为
+        ``ResponseSpec[str]``，丢失 ``bytes`` 的 ``response.body()`` 直通路径。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "image/png": _FakeMediaType(
+                            media_type_schema=_FakeDictSchema(
+                                {"type": "string", "format": "binary"},
+                            ),
+                        ),
+                    },
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            annotation="ResponseSpec[bytes]",
+            status_code=200,
+            media_type="image/png",
+            expected_type="bytes",
+        )
+        assert renderer.errors == []
+
+    def test_extract_non_json_no_schema(self) -> None:
+        """``image/png`` 无 schema → 1 条 :class:`EmptyResponseSpec` decl（场景 2）。
+
+        验证 ``media_type_schema=None`` 走场景 2（schema 缺失 → EmptyResponseSpec
+        兜底）：decl ``media_type=None`` / ``expected_type=None``，模板据此
+        拼装 ``EmptyResponseSpec(status_code=200)`` 构造——非 JSON 路径无
+        schema 时同样派发 decl，让 status code 语义在 route 文件中显式可见。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={"image/png": _FakeMediaType(media_type_schema=None)},
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 1
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            annotation="EmptyResponseSpec",
+            status_code=200,
+            media_type=None,
+            expected_type=None,
+        )
+        assert renderer.errors == []
+
+    def test_extract_mixed_empty_and_response(self) -> None:
+        """混合 204 Empty + 200 JSON $ref → 2 条 decl，形态不同。
+
+        验证 spec 中混合「有 content 的精确 int status」与「无 content 的
+        精确 int status」时，每个 status 都派发 decl，decl 形态按 media_type
+        是否为 ``None`` 分流——``on_204`` 走 ``EmptyResponseSpec``（场景 1），
+        ``on_200`` 走 ``ResponseSpec[User]``（场景 5，Reference）。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
+                ),
+                "204": _FakeResponse(content={}),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 2
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            annotation="ResponseSpec[User]",
+            status_code=200,
+            media_type="application/json",
+            expected_type="User",
+        )
+        assert decls[1] == ResponseSpecDecl(
+            attr_name="on_204",
+            annotation="EmptyResponseSpec",
+            status_code=204,
+            media_type=None,
+            expected_type=None,
+        )
+        assert renderer.errors == []
+
+    def test_extract_mixed_scalar_and_binary(self) -> None:
+        """混合 200 JSON int + 200 image/png bytes → 2 条 decl，都 :class:`ResponseSpec` 但 ``expected_type`` 不同。
+
+        验证同一 status 下多 media type：JSON 路径 primitive 派生 ``int``，
+        binary 路径派生 ``bytes``，两条 decl 形态都是 ``ResponseSpec[<T>]``
+        但 ``expected_type`` 与 ``media_type`` 不同；attr_name 加 sanitize
+        后缀消歧（避免两个 decl 都用 ``on_200`` 引发「duplicate method」）。
+        """
+        renderer = make_endpoint_renderer("3.1")
+        endpoint = _make_endpoint(
+            {
+                "200": _FakeResponse(
+                    content={
+                        "application/json": _FakeMediaType(
+                            media_type_schema=_FakeDictSchema({"type": "integer"}),
+                        ),
+                        "image/png": _FakeMediaType(
+                            media_type_schema=_FakeDictSchema(
+                                {"type": "string", "format": "binary"},
+                            ),
+                        ),
+                    },
+                ),
+            },
+        )
+        decls = renderer._extract_response_specs(endpoint.responses, endpoint)
+        assert len(decls) == 2
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200_application_json",
+            annotation="ResponseSpec[int]",
+            status_code=200,
+            media_type="application/json",
+            expected_type="int",
+        )
+        assert decls[1] == ResponseSpecDecl(
+            attr_name="on_200_image_png",
+            annotation="ResponseSpec[bytes]",
+            status_code=200,
+            media_type="image/png",
+            expected_type="bytes",
+        )
+        assert renderer.errors == []
 
 
 def _capture_render_kwargs(
@@ -3794,18 +4091,14 @@ class TestRenderPassesResponseSpecDecls:
         assert len(decls) == 1
         assert decls[0] == ResponseSpecDecl(
             attr_name="on_200",
+            annotation="ResponseSpec[User]",
             status_code=200,
             media_type="application/json",
-            model_name="User",
-            is_json=True,
-            target_type=None,
-            annotation="JSONResponseSpec[User]",
-            constructor="JSONResponseSpec",
-            status_code_or_matcher="status_code=200",
+            expected_type="User",
         )
 
     def test_render_passes_imported_specs_json_only(self) -> None:
-        """仅 JSON 响应 → ``imported_specs == ["JSONResponseSpec"]``，不含 ``RawResponseSpec``。"""
+        """仅 JSON 响应 → ``imported_specs == ["ResponseSpec"]``，不含 ``ResponseSpec``。"""
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
             {
@@ -3815,25 +4108,36 @@ class TestRenderPassesResponseSpecDecls:
             },
         )
         kwargs = _capture_render_kwargs(renderer, endpoint)
-        assert kwargs["imported_specs"] == ["JSONResponseSpec"]
+        assert kwargs["imported_specs"] == ["ResponseSpec"]
 
     def test_render_passes_imported_specs_raw_only(self) -> None:
-        """仅 Raw 响应（``image/png``，``model_name=None``） → ``imported_specs == ["RawResponseSpec"]``。"""
+        """仅 Raw 响应（``image/png`` + binary schema） → ``imported_specs == ["ResponseSpec"]``。
+
+        Phase 1 v3 重构后 binary 与 JSON 共用 ``ResponseSpec``，导入一致；
+        binary schema 必须是 ``{"type":"string","format":"binary"}`` 形态才能
+        命中 binary 检测分支（空 schema 走 ``EmptyResponseSpec`` 路径）。
+        """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
             {
                 "200": _FakeResponse(
-                    content={"image/png": _FakeMediaType(media_type_schema=None)},
+                    content={
+                        "image/png": _FakeMediaType(
+                            media_type_schema=_FakeDictSchema({"type": "string", "format": "binary"}),
+                        ),
+                    },
                 ),
             },
         )
         kwargs = _capture_render_kwargs(renderer, endpoint)
-        assert kwargs["imported_specs"] == ["RawResponseSpec"]
+        assert kwargs["imported_specs"] == ["ResponseSpec"]
 
     def test_render_passes_imported_specs_both_json_and_raw(self) -> None:
-        """JSON + Raw 混合 → ``imported_specs == ["JSONResponseSpec", "RawResponseSpec"]``。
+        """JSON + Raw 混合 → ``imported_specs == ["ResponseSpec"]``（单条去重）。
 
-        验证 JSON → Raw 的固定顺序，且两端都存在时才会两个都添加。
+        Phase 1 v3 重构后两种 decl 合并为同一 ``ResponseSpec``，导入行只出现一次；
+        binary schema 必须是 ``{"type":"string","format":"binary"}`` 形态才能
+        命中 binary 检测分支（空 schema 走 ``EmptyResponseSpec`` 路径）。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
@@ -3841,13 +4145,15 @@ class TestRenderPassesResponseSpecDecls:
                 "200": _FakeResponse(
                     content={
                         "application/json": _FakeMediaType(media_type_schema=_make_ref("User")),
-                        "image/png": _FakeMediaType(media_type_schema=None),
+                        "image/png": _FakeMediaType(
+                            media_type_schema=_FakeDictSchema({"type": "string", "format": "binary"}),
+                        ),
                     },
                 ),
             },
         )
         kwargs = _capture_render_kwargs(renderer, endpoint)
-        assert kwargs["imported_specs"] == ["JSONResponseSpec", "RawResponseSpec"]
+        assert kwargs["imported_specs"] == ["ResponseSpec"]
 
     def test_render_does_not_pass_uses_classvar_import(self) -> None:
         """``@property`` 形式不需要 ``ClassVar`` import → render() 不再传递该变量。
@@ -3875,11 +4181,28 @@ class TestRenderPassesResponseSpecDecls:
         assert kwargs["imported_specs"] == []
 
     def test_render_response_spec_decls_empty_when_only_description(self) -> None:
-        """``responses`` 含但 ``content`` 为空 → 0 个 decl。"""
+        """``responses`` 含但 ``content`` 为空 → 派发 1 条 :class:`EmptyResponseSpec` decl。
+
+        Phase 3 修复：旧行为是 status code 被静默丢弃，``response_spec_decls``
+        为空、模板不渲染任何 ``on_<status>`` 属性。新行为是每个 status code
+        都派发 1 条 ``EmptyResponseSpec`` decl（``media_type=None`` /
+        ``expected_type=None``），并通过 :attr:`imported_specs` 让模板自动
+        ``from stoma import EmptyResponseSpec``。
+        """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint({"200": _FakeResponse(content={})})
         kwargs = _capture_render_kwargs(renderer, endpoint)
-        assert kwargs["response_spec_decls"] == []
+        decls = kwargs["response_spec_decls"]
+        assert len(decls) == 1
+        assert decls[0] == ResponseSpecDecl(
+            attr_name="on_200",
+            annotation="EmptyResponseSpec",
+            status_code=200,
+            media_type=None,
+            expected_type=None,
+        )
+        # imported_specs 按 decl.media_type is None 派生 EmptyResponseSpec。
+        assert kwargs["imported_specs"] == ["EmptyResponseSpec"]
 
     def test_render_imported_models_collected_from_decl_model_names(self) -> None:
         """多 decl → ``imported`` 从 ``decl.model_name`` 去重收集。
@@ -3951,11 +4274,11 @@ class TestRenderPassesResponseSpecDecls:
         decls = kwargs["response_spec_decls"]
         # 三个 JSON decl（200 User, 404 Error, 201 User）
         assert len(decls) == 3
-        assert decls[0].model_name == "User"
+        assert decls[0].expected_type == "User"
         assert decls[0].status_code == 200
-        assert decls[1].model_name == "Error"
+        assert decls[1].expected_type == "Error"
         assert decls[1].status_code == 404
-        assert decls[2].model_name == "User"
+        assert decls[2].expected_type == "User"
         assert decls[2].status_code == 201
 
     def test_render_does_not_pass_imported_models_legacy_name(self) -> None:
@@ -3981,16 +4304,16 @@ class TestTemplateEmitsPropertyDeclarations:
     Phase 2 模板切换后，渲染结果应满足：
 
     - ``class <Name>(APIRoute):`` 不带 ``[T]`` 泛型参数。
-    - ``@property def on_<status>(self) -> JSONResponseSpec[<Model>]:`` 注解带
+    - ``@property def on_<status>(self) -> ResponseSpec[<Model>]:`` 注解带
       model 是 IDE 推断 ``response.expect(spec)`` 返回值类型的关键——没有下标
-      的裸 ``JSONResponseSpec`` 会让 generic ``T`` 退化为 ``Any``。
-    - ``@property def on_<status>(self) -> RawResponseSpec[bytes|str]:`` 返回
-      ``RawResponseSpec(...)``（Phase 1 v2 重构后 3 个位置参数 + ``target_type=``），
+      的裸 ``ResponseSpec`` 会让 generic ``T`` 退化为 ``Any``。
+    - ``@property def on_<status>(self) -> ResponseSpec[bytes|str]:`` 返回
+      ``ResponseSpec(...)``（Phase 1 v2 重构后 3 个位置参数 + ``expected_type=``），
       非 JSON 路径不再使用工厂方法。
     - 不再有 ``from typing import ClassVar``（``@property`` 不需要 ``ClassVar``）。
     - 不再有 ``callable=lambda ...``（v2 :class:`stoma.BaseResponseSpec.status_code`
       直接接受 ``Callable``，统一走 ``status_code=lambda ...`` 关键字路径）。
-    - ``from stoma import JSONResponseSpec`` / ``RawResponseSpec`` 按 ``imported_specs`` 添加。
+    - ``from stoma import ResponseSpec`` / ``ResponseSpec`` 按 ``imported_specs`` 添加。
     - 全文不含 ``APIRoute[``（带方括号的泛型语法已被淘汰）。
     - ``on_<status>`` 在 fields 之后（顺序与阅读习惯一致：先字段、再响应声明）。
     """
@@ -4059,10 +4382,10 @@ components:
         assert "APIRoute[User]" not in content
 
     def test_property_emitted_for_each_decl(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证每条 decl 都渲染为 ``@property def on_<status>(self) -> JSONResponseSpec[Model]:`` + ``JSONResponseSpec(...)`` 调用。
+        """验证每条 decl 都渲染为 ``on_<status>`` ``@property`` + ``ResponseSpec(...)`` 调用。
 
         下标中携带具体 model 是 IDE / mypy 推断 ``response.expect(spec)`` 返回类型的关键——
-        没有下标的裸 ``JSONResponseSpec`` 会让 generic ``T`` 退化为 ``Any``。
+        没有下标的裸 ``ResponseSpec`` 会让 generic ``T`` 退化为 ``Any``。
         同时确认不在输出里出现 ``ClassVar[...]`` 或 ``callable=``。
         """
         spec = """\
@@ -4104,23 +4427,23 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        # 新形式：@property + return JSONResponseSpec(...)
+        # 新形式：@property + return ResponseSpec(...)
         assert "@property" in content
-        assert "def on_200(self) -> JSONResponseSpec[User]:" in content
-        assert "return JSONResponseSpec(" in content
+        assert "def on_200(self) -> ResponseSpec[User]:" in content
+        assert "return ResponseSpec(" in content
         assert "status_code=200" in content
         assert 'media_type="application/json"' in content
-        assert "model=User" in content
+        assert "expected_type=User" in content
         # 不再出现 ClassVar / callable= 旧形式
         assert "ClassVar[" not in content
         assert "callable=" not in content
 
     def test_property_emitted_for_raw_decl(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 Raw decl 渲染为 ``@property def on_<status>(self) -> RawResponseSpec[bytes]:`` + ``target_type=bytes``。
+        """验证 Raw decl 渲染为 ``@property def on_<status>(self) -> ResponseSpec[bytes]:`` + ``expected_type=bytes``。
 
-        ``image/png`` 是二进制族 → 注解用 ``RawResponseSpec[bytes]``，v2 重构后
-        走裸 ``RawResponseSpec(status_code, media_type, target_type=bytes)`` 构造，
-        不再使用 ``RawResponseSpec.bytes(...)`` / ``RawResponseSpec.text(...)`` 工厂方法。
+        ``image/png`` 是二进制族 → 注解用 ``ResponseSpec[bytes]``，v2 重构后
+        走裸 ``ResponseSpec(status_code, media_type, expected_type=bytes)`` 构造，
+        不再使用 ``ResponseSpec.bytes(...)`` / ``ResponseSpec.text(...)`` 工厂方法。
         """
         spec = """\
 openapi: 3.1.0
@@ -4155,17 +4478,17 @@ paths:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_avatar.py").read_text(encoding="utf-8")
         assert "@property" in content
-        assert "def on_200(self) -> RawResponseSpec[bytes]:" in content
-        assert "return RawResponseSpec(" in content
-        assert "target_type=bytes" in content
+        assert "def on_200(self) -> ResponseSpec[bytes]:" in content
+        assert "return ResponseSpec(" in content
+        assert "expected_type=bytes" in content
         assert 'media_type="image/png"' in content
-        # 不含 model 关键字
-        assert "model=" not in content
+        assert "from ..models import" not in content
 
     def test_default_decl_emits_lambda_status_code(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 ``default`` 响应渲染为 ``status_code=lambda c: c not in [...]`` + ``model=...``（不接受 ``callable=`` 别名）。
+        """验证 ``default`` 响应渲染为 ``status_code=lambda c: c not in [...]`` + ``expected_type=...``。
 
-        单一 ``default``（无其他 int code）→ ``status_code=lambda c: c not in []``。
+        单一 ``default``（无其他 int code）→ ``status_code=lambda c: c not in []``；
+        不接受 ``callable=`` 别名。
         """
         spec = """\
 openapi: 3.1.0
@@ -4210,9 +4533,9 @@ components:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "post_echo.py").read_text(encoding="utf-8")
         assert "@property" in content
-        assert "def on_default(self) -> JSONResponseSpec[Error]:" in content
+        assert "def on_default(self) -> ResponseSpec[Error]:" in content
         assert "status_code=lambda c: c not in []" in content
-        assert "model=Error" in content
+        assert "expected_type=Error" in content
         # 不再走 callable= 别名
         assert "callable=" not in content
 
@@ -4257,7 +4580,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "def on_4xx(self) -> JSONResponseSpec[Error]:" in content
+        assert "def on_4xx(self) -> ResponseSpec[Error]:" in content
         assert "status_code=lambda c: 400 <= c < 500" in content
         assert "callable=" not in content
 
@@ -4294,7 +4617,7 @@ paths:
         assert "from typing import ClassVar" not in content
 
     def test_json_response_spec_import_added(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证有 JSON decl 时 ``from stoma import ... JSONResponseSpec`` 自动添加。"""
+        """验证有 JSON decl 时 ``from stoma import ... ResponseSpec`` 自动添加。"""
         spec = """\
 openapi: 3.1.0
 info:
@@ -4334,11 +4657,13 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "from stoma import APIRoute, JSONResponseSpec" in content
-        assert "RawResponseSpec" not in content
+        assert "from stoma import APIRoute, ResponseSpec" in content
 
     def test_raw_response_spec_import_added(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证有 Raw decl 时 ``from stoma import ... RawResponseSpec`` 自动添加。"""
+        """验证有 Raw decl 时 ``from stoma import ... ResponseSpec`` 自动添加。
+
+        Phase 1 v3 重构后 JSON 与 Raw 共用 ``ResponseSpec``，导入与 JSON decl 一致。
+        """
         spec = """\
 openapi: 3.1.0
 info:
@@ -4371,11 +4696,13 @@ paths:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_avatar.py").read_text(encoding="utf-8")
-        assert "from stoma import APIRoute, RawResponseSpec" in content
-        assert "JSONResponseSpec" not in content
+        assert "from stoma import APIRoute, ResponseSpec" in content
 
     def test_mixed_json_and_raw_both_imports(self, cli_runner: CliRunner, tmp_path: Path) -> None:
-        """验证 JSON + Raw 混合时两种 spec class 都导入。"""
+        """验证 JSON + Raw 混合时 ``ResponseSpec`` 被导入。
+
+        Phase 1 v3 重构后两种 decl 合并为同一 ``ResponseSpec``，导入行只出现一次。
+        """
         spec = """\
 openapi: 3.1.0
 info:
@@ -4419,7 +4746,8 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_file.py").read_text(encoding="utf-8")
-        assert "from stoma import APIRoute, JSONResponseSpec, RawResponseSpec" in content
+        assert "from stoma import APIRoute, ResponseSpec" in content
+        assert "from stoma import APIRoute, ResponseSpec, ResponseSpec" not in content
 
     def test_no_apiroute_generic_brackets_anywhere(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证整个输出文件不含 ``APIRoute[`` 残留。"""
@@ -4583,13 +4911,13 @@ components:
         content = (out_dir / "endpoints" / "get_echo.py").read_text(encoding="utf-8")
         # on_200 — exact int status_code
         assert "@property" in content
-        assert "def on_200(self) -> JSONResponseSpec[User]:" in content
+        assert "def on_200(self) -> ResponseSpec[User]:" in content
         assert "status_code=200" in content
-        assert "model=User" in content
+        assert "expected_type=User" in content
         # on_default — lambda excluding 200
-        assert "def on_default(self) -> JSONResponseSpec[Error]:" in content
+        assert "def on_default(self) -> ResponseSpec[Error]:" in content
         assert "status_code=lambda c: c not in [200]" in content
-        assert "model=Error" in content
+        assert "expected_type=Error" in content
         # 文件可编译
         compile(content, "get_echo.py", "exec")
 
