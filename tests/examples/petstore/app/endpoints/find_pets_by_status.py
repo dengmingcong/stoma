@@ -31,6 +31,14 @@ class FindPetsByStatus(APIRoute):
         )
 
     @property
+    def on_200_application_xml(self) -> ResponseSpec[FindPetsByStatusResponse]:
+        return ResponseSpec(
+            status_code=200,
+            media_type="application/xml",
+            expected_type=FindPetsByStatusResponse,
+        )
+
+    @property
     def on_400(self) -> EmptyResponseSpec:
         return EmptyResponseSpec(
             status_code=400,

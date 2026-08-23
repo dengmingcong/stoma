@@ -684,6 +684,9 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 status_key,
                 other_int_codes=int_status_codes,
             )
+            # 每个 status_code 最多 +1 次 inline_counter（不论有几个 media_type 是 inline object），
+            # 对齐 dmcg 对相同 inline schema 去重后只生成 ``{OpId}Response``（无 ``Response1``）的事实。
+            inline_seen_this_status = False
 
             # 场景 1：无 content（如 204 No Content）→ 派发 1 条 EmptyResponseSpec decl。
             if not content:
@@ -809,7 +812,12 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 # 场景 6：inline object → ResponseSpec decl。
                 # 首个 inline 命名 ``{OpId}Response``，后续追加 ``1`` / ``2`` …，
                 # 对齐 dmcg 的 ``components.schemas`` key 归一化约定。
-                inline_counter += 1
+                # 同 status_code 下多个 inline media_type 只 +1 次（dmcg 也只生成一个 model），
+                # 真正的"同一 status_code 有多个不同 inline schema"由 dmcg 拆为 ``Response`` + ``Response1``，
+                # renderer 这边仍只占一个 counter 名额（每 status_code 一次）。
+                if not inline_seen_this_status:
+                    inline_counter += 1
+                    inline_seen_this_status = True
                 if inline_counter == 1:
                     model_name = f"{operation_id_pascal}Response"
                 else:
