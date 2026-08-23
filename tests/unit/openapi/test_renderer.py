@@ -3549,6 +3549,7 @@ class TestExtractResponseSpecs:
             status_code=200,
             media_type="application/json",
             expected_type="User",
+            import_model="User",
         )
         assert renderer.errors == []
 
@@ -3579,6 +3580,7 @@ class TestExtractResponseSpecs:
             status_code=200,
             media_type="application/json",
             expected_type="User",
+            import_model="User",
         )
         assert decls[1] == ResponseSpecDecl(
             attr_name="on_200_text_xml",
@@ -3706,6 +3708,7 @@ class TestExtractResponseSpecs:
             status_code=200,
             media_type="application/json",
             expected_type="User",
+            import_model="User",
         )
         assert decls[1] == ResponseSpecDecl(
             attr_name="on_200_application_problem_plus_json",
@@ -3713,6 +3716,7 @@ class TestExtractResponseSpecs:
             status_code=200,
             media_type="application/problem+json",
             expected_type="Problem",
+            import_model="Problem",
         )
         assert renderer.errors == []
 
@@ -3983,6 +3987,7 @@ class TestExtractResponseSpecs:
             status_code=200,
             media_type="application/json",
             expected_type="User",
+            import_model="User",
         )
         assert decls[1] == ResponseSpecDecl(
             attr_name="on_204",
@@ -4069,14 +4074,14 @@ class TestRenderPassesResponseSpecDecls:
     """验证 :meth:`EndpointRenderer.render` 把 ``response_spec_decls`` 等模板变量透传给模板。
 
     直接捕获 ``render()`` 内部传给 ``Template.render(...)`` 的 kwargs，断言：
-    ``response_spec_decls`` 是 9 字段 :class:`ResponseSpecDecl` 列表、
-    ``imported_specs`` 按 JSON/Raw 类型正确收集、``imported`` 按 decl model
-    去重收集。Phase 2 不再使用 ``uses_classvar_import``（``@property``
-    形式不需要 ``ClassVar`` import）。
+    ``response_spec_decls`` 是 6 字段 :class:`ResponseSpecDecl` 列表、
+    ``imported_specs`` 按 JSON/Raw 类型正确收集、``imported`` 按 decl
+    ``import_model`` 去重收集。Phase 2 不再使用 ``uses_classvar_import``
+    （``@property`` 形式不需要 ``ClassVar`` import）。
     """
 
     def test_render_passes_response_spec_decls_to_template(self) -> None:
-        """200 + 单 JSON media → 模板收到 1 条 9 字段 ``ResponseSpecDecl``。"""
+        """200 + 单 JSON media → 模板收到 1 条 6 字段 ``ResponseSpecDecl``。"""
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(
             {
@@ -4095,6 +4100,7 @@ class TestRenderPassesResponseSpecDecls:
             status_code=200,
             media_type="application/json",
             expected_type="User",
+            import_model="User",
         )
 
     def test_render_passes_imported_specs_json_only(self) -> None:
@@ -4205,7 +4211,7 @@ class TestRenderPassesResponseSpecDecls:
         assert kwargs["imported_specs"] == ["EmptyResponseSpec"]
 
     def test_render_imported_models_collected_from_decl_model_names(self) -> None:
-        """多 decl → ``imported`` 从 ``decl.model_name`` 去重收集。
+        """多 decl → ``imported`` 从 ``decl.import_model`` 去重收集。
 
         验证：顺序按 decl 出现顺序（spec 中 status 顺序），重复 model 去重。
         """
@@ -4230,7 +4236,7 @@ class TestRenderPassesResponseSpecDecls:
         assert kwargs["imported"] == ["User", "Error"]
 
     def test_render_imported_models_excludes_raw_decl_none(self) -> None:
-        """Raw decl ``model_name=None`` 不污染 ``imported``。
+        """Raw decl ``import_model=None`` 不污染 ``imported``。
 
         验证：JSON 模型的 ``User`` 仍正确收集，Raw 响应（``image/png`` 无 schema）不被加入。
         """
@@ -4246,7 +4252,7 @@ class TestRenderPassesResponseSpecDecls:
             },
         )
         kwargs = _capture_render_kwargs(renderer, endpoint)
-        # Raw decl 的 model_name=None 被跳过，只剩 JSON decl 的 "User"。
+        # Raw decl 的 import_model=None 被跳过，只剩 JSON decl 的 "User"。
         assert kwargs["imported"] == ["User"]
         assert None not in kwargs["imported"]
 

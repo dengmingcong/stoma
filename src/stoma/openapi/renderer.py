@@ -143,28 +143,6 @@ def render_status_code_kwarg(status_code: int | str) -> str:
     raise ValueError(msg)
 
 
-# Python 内置类型不来自 ``models.py``，无需加入 ``imported`` 列表。
-_BUILTIN_TYPE_NAMES: frozenset[str] = frozenset({"int", "str", "float", "bool", "bytes"})
-
-
-def _is_object_model_name(expr: str | None) -> bool:
-    """判定 :attr:`ResponseSpecDecl.expected_type` 是否为对象 model 名。
-
-    对象 model 名为 :func:`to_pascal_case` 派生的 PascalCase 标识符（如
-    ``"User"`` / ``"GetBookResponse"``），由 dmcg 在前置阶段写入
-    ``models.py``，需要在 route 文件中 ``from .models import ...``；
-    标量 Python 内置类型（``int`` / ``str`` / ``float`` / ``bool``）与
-    ``bytes`` 是 Python 内置类型，无需 import。判定规则：首字母大写且不在
-    :data:`_BUILTIN_TYPE_NAMES` 集合内。
-
-    :param expr: ``ResponseSpecDecl.expected_type`` 字符串，可为 ``None``。
-    :return: 是对象 model 名返回 ``True``，否则返回 ``False``。
-    """
-    if not expr or not expr[:1].isupper():
-        return False
-    return expr not in _BUILTIN_TYPE_NAMES
-
-
 class ResponseSpecDecl(NamedTuple):
     """单条响应声明（按 ``status_code + media_type`` 唯一）的渲染产物。
 
@@ -207,6 +185,13 @@ class ResponseSpecDecl(NamedTuple):
         字符串表达（标量 ``"int"`` / ``"float"`` / ``"str"`` / ``"bool"``、
         二进制 ``"bytes"``、对象模型名 ``"User"``），无 content 时为 ``None``。
     :vartype expected_type: str | None
+    :var import_model: 需要在 route 文件中 ``from ..models import ...`` 的
+        model 名（PascalCase 字符串）。仅场景 5（Reference）与场景 6
+        （inline object）派发时填充，其他场景（Empty / primitive / binary）
+        为 ``None``——这些场景的 ``expected_type`` 要么是 Python 内置类型
+        （如 ``"int"`` / ``"bytes"``）要么是 ``None``，无需 import。模板不直接
+        消费本字段，仅 :meth:`EndpointRenderer.render` 用于收集 ``imported``。
+    :vartype import_model: str | None
     """
 
     attr_name: str
@@ -214,6 +199,7 @@ class ResponseSpecDecl(NamedTuple):
     status_code: int | str
     media_type: str | None
     expected_type: str | None
+    import_model: str | None = None
 
 
 class EndpointRenderer[ReferenceT: _ReferenceLike]:
@@ -279,11 +265,10 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
         1. 调用 :meth:`_extract_response_specs` 取得按 ``status + media_type``
            切分的 :class:`ResponseSpecDecl` 列表。
-        2. ``imported`` 从 decls 的 ``expected_type`` 派生：``None`` 与
-           Python 内置类型（``int`` / ``str`` / ``float`` / ``bool`` /
-           ``bytes``）跳过，仅对象 model 名（首字母大写的 PascalCase
-           标识符，如 ``"User"`` / ``"GetBookResponse"``）加入，按 spec 顺序
-           去重；body 字段的 ``import_model`` 追加到末尾并一起去重。
+        2. ``imported`` 从 decls 的 ``import_model`` 派生：仅场景 5
+           （Reference）与场景 6（inline object）填了该字段，其他场景为
+           ``None`` 跳过；按 spec 顺序去重；body 字段的 ``import_model``
+           追加到末尾并一起去重。
         3. ``imported_specs`` 按 decls 的 ``media_type is None`` 决定：
            ``media_type=None`` 的 decl（无 content 或 schema 无法派生类型）
            → ``"EmptyResponseSpec"`` 加入；``media_type`` 非空的 decl
@@ -303,9 +288,10 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         response_spec_decls = self._extract_response_specs(endpoint.responses, endpoint)
 
         # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
-        # 对象 model 名字从 decls 的 ``expected_type`` 派生（``None`` 与 Python
-        # 内置类型 int/str/float/bool/bytes 跳过，由 :func:`_is_object_model_name`
-        # 统一判定），request body 的 ``import_model`` 追加到末尾并一起去重。
+        # 对象 model 名字直接来自 decls 的 ``import_model`` 字段——仅场景 5
+        # （Reference）与场景 6（inline object）派发时填充，其他场景（Empty /
+        # primitive / binary）保持 ``None`` 跳过；request body 的
+        # ``import_model`` 追加到末尾并一起去重。
         body_fields_template = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields, uses_field_import = make_param_fields(endpoint.parameters)
 
@@ -313,9 +299,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             body_fields_template.import_model if isinstance(body_fields_template, JSONRequestBodyFields) else None
         )
         imported: list[str] = list(
-            dict.fromkeys(
-                decl.expected_type for decl in response_spec_decls if _is_object_model_name(decl.expected_type)
-            )
+            dict.fromkeys(decl.import_model for decl in response_spec_decls if decl.import_model is not None)
         )
         if body_import_model:
             imported.append(body_import_model)
@@ -854,6 +838,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                         status_code=status_code,
                         media_type=None,
                         expected_type=None,
+                        import_model=None,
                     )
                 )
                 continue
@@ -894,6 +879,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                             status_code=status_code,
                             media_type=None,
                             expected_type=None,
+                            import_model=None,
                         )
                     )
                     continue
@@ -916,6 +902,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                             status_code=status_code,
                             media_type=media_type,
                             expected_type="bytes",
+                            import_model=None,
                         )
                     )
                     continue
@@ -930,6 +917,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                             status_code=status_code,
                             media_type=media_type,
                             expected_type=expected_type,
+                            import_model=None,
                         )
                     )
                     continue
@@ -957,6 +945,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                             status_code=status_code,
                             media_type=media_type,
                             expected_type=model_name,
+                            import_model=model_name,
                         )
                     )
                     continue
@@ -990,6 +979,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                         status_code=status_code,
                         media_type=media_type,
                         expected_type=model_name,
+                        import_model=model_name,
                     )
                 )
 
