@@ -57,8 +57,7 @@ class Client:
         endpoint = GetUsers(limit=10)
         response = client.send(endpoint)
         # 用户按需触发校验：
-        if response.raw.status == 200:
-            users = response.expect(GetUsers.on_200)  # → list[UserData]
+        users = response.expect(GetUsers.on_200)  # → list[UserData]
         # response.raw: Playwright APIResponse，未做协议校验。
     """
 
