@@ -18,7 +18,6 @@ from pydantic import BaseModel
 
 from stoma.dependencies.response import (
     BaseResponseSpec,
-    EmptyResponseSpec,
     Response,
     ResponseSpec,
 )
