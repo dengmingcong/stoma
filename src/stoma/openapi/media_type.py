@@ -6,7 +6,7 @@
   ``application/problem+json``、``application/json-patch+json``）。
   接受可能带 ``;charset=...`` 后缀的 content-type header（先 strip 再判断）。
 - :func:`is_text_media_type` — 检查非 JSON 的 media type 是否为文本型（用于
-  :class:`stoma.RawResponseSpec` 的 ``.text(...)`` / ``.bytes(...)`` 工厂方法
+  ``ResponseSpec(expected_type=str)`` 与 ``ResponseSpec(expected_type=bytes)``
   分派）。``text/*`` + 一组已知文本 subtype（``xml`` / ``javascript`` /
   ``yaml`` / ``xhtml+xml`` / ``csv`` / ``event-stream`` / ``atom+xml`` /
   ``rss+xml``）。
@@ -45,13 +45,12 @@ def is_json_media_type(media_type: str) -> bool:
 def is_text_media_type(media_type: str) -> bool:
     """检查 media type 是否为文本型。
 
-    用于 :class:`stoma.RawResponseSpec` 工厂方法分派（``text(...)`` vs
-    ``bytes(...)``）——``RawResponseSpec`` 必须显式指定 ``T`` 类型参数，
-    因此 renderer 在生成 ``@property def on_<status>(self) -> RawResponseSpec[T]: return ...``
-    时必须调用 ``.text(...)`` / ``.bytes(...)`` 之一（裸 ``RawResponseSpec(...)`` 会在
-    ``__init__`` 抛 ``TypeError``）。
+    用于 ``ResponseSpec(expected_type=str)`` 与
+    ``ResponseSpec(expected_type=bytes)`` 构造分派——renderer 在生成
+    ``@property def on_<status>(self) -> ResponseSpec[T]: return ...``
+    时必须通过 ``expected_type`` 参数指定响应体类型。
 
-    文本型（返回 ``True`` → ``.text(...)``）：
+    文本型（返回 ``True`` → ``expected_type=str``）：
 
     - ``text/*`` 前缀（如 ``text/plain`` / ``text/html`` / ``text/xml`` /
       ``text/event-stream`` / ``text/csv``）。
@@ -64,11 +63,11 @@ def is_text_media_type(media_type: str) -> bool:
       （如 ``application/soap+xml``）。
 
     其他所有非 JSON media type（如 ``application/octet-stream`` /
-    ``image/*`` / ``audio/*`` / ``video/*``）返回 ``False`` → ``.bytes(...)``。
+    ``image/*`` / ``audio/*`` / ``video/*``）返回 ``False`` → ``expected_type=bytes``。
 
     注意：本函数处理的是已被 :func:`is_json_media_type` 排除后的剩余
     media type；``application/json`` / ``application/*+json`` 已被分流到
-    :class:`stoma.JSONResponseSpec`，不会传入本函数。
+    JSON response spec，不会传入本函数。
 
     支持 content-type header 直接传入：先 strip ``;charset=...`` 等参数，
     再做判断。空字符串返回 ``False``。
