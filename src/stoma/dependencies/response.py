@@ -11,10 +11,6 @@
   :meth:`pydantic.TypeAdapter.validate_json` 路径。
 - :class:`EmptyResponseSpec` — 空响应协议，仅校验 HTTP 状态码，
   适用于 204 No Content、无响应 schema 或无法确定类型的描述性响应。
-
-调用模式从「 ``Client.send`` 校验 + 填充 ``response.validated`` 」
-改为「 ``Client.send`` 只发请求 → ``response.expect(spec)`` 触发校验」，
-用户主动选择协议，``Response`` 不再持有已校验数据。
 """
 
 from __future__ import annotations
@@ -22,7 +18,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from playwright.sync_api import APIResponse
 from pydantic import TypeAdapter
@@ -38,19 +34,10 @@ class Response:
     调用方通过 ``raw.status`` 判断请求成功/失败，
     并按需调用 :meth:`expect` 选定响应协议后获得强类型数据。
 
-    ``Response`` 是 dataclass（而非 Pydantic BaseModel），
-    因为 ``raw`` 字段持有 Playwright 的 :class:`APIResponse` 对象，该对象不是 Pydantic
-    可识别的类型。使用 dataclass 既避免了 ``arbitrary_types_allowed`` 的额外配置，
-    又保留了简洁的类型注解能力。
-
     设计要点：
 
     - ``raw``：Playwright 原始响应对象，类型为 ``playwright.sync_api.APIResponse``，
       提供完整 HTTP 协议层访问（``status`` / ``headers`` / ``text()`` / ``body()`` / ``json()``）。
-    - 不持有已校验数据：``Response`` 不再内置 ``validated`` 字段。
-      调用方通过 :meth:`expect` 显式指定协议来触发校验与解析。
-      这样同一份 ``Response`` 可被不同协议反复校验（如先按 ``on_200`` 解析为
-      ``UserData``，再按 ``on_5xx`` 解析为 ``ErrorBody``）。
 
     :var raw: Playwright 原始响应对象。
     :vartype raw: APIResponse
@@ -58,10 +45,7 @@ class Response:
     Example::
 
         response = client.send(GetUsers(limit=10))
-        if response.raw.status == 200:
-            users = response.expect(GetUsers.on_200)  # 类型为 list[UserData]
-        else:
-            log.error(f"failed: {response.raw.status}")
+        users = response.expect(GetUsers.on_200)  # 类型为 list[UserData]
     """
 
     raw: APIResponse
@@ -90,11 +74,6 @@ class BaseResponseSpec[T](ABC):
     做协议级强校验（不匹配抛 ``AssertionError``），
     再做具体解析（解析失败抛 :class:`ValidationError`），
     最后返回 ``T`` 类型的已校验数据。
-
-    使用 ``ABC`` + ``@abstractmethod``（而非 Pydantic ``BaseModel``），
-    因为 spec 不需要序列化，且 ``status_code`` 支持 ``Callable[[int], bool]``
-    谓词形式（用于 OpenAPI ``default`` / ``4XX`` / ``5XX`` 等范围通配符），
-    谓词与运行时响应对象都不属于 Pydantic 友好类型。
 
     设计要点：
 
@@ -158,11 +137,6 @@ class BaseResponseSpec[T](ABC):
     @abstractmethod
     def validate_response(self, response: APIResponse) -> T:
         """校验并解析响应为 ``T`` 类型。
-
-        子类必须实现：先调用 :meth:`_assert_status` 与 :meth:`_assert_media_type`
-        做协议级强校验（不匹配抛 ``AssertionError``），
-        再做具体解析（解析失败抛 :class:`ValidationError`），
-        最后返回 ``T`` 类型的已校验数据。
 
         :param response: Playwright 响应对象。
         :return: 已校验的响应数据，类型为 ``T``。
@@ -256,7 +230,7 @@ class ResponseSpec[T](BaseResponseSpec[T]):
         self._assert_media_type(response.headers.get("content-type", ""))
 
         if self.expected_type is bytes:
-            return response.body()
+            return cast(T, response.body())
 
         try:
             return self.adapter.validate_json(response.body())
