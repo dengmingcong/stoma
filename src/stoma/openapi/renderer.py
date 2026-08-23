@@ -115,63 +115,6 @@ class GenerationError:
         return f"{self.method} {self.path}"
 
 
-# 文本族 media type —— 响应 body 可用 ``response.text()`` 安全解码为 ``str``。
-# 大小写不敏感（OpenAPI 3.1 规范允许大小写自由，但 ``_assert_media_type``
-# 在 :class:`BaseResponseSpec` 内部统一 lowercased 比较）。
-_TEXT_LIKE_MEDIA_TYPES: frozenset[str] = frozenset(
-    {
-        "application/xml",
-        "application/yaml",
-        "application/javascript",
-        "application/x-www-form-urlencoded",
-        "application/json-seq",
-    }
-)
-
-
-def _raw_target_type_for(media_type: str) -> str:
-    """根据 OpenAPI media type 派生 :class:`stoma.RawResponseSpec` 的 ``target_type`` 名称。
-
-    返回字符串 ``"str"`` 或 ``"bytes"``，与 v2 :class:`stoma.RawResponseSpec`
-    重构后的构造签名（``RawResponseSpec(status_code, media_type, target_type)``，
-    第三个位置参数必须显式传 ``bytes`` 或 ``str``，否则抛 :class:`TypeError`）配合。
-
-    文本族（→ ``"str"``）：
-
-    - 所有 ``text/*`` （``text/plain`` / ``text/html`` / ``text/xml`` /
-      ``text/csv`` / ``text/yaml`` / ``text/event-stream`` 等）；
-    - 显式白名单 ``application/xml`` / ``application/yaml`` /
-      ``application/javascript`` / ``application/x-www-form-urlencoded`` /
-      ``application/json-seq``。
-
-    字节族（→ ``"bytes"``，默认）：
-
-    - 其他所有未列入文本族的 ``application/*``（含
-      ``application/octet-stream`` / ``application/pdf``）；
-    - ``image/*`` / ``audio/*`` / ``video/*``；
-    - ``*/*`` 通配（spec 模糊声明时的兜底，保守取 bytes）。
-
-    :func:`is_json_media_type` 在调用方过滤 JSON 家族，此处不重复判断——传入
-    media type 一定非 JSON。
-
-    :param media_type: OpenAPI responses content 的 media type 字符串。
-    :return: 字符串 ``"str"`` 或 ``"bytes"``，作为 ``RawResponseSpec.__init__``
-        第三个位置参数的关键字风格名称。
-    """
-    normalized = media_type.strip().lower()
-    # 文本族前缀匹配（text/* 全家）；常见文本 MIME 均落在此分支。
-    if normalized.startswith("text/"):
-        return "str"
-    # 文本族白名单 application/* 子集；剥离 ``;charset=...`` 等参数再做精确匹配。
-    main_type = normalized.split(";", 1)[0].strip()
-    if main_type in _TEXT_LIKE_MEDIA_TYPES:
-        return "str"
-    # 兜底 bytes：image/* / audio/* / video/* / application/octet-stream /
-    # application/pdf / */* 通配。保守取 bytes 因多数非文本资源都需要
-    # ``response.body()`` 读取。
-    return "bytes"
-
-
 def render_status_code_kwarg(status_code: int | str) -> str:
     """将 ``status_code`` 渲染为构造调用的关键字参数片段。
 
@@ -200,66 +143,77 @@ def render_status_code_kwarg(status_code: int | str) -> str:
     raise ValueError(msg)
 
 
+# Python 内置类型不来自 ``models.py``，无需加入 ``imported`` 列表。
+_BUILTIN_TYPE_NAMES: frozenset[str] = frozenset({"int", "str", "float", "bool", "bytes"})
+
+
+def _is_object_model_name(expr: str | None) -> bool:
+    """判定 :attr:`ResponseSpecDecl.expected_type` 是否为对象 model 名。
+
+    对象 model 名为 :func:`to_pascal_case` 派生的 PascalCase 标识符（如
+    ``"User"`` / ``"GetBookResponse"``），由 dmcg 在前置阶段写入
+    ``models.py``，需要在 route 文件中 ``from .models import ...``；
+    标量 Python 内置类型（``int`` / ``str`` / ``float`` / ``bool``）与
+    ``bytes`` 是 Python 内置类型，无需 import。判定规则：首字母大写且不在
+    :data:`_BUILTIN_TYPE_NAMES` 集合内。
+
+    :param expr: ``ResponseSpecDecl.expected_type`` 字符串，可为 ``None``。
+    :return: 是对象 model 名返回 ``True``，否则返回 ``False``。
+    """
+    if not expr or not expr[:1].isupper():
+        return False
+    return expr not in _BUILTIN_TYPE_NAMES
+
+
 class ResponseSpecDecl(NamedTuple):
     """单条响应声明（按 ``status_code + media_type`` 唯一）的渲染产物。
 
     由 :meth:`EndpointRenderer._extract_response_specs` 生成，供
     :mod:`stoma.openapi.templates.endpoint` 模板按
-    ``@property def on_<attr_name>(self) -> <annotation>: return <constructor>(...)``
-    形式输出。
+    ``@property def on_<attr_name>(self) -> <annotation>: return <class>(...)``
+    形式输出。按 ``media_type`` 是否为 ``None`` 派生两条渲染路径：
 
-    ``is_json=True`` 对应 :class:`stoma.JSONResponseSpec`，
-    ``False`` 对应 :class:`stoma.RawResponseSpec`（构造需显式传
-    ``target_type=bytes|str``）。
+    - ``media_type`` 非空（content 存在，可派生类型）→ :class:`stoma.ResponseSpec`，
+      ``annotation`` 为 ``"ResponseSpec[<expected_type>]"``（如
+      ``"ResponseSpec[int]"`` / ``"ResponseSpec[User]"``），
+      模板拼装 ``ResponseSpec(status_code=..., media_type="<media_type>", expected_type=<expected_type>)``。
+    - ``media_type`` 为空（无 content 或 schema 无法派生类型）→ :class:`stoma.EmptyResponseSpec`，
+      ``annotation`` 为 ``"EmptyResponseSpec"``，``expected_type`` 为 ``None``，
+      模板拼装 ``EmptyResponseSpec(status_code=...)``。
+
+    状态码为 ``int`` 时模板输出 ``status_code=200``；
+    为 lambda 源字符串（如 ``"lambda c: c not in [200]"``）时模板输出
+    ``status_code=lambda c: ...``（lambda 前缀保留，模板不再走
+    :func:`render_status_code_kwarg`，由模板条件分支直接拼装）。
 
     :var attr_name: ``@property`` 方法名（如 ``on_200`` / ``on_4xx`` /
         ``on_default`` / ``on_200_application_xml``）。
     :vartype attr_name: str
+    :var annotation: ``@property`` 返回类型注解字符串——有 content 时为
+        ``"ResponseSpec[<expected_type>]"``（如 ``"ResponseSpec[int]"`` /
+        ``"ResponseSpec[User]"``），无 content 时为 ``"EmptyResponseSpec"``。
+        IDE/mypy 通过下标解析出 ``T`` 后，
+        ``response.expect(endpoint.on_200)`` 才能推断返回值的具体类型。
+    :vartype annotation: str
     :var status_code: 状态码值——精确匹配为 ``int``，通配符为 lambda 源字符串
         （``"lambda c: c not in [200]"`` / ``"lambda c: 400 <= c < 500"``）。
-        模板不直接消费此字段，只用作 :attr:`status_code_or_matcher` 的输入。
+        模板据此直接拼装 ``status_code=<int|lambda>``。
     :vartype status_code: int | str
-    :var media_type: 期望的 media type 字符串（如 ``application/json``）。
-    :vartype media_type: str
-    :var model_name: 引用的 model 类名（JSON 路径含 ``$ref`` 或 inline）；
-        Raw 响应（non-JSON media type）为 ``None``。
-    :vartype model_name: str | None
-    :var is_json: ``True`` → :class:`stoma.JSONResponseSpec`；
-        ``False`` → :class:`stoma.RawResponseSpec`。
-    :vartype is_json: bool
-    :var target_type: 仅 ``is_json=False`` 时有值——``"bytes"`` 或 ``"str"``，
-        对应 :class:`stoma.RawResponseSpec` 的 ``target_type`` 参数名；
-        ``is_json=True`` 时为 ``None``。模板直接拼入 ``target_type=<value>``。
-    :vartype target_type: str | None
-    :var annotation: ``@property`` 返回类型注解字符串——
-        ``is_json=True`` 时为 ``"JSONResponseSpec[<model_name>]"``（如
-        ``"JSONResponseSpec[EchoModel]"``），IDE/mypy 通过下标解析出 ``T`` 后，
-        ``response.expect(endpoint.on_200)`` 才能推断返回值的具体类型；
-        ``is_json=False`` 时为 ``"RawResponseSpec[<target_type>]"``（如
-        ``"RawResponseSpec[bytes]"``）。
-    :vartype annotation: str
-    :var constructor: 构造调用点使用的 spec 名字符串——
-        ``is_json=True`` 时为裸 ``"JSONResponseSpec"``；
-        ``is_json=False`` 时为裸 ``"RawResponseSpec"``（v2 重构后
-        :class:`stoma.RawResponseSpec` 接受 3 个位置参数 ``status_code, media_type,
-        target_type``，无需 factory 方法）。
-    :vartype constructor: str
-    :var status_code_or_matcher: 已渲染为代码生成字符串的 ``status_code`` 字面量——
-        精确匹配为 ``"status_code=200"``；
-        lambda 通配符为 ``"status_code=lambda c: c not in [200]"`` 等。
-        模板直接嵌入，包含参数名 ``status_code=`` 前缀。
-    :vartype status_code_or_matcher: str
+    :var media_type: 期望的 media type 字符串（如 ``application/json`` /
+        ``image/png``）。为 ``None`` 表示该 status code 无 content——
+        走 :class:`stoma.EmptyResponseSpec` 路径。
+    :vartype media_type: str | None
+    :var expected_type: ``expected_type`` 参数的渲染值——有 content 时为类型
+        字符串表达（标量 ``"int"`` / ``"float"`` / ``"str"`` / ``"bool"``、
+        二进制 ``"bytes"``、对象模型名 ``"User"``），无 content 时为 ``None``。
+    :vartype expected_type: str | None
     """
 
     attr_name: str
-    status_code: int | str
-    media_type: str
-    model_name: str | None
-    is_json: bool
-    target_type: str | None
     annotation: str
-    constructor: str
-    status_code_or_matcher: str
+    status_code: int | str
+    media_type: str | None
+    expected_type: str | None
 
 
 class EndpointRenderer[ReferenceT: _ReferenceLike]:
@@ -325,12 +279,16 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
         1. 调用 :meth:`_extract_response_specs` 取得按 ``status + media_type``
            切分的 :class:`ResponseSpecDecl` 列表。
-        2. ``imported`` 从 decls 的 ``model_name`` 派生（Raw 响应的
-           ``model_name=None`` 跳过），按 spec 顺序去重；body 字段的
-           ``import_model`` 追加到末尾并一起去重。
-        3. ``imported_specs`` 按 decls 的 ``is_json`` 标志决定是否添加
-           ``"JSONResponseSpec"`` 或 ``"RawResponseSpec"``——只要对应类型
-           至少一条 decl 存在即添加，按 JSON → Raw 顺序。
+        2. ``imported`` 从 decls 的 ``expected_type`` 派生：``None`` 与
+           Python 内置类型（``int`` / ``str`` / ``float`` / ``bool`` /
+           ``bytes``）跳过，仅对象 model 名（首字母大写的 PascalCase
+           标识符，如 ``"User"`` / ``"GetBookResponse"``）加入，按 spec 顺序
+           去重；body 字段的 ``import_model`` 追加到末尾并一起去重。
+        3. ``imported_specs`` 按 decls 的 ``media_type is None`` 决定：
+           ``media_type=None`` 的 decl（无 content 或 schema 无法派生类型）
+           → ``"EmptyResponseSpec"`` 加入；``media_type`` 非空的 decl
+           → ``"ResponseSpec"`` 加入。两类型同时存在按 Empty → Response
+           顺序添加。
         4. 模板按 ``response_spec_decls`` 在 fields 之后输出 ``@property``
            方法，每个 decl 一条 ``on_<attr_name>`` 属性。
 
@@ -345,8 +303,9 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         response_spec_decls = self._extract_response_specs(endpoint.responses, endpoint)
 
         # 响应在前、请求体在后（保持 spec 顺序）；``dict.fromkeys`` 保序去重，避免重名重复 import。
-        # response model 名字从 decls 的 ``model_name`` 派生（Raw 响应 ``model_name=None`` 跳过），
-        # request body 的 ``import_model`` 追加到末尾并一起去重。
+        # 对象 model 名字从 decls 的 ``expected_type`` 派生（``None`` 与 Python
+        # 内置类型 int/str/float/bool/bytes 跳过，由 :func:`_is_object_model_name`
+        # 统一判定），request body 的 ``import_model`` 追加到末尾并一起去重。
         body_fields_template = self._extract_request_body_info(endpoint.request_body, endpoint)
         header_fields, param_fields, uses_field_import = make_param_fields(endpoint.parameters)
 
@@ -354,19 +313,23 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             body_fields_template.import_model if isinstance(body_fields_template, JSONRequestBodyFields) else None
         )
         imported: list[str] = list(
-            dict.fromkeys(decl.model_name for decl in response_spec_decls if decl.model_name is not None)
+            dict.fromkeys(
+                decl.expected_type for decl in response_spec_decls if _is_object_model_name(decl.expected_type)
+            )
         )
         if body_import_model:
             imported.append(body_import_model)
         imported = list(dict.fromkeys(imported))
 
-        # ``imported_specs`` 按 decls 的 ``is_json`` 决定，按 JSON → Raw 顺序添加。
-        # 模板据此条件导入 ``JSONResponseSpec`` / ``RawResponseSpec``。
+        # ``imported_specs`` 按 decls 的 ``media_type is None`` 决定，按 Empty → Response
+        # 顺序添加。``media_type=None`` 的 decl（无 content 或 schema 无法派生类型）
+        # 派生 ``EmptyResponseSpec``；其余 decl 派生 ``ResponseSpec``。模板据此条件
+        # 导入 ``EmptyResponseSpec`` / ``ResponseSpec``。
         imported_specs: list[str] = []
-        if any(decl.is_json for decl in response_spec_decls):
-            imported_specs.append("JSONResponseSpec")
-        if any(not decl.is_json for decl in response_spec_decls):
-            imported_specs.append("RawResponseSpec")
+        if any(decl.media_type is None for decl in response_spec_decls):
+            imported_specs.append("EmptyResponseSpec")
+        if any(decl.media_type is not None for decl in response_spec_decls):
+            imported_specs.append("ResponseSpec")
 
         # 把 body fields 子类拍平为 template 变量。
         # NONE 路径返回空字典时模板所有 body 块跳过。
@@ -802,29 +765,49 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         responses: dict[str, Any] | None,
         endpoint: Endpoint[Any, Any, Any],
     ) -> list[ResponseSpecDecl]:
-        """按 ``status_code + media_type`` 提取响应声明列表。
+        """按 6 场景派发提取响应声明列表。
 
-        输出形态：每个状态码 + media type 组合对应一条 :class:`ResponseSpecDecl`，
+        输出形态：每个状态码（无 content 时 1 条）或每个 ``(status_code, media_type)``
+        组合（有 content 时）对应一条 :class:`ResponseSpecDecl`，
         模板按 ``@property def on_<attr_name>(self) -> <annotation>:
         return <constructor>(...)`` 形式输出。
 
+        6 场景派发（实现顺序：binary 检测须先于 primitive——binary schema
+        ``{"type":"string","format":"binary"}`` 的 ``type == "string"`` 同样命中
+        primitive 集合，若不先短路会被误归为 ``ResponseSpec[str]``，丢失
+        ``bytes`` 的 ``response.body()`` 直通路径）：
+
+        1. **无 content**（``content is None or empty``）→ 1 条
+           :class:`EmptyResponseSpec` decl，``media_type=None``、
+           ``expected_type=None``、``annotation="EmptyResponseSpec"``。
+        2. **有 content + schema 为 None / 空 Schema**（``schema.model_dump`` 退化
+           为空 dict）→ :class:`EmptyResponseSpec` decl——schema 无法派生类型时
+           兜底。
+        3. **有 content + primitive schema**（``is_primitive_schema_dict``）→
+           :class:`ResponseSpec` decl，``expected_type`` 按 ``type=integer/number/
+           string/boolean`` 分别 ``"int"`` / ``"float"`` / ``"str"`` / ``"bool"``。
+        4. **有 content + binary schema**（``is_binary_schema_dict``）→
+           :class:`ResponseSpec` decl，``expected_type="bytes"``。
+        5. **有 content + Reference** → :class:`ResponseSpec` decl，
+           ``expected_type=<PascalCase(ref 末段)>``，走 ``available_models`` 校验。
+        6. **有 content + inline object** → :class:`ResponseSpec` decl，
+           ``expected_type={OpId}Response / {OpId}Response<n>``，
+           走 ``available_models`` 校验。
+
         行为要点：
 
-        - **遍历所有 media type**：每个状态码下所有 media type 都派生出独立 decl；
-          200 同时声明 ``application/json`` + ``application/problem+json`` 会生成 2 条。
-        - **每条 decl 同时携带 ``is_json`` 标志与 ``model_name``**（Raw 响应
-          ``model_name=None``），模板按此分别渲染 :class:`stoma.JSONResponseSpec` 与
-          :class:`stoma.RawResponseSpec`。
-        - **Raw 路径派生 ``target_type``**（``"bytes"`` 或 ``"str"``）按 media type
-          启发式分类——文本族（``text/*`` + 显式白名单 ``application/*``）→ ``"str"``，
-          其余（image/audio/video/octet-stream/pdf 等）→ ``"bytes"``。v2 重构后的
-          :class:`stoma.RawResponseSpec` 第三个位置参数必须显式 ``bytes | str``，
-          渲染器静态派生避免生成可执行但运行时崩溃的裸构造。
-        - **JSON 路径的 ``model_name``** 由 :meth:`EndpointRenderer` ``available_models``
-          校验与 :attr:`GenerationErrorKind.MISSING_RESPONSE_MODEL` 错误收集——仅对
-          JSON 路径生效。
+        - **每个 status code 都生成 decl**：包括无 content 的 status code（场景 1）、
+          有 content 但 schema 为空的 status code（场景 2）——旧实现用
+          ``if not content: continue`` 丢弃这些 status，导致 204 No Content 等
+          端点无任何响应声明。新实现一律派发，避免丢失 status code 语义。
         - **``attr_name``** 按该 status 的 media type 数量决定：单 media →
           ``on_<status>``；多 media → ``on_<status>_<sanitized_media>`` 消歧。
+        - **``inline_counter``** 仅在场景 6（inline 对象）增加；scalar / binary
+          不消耗计数器，对齐 dmcg 的 ``{OpId}Response`` / ``{OpId}Response1``
+          命名约定。
+        - **``available_models`` 校验**仅作用于对象 schema（Reference + inline
+          object，场景 5 + 6）——scalar Python 类型（``int`` / ``str`` /
+          ``float`` / ``bool``）与 ``bytes`` 是内置类型，无需检查。
         - **OpenAPI 通配符状态码**（``default`` / ``4XX`` / ``5XX``）经
           :meth:`_parse_status_key` 转换为 lambda 源字符串；模板拼成
           ``status_code=lambda c: ...`` 形式（v2 :class:`stoma.BaseResponseSpec`
@@ -833,9 +816,6 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
           发 ``UserWarning``（罕见但需处理——规范 ``dict`` 本身不允许 key 重复，
           但允许 dict 子类返回重复 items）。
 
-        inline 对象命名沿用 dmcg 约定：第一个 ``{PascalOpId}Response``，第二个起
-        ``{PascalOpId}Response1`` / ``{PascalOpId}Response2`` 等，按 spec 出现顺序
-        计数（``$ref`` 不消耗计数器）。
         ``$ref`` 取末段 PascalCase，与 :func:`to_pascal_case` 转换对齐 dmcg
         对 ``components.schemas`` key 的归一化。
 
@@ -860,12 +840,24 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
         for status_key, response in responses.items():
             content = getattr(response, "content", None) or {}
-            if not content:
-                continue
             attr_base, status_code = self._parse_status_key(
                 status_key,
                 other_int_codes=int_status_codes,
             )
+
+            # 场景 1：无 content（如 204 No Content）→ 派发 1 条 EmptyResponseSpec decl。
+            if not content:
+                decls.append(
+                    ResponseSpecDecl(
+                        attr_name=attr_base,
+                        annotation="EmptyResponseSpec",
+                        status_code=status_code,
+                        media_type=None,
+                        expected_type=None,
+                    )
+                )
+                continue
+
             media_type_keys = list(content.keys())
             multi_media = len(media_type_keys) > 1
 
@@ -883,29 +875,70 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                     continue
                 seen.add(dedup_key)
 
-                is_json = is_json_media_type(media_type)
                 if multi_media:
                     attr_name = f"{attr_base}_{sanitize_media_type(media_type)}"
                 else:
                     attr_name = attr_base
 
-                # JSON 路径：派生 model_name（ref 末段 PascalCase，或 inline 计数器）；
-                # ``available_models`` 校验仅作用于 JSON 路径。
-                if is_json:
-                    target_type: str | None = None
-                    schema = getattr(media_type_obj, "media_type_schema", None)
-                    if isinstance(schema, self.Reference):
-                        model_name = to_pascal_case(schema.ref.rsplit("/", 1)[-1])
-                    else:
-                        inline_counter += 1
-                        if inline_counter == 1:
-                            model_name = f"{operation_id_pascal}Response"
-                        else:
-                            model_name = f"{operation_id_pascal}Response{inline_counter - 1}"
+                schema = getattr(media_type_obj, "media_type_schema", None)
 
+                # 场景 2：schema 缺失或为空 → EmptyResponseSpec 兜底。
+                if schema is None or (
+                    hasattr(schema, "model_dump")
+                    and not schema.model_dump(mode="json", exclude_none=True)
+                ):
+                    decls.append(
+                        ResponseSpecDecl(
+                            attr_name=attr_name,
+                            annotation="EmptyResponseSpec",
+                            status_code=status_code,
+                            media_type=None,
+                            expected_type=None,
+                        )
+                    )
+                    continue
+
+                # 场景 3 + 4：primitive / binary 检测需要 schema 的 dict 形态。
+                # Reference 的 dump 是 ``{'ref': '...'}``（不含 ``type`` / ``format``），
+                # 不命中两种检测，正确落到场景 5。
+                expanded = schema.model_dump(mode="json", exclude_none=True)
+
+                # binary 必须先于 primitive 判定：
+                # ``is_primitive_schema_dict`` 对 ``{"type":"string","format":"binary"}``
+                # 也返回 True（``type == "string"`` 命中 primitive 集合），
+                # 不先短路 binary 会把它误归为 ``ResponseSpec[str]``。
+                # ``bytes`` 走 ``response.body()`` 路径而非 ``validate_json``。
+                if is_binary_schema_dict(expanded):
+                    decls.append(
+                        ResponseSpecDecl(
+                            attr_name=attr_name,
+                            annotation="ResponseSpec[bytes]",
+                            status_code=status_code,
+                            media_type=media_type,
+                            expected_type="bytes",
+                        )
+                    )
+                    continue
+
+                # 场景 3：primitive scalar → ResponseSpec decl。
+                if is_primitive_schema_dict(expanded):
+                    expected_type = python_type_name(expanded["type"])
+                    decls.append(
+                        ResponseSpecDecl(
+                            attr_name=attr_name,
+                            annotation=f"ResponseSpec[{expected_type}]",
+                            status_code=status_code,
+                            media_type=media_type,
+                            expected_type=expected_type,
+                        )
+                    )
+                    continue
+
+                # 场景 5：Reference → ResponseSpec decl，``expected_type`` 为 ref 末段 PascalCase。
+                if isinstance(schema, self.Reference):
+                    model_name = to_pascal_case(schema.ref.rsplit("/", 1)[-1])
                     if (
-                        model_name is not None
-                        and self.available_models is not None
+                        self.available_models is not None
                         and model_name not in self.available_models
                     ):
                         self.errors.append(
@@ -917,27 +950,46 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                             )
                         )
                         continue
+                    decls.append(
+                        ResponseSpecDecl(
+                            attr_name=attr_name,
+                            annotation=f"ResponseSpec[{model_name}]",
+                            status_code=status_code,
+                            media_type=media_type,
+                            expected_type=model_name,
+                        )
+                    )
+                    continue
 
-                    annotation = f"JSONResponseSpec[{model_name}]"
-                    constructor = "JSONResponseSpec"
+                # 场景 6：inline object → ResponseSpec decl。
+                # 首个 inline 命名 ``{OpId}Response``，后续追加 ``1`` / ``2`` …，
+                # 对齐 dmcg 的 ``components.schemas`` key 归一化约定。
+                inline_counter += 1
+                if inline_counter == 1:
+                    model_name = f"{operation_id_pascal}Response"
                 else:
-                    # Raw 路径：model_name 始终为 None；target_type 按 media type 启发式派生。
-                    target_type = _raw_target_type_for(media_type)
-                    model_name = None
-                    annotation = f"RawResponseSpec[{target_type}]"
-                    constructor = "RawResponseSpec"
+                    model_name = f"{operation_id_pascal}Response{inline_counter - 1}"
 
+                if (
+                    self.available_models is not None
+                    and model_name not in self.available_models
+                ):
+                    self.errors.append(
+                        GenerationError(
+                            method=endpoint.method,
+                            path=endpoint.path,
+                            kind=GenerationErrorKind.MISSING_RESPONSE_MODEL,
+                            message=f"缺少 Response 模型 {model_name!r}（已跳过 import + generic）",
+                        )
+                    )
+                    continue
                 decls.append(
                     ResponseSpecDecl(
                         attr_name=attr_name,
+                        annotation=f"ResponseSpec[{model_name}]",
                         status_code=status_code,
                         media_type=media_type,
-                        model_name=model_name,
-                        is_json=is_json,
-                        target_type=target_type,
-                        annotation=annotation,
-                        constructor=constructor,
-                        status_code_or_matcher=render_status_code_kwarg(status_code),
+                        expected_type=model_name,
                     )
                 )
 
