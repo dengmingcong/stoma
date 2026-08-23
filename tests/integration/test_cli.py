@@ -33,6 +33,7 @@ from typer.testing import CliRunner
 from stoma import UploadFile
 from stoma.cli import app
 from stoma.client import Client
+from tests.integration.mock_server import _ServerThread
 
 FIXTURE_PATH_ALL_METHODS: Path = Path(__file__).parent / "fixtures" / "openapi_all_methods.yaml"
 FIXTURE_PATH_REQUEST_BODIES: Path = Path(__file__).parent / "fixtures" / "openapi_request_bodies.yaml"
@@ -125,7 +126,7 @@ def test_codegen_all_methods(
 
 
 @pytest.fixture
-def api_context(mock_server: Any) -> Generator[dict[str, Any], None, None]:
+def api_context(mock_server: _ServerThread) -> Generator[dict[str, Any], None, None]:
     """创建 Playwright APIRequestContext（使用 ``mock_server`` 提供 base_url）。"""
     playwright = sync_playwright().start()
     context = playwright.request.new_context(base_url=mock_server.base_url)
@@ -242,7 +243,7 @@ _MODULE_CLASSES: dict[str, str] = {
 
 def test_codegen_form_login_e2e(
     cli_runner: CliRunner,
-    mock_server: Any,
+    mock_server: _ServerThread,
     client: Client,
     tmp_path: Path,
 ) -> None:
@@ -262,7 +263,7 @@ def test_codegen_form_login_e2e(
 
 def test_codegen_multipart_upload_e2e(
     cli_runner: CliRunner,
-    mock_server: Any,
+    mock_server: _ServerThread,
     client: Client,
     tmp_path: Path,
 ) -> None:
@@ -286,7 +287,7 @@ def test_codegen_multipart_upload_e2e(
 
 def test_codegen_multipart_mix_e2e(
     cli_runner: CliRunner,
-    mock_server: Any,
+    mock_server: _ServerThread,
     client: Client,
     tmp_path: Path,
 ) -> None:
@@ -310,7 +311,7 @@ def test_codegen_multipart_mix_e2e(
 
 def test_codegen_scalar_importance_e2e(
     cli_runner: CliRunner,
-    mock_server: Any,
+    mock_server: _ServerThread,
     client: Client,
     tmp_path: Path,
 ) -> None:
@@ -341,7 +342,7 @@ def test_codegen_scalar_importance_e2e(
 
 def test_codegen_binary_raw_e2e(
     cli_runner: CliRunner,
-    mock_server: Any,
+    mock_server: _ServerThread,
     client: Client,
     tmp_path: Path,
 ) -> None:

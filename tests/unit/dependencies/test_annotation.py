@@ -13,6 +13,7 @@ namespace package 巧合解析，统一改为 ``from src.dependencies.annotation
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional, Union
 
 import pytest
@@ -79,7 +80,7 @@ class TestBinaryBodySerialization:
 
         return R
 
-    def test_txt_file_yields_full_filepayload(self, tmp_path: Any) -> None:
+    def test_txt_file_yields_full_filepayload(self, tmp_path: Path) -> None:
         """``.txt`` 文件 → ``FilePayload`` 含 name / mimeType / buffer。"""
         path = tmp_path / "note.txt"
         path.write_bytes(b"hi")
@@ -95,7 +96,7 @@ class TestBinaryBodySerialization:
             "buffer": b"hi",
         }
 
-    def test_unknown_extension_falls_back_to_octet_stream(self, tmp_path: Any) -> None:
+    def test_unknown_extension_falls_back_to_octet_stream(self, tmp_path: Path) -> None:
         """``mimetypes.guess_type`` 返回 None 时回退到 ``application/octet-stream``。"""
         path = tmp_path / "data.unknownext"
         path.write_bytes(b"raw bytes")

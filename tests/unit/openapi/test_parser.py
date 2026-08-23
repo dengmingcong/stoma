@@ -12,7 +12,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+
+from typer.testing import CliRunner
 
 from stoma.cli import app
 from stoma.openapi.parser import make_openapi_parser
@@ -22,7 +23,7 @@ from tests.unit.conftest import INVALID_OPENAPI_YAML
 class TestMakeOpenAPIValidation:
     """测试 OpenAPI 规范的校验。"""
 
-    def test_unsupported_version(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_unsupported_version(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证不支持的 OpenAPI 版本报错。"""
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text(INVALID_OPENAPI_YAML, encoding="utf-8")
@@ -33,7 +34,7 @@ class TestMakeOpenAPIValidation:
         assert result.exit_code != 0
         assert "Unsupported OpenAPI version" in result.output
 
-    def test_json_spec_accepted(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_json_spec_accepted(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 JSON 格式的 OpenAPI 规范也能处理。"""
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(

@@ -29,6 +29,7 @@ from typing import Any
 
 import pytest
 from pydantic import BaseModel, ConfigDict
+from typer.testing import CliRunner
 
 from stoma.cli import app
 from stoma.openapi.models import Endpoint
@@ -69,7 +70,7 @@ paths:
 class TestMakeRequestBody:
     """测试各种 requestBody 场景的生成结果。"""
 
-    def test_request_body_with_ref_schema(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_ref_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用 ``$ref`` 引用的 schema 时能正常生成。"""
         spec = _build_spec(
             "/users",
@@ -124,7 +125,7 @@ components:
         assert "from ..models import User" in code
         assert "body: User" in code
 
-    def test_request_body_with_inline_object_schema(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_inline_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用内联 object schema 时能正常生成。"""
         spec = _build_spec(
             "/items",
@@ -159,7 +160,7 @@ components:
         assert "from ..models import CreateItemRequest" in content
         assert "body: CreateItemRequest" in content
 
-    def test_request_body_with_nested_object_schema(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用嵌套 object schema 时能正常生成。"""
         spec = _build_spec(
             "/orders",
@@ -205,7 +206,7 @@ components:
         assert "createOrder" in content or "create_order" in content
         assert "@router.post" in content
 
-    def test_request_body_with_array_schema(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_array_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 为数组类型时能正常生成。"""
         spec = _build_spec(
             "/batch",
@@ -238,7 +239,7 @@ components:
         assert result.exit_code == 0, result.output
         assert (out_dir / "endpoints" / "create_batch.py").exists()
 
-    def test_request_body_with_no_body(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_no_body(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 endpoint 没有 requestBody 时不报错。"""
         spec = """\
 openapi: 3.1.0
@@ -264,7 +265,7 @@ paths:
         content = (out_dir / "endpoints" / "health.py").read_text(encoding="utf-8")
         assert "@router.get" in content
 
-    def test_request_body_with_embed_true(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_embed_true(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用 ``embed=True``（单属性 wrapper）时生成 ``Body(embed=True)``。"""
         spec = _build_spec(
             "/users",
@@ -309,7 +310,7 @@ components:
         # JSON body 由 Playwright 自动派生 Content-Type，renderer 不注入 Header
         assert "from stoma import APIRoute" in content
 
-    def test_request_body_with_non_pascalcase_ref(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_non_pascalcase_ref(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``$ref`` 末段（``components.schemas`` 的 key）非 PascalCase 时被 PascalCase 化。
 
         回归测试：renderer 必须 PascalCase 化 ref 末段，与
@@ -360,7 +361,7 @@ components:
         assert "from ..models import UserProfile" in content
         assert "body: UserProfile" in content
 
-    def test_request_body_with_kebab_case_schema_name(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_kebab_case_schema_name(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``components.schemas`` key 含连字符（kebab-case）时与 dmcg 一致 PascalCase 化。
 
         回归测试：``components.schemas.user-profile``（含连字符）在
@@ -417,7 +418,7 @@ components:
         assert "from ..models import UserProfile" in route_content
         assert "body: UserProfile" in route_content
 
-    def test_request_body_with_discriminator_union(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_discriminator_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用带 discriminator 的 ``oneOf`` schema 时生成联合模型。
 
         回归测试：discriminator oneOf 在 dmcg 0.72.2 中会生成
@@ -490,7 +491,7 @@ components:
         assert "from ..models import Pet" in route
         assert "body: Pet" in route
 
-    def test_request_body_without_operation_id_errors(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_without_operation_id_errors(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """``operationId`` 必填校验——缺 ``operationId`` 时 CLI 应清晰报错而不是 fallback 到 method+path。
 
         回归测试：``parser.validate_operation_ids()`` 检查到缺失 ``operationId`` 时
@@ -529,7 +530,7 @@ paths:
         assert result.exit_code != 0, result.output
         assert "operationId is required" in result.output
 
-    def test_request_body_with_non_snake_case_fields(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_non_snake_case_fields(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 顶层字段非 snake_case 时自动追加 ``alias=<origin>``。
 
         回归测试：``datamodel-code-generator`` 在 ``snake_case_field=True`` 下
@@ -594,7 +595,7 @@ paths:
         assert "user_id: str | None = None" in models
         assert 'user_id: str | None = Field(None, alias="user_id")' not in models
 
-    def test_request_body_with_nested_non_snake_case_fields(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_nested_non_snake_case_fields(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 嵌套对象内的非 snake_case 字段同样自动添加 ``alias``。
 
         回归测试：``datamodel-code-generator`` 对每一层嵌套对象独立应用
@@ -659,7 +660,7 @@ paths:
         assert 'street_name: Annotated[str | None, Field(alias="streetName")] = None' in models
         assert 'zip_code: Annotated[str | None, Field(alias="ZIPCode")] = None' in models
 
-    def test_request_body_with_oneof_union(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_oneof_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用 ``oneOf`` 包含多个 ``$ref`` 时生成 Pydantic v2 联合类型。
 
         dmcg 0.72.2 在 ``use_union_operator=True``（默认）下为 ``oneOf`` 生成
@@ -717,7 +718,7 @@ components:
         assert "from ..models import" in route_content
         assert "body:" in route_content
 
-    def test_request_body_with_anyof_union(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_anyof_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用 ``anyOf`` 包含多个 ``$ref`` 时生成 Pydantic v2 联合类型。
 
         dmcg 0.72.2 在 ``use_union_operator=True``（默认）下为 ``anyOf`` 生成
@@ -775,7 +776,7 @@ components:
         assert "from ..models import" in route_content
         assert "body:" in route_content
 
-    def test_request_body_with_allof_merge(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_body_with_allof_merge(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 使用 ``allOf`` 合并 ``$ref`` 父 schema 与内联对象时字段被正确合并。
 
         dmcg 0.72.2 通过 Python 类继承实现 ``allOf`` 合并：父类保留 ``$ref`` 指向
@@ -844,7 +845,7 @@ components:
         assert "from ..models import CreateOrderRequest" in route
         assert "body: CreateOrderRequest" in route
 
-    def test_request_and_response_share_model_dedupes_import(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_request_and_response_share_model_dedupes_import(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 requestBody 和 response 共用同一 schema 时 import 不重复。
 
         回归测试：当 ``POST /users`` 的 ``requestBody`` 和 ``201`` ``response`` 都引用
@@ -910,7 +911,7 @@ components:
 class TestClassBodyPass:
     """验证 class body `pass` 占位逻辑：仅在 body 完全为空（无 docstring + 无字段）时插入 `pass`。"""
 
-    def test_empty_class_body_inserts_pass(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_empty_class_body_inserts_pass(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 endpoint 无 docstring（无 summary/description）、无 requestBody、无 parameters 时 class body 插入 ``pass``。"""
         spec = """\
 openapi: 3.1.0
@@ -937,7 +938,7 @@ paths:
         assert "\n    pass\n" in content or "\n    pass" in content
         compile(content, "list_items.py", "exec")
 
-    def test_class_body_with_header_fields_no_pass(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_class_body_with_header_fields_no_pass(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 endpoint 有 header 参数（无 docstring）时 class body 不插入 ``pass``。
 
         Regression test: Phase 5 secondary bug — ``pass`` 被错误插入到有字段的 class body 开头。
@@ -1021,7 +1022,7 @@ paths:
 class TestMakeRequestBodyFormMultipart:
     """测试 form-urlencoded / multipart / scalar JSON / binary 请求体的生成结果。"""
 
-    def test_form_urlencoded_scalar(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_form_urlencoded_scalar(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``application/x-www-form-urlencoded`` 单标量字段生成 ``Annotated[str, Form()]``。
 
         Content-Type 由 Playwright 根据 ``form`` 参数自动派生，renderer 不注入。
@@ -1058,7 +1059,7 @@ class TestMakeRequestBodyFormMultipart:
         assert "content_type" not in content
         compile(content, "login_user.py", "exec")
 
-    def test_form_urlencoded_array(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_form_urlencoded_array(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 form-urlencoded 含数组字段时派生 ``list[T]``（从 ``items.type`` 取元素类型）。"""
         spec = _build_spec_with_components(
             "/tags",
@@ -1091,7 +1092,7 @@ class TestMakeRequestBodyFormMultipart:
         assert "content_type" not in content
         compile(content, "add_tags.py", "exec")
 
-    def test_form_urlencoded_array_with_int_items(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_form_urlencoded_array_with_int_items(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 form-urlencoded 数组字段以 ``items.type`` 为元素类型派生 ``list[int]``。"""
         spec = _build_spec_with_components(
             "/scores",
@@ -1124,7 +1125,7 @@ class TestMakeRequestBodyFormMultipart:
         assert "content_type" not in content
         compile(content, "add_scores.py", "exec")
 
-    def test_multipart_single_file(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_multipart_single_file(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``multipart/form-data`` 含 ``format: binary`` 单文件字段生成 UploadFile（无 Form import）。
 
         Content-Type（含 boundary）由 Playwright 自动设置，renderer 不注入。
@@ -1161,7 +1162,7 @@ class TestMakeRequestBodyFormMultipart:
         assert "Form" not in content
         compile(content, "upload_avatar.py", "exec")
 
-    def test_multipart_form_file_mix(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_multipart_form_file_mix(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``multipart/form-data`` 混合标量 + binary 字段同时生成 Form 和 UploadFile。
 
         Content-Type（含 boundary）由 Playwright 自动设置，renderer 不注入。
@@ -1198,7 +1199,7 @@ class TestMakeRequestBodyFormMultipart:
         assert "content_type" not in content
         compile(content, "upload_with_form.py", "exec")
 
-    def test_scalar_json_integer(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_scalar_json_integer(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``application/json`` 含 integer scalar schema 生成 ``body: Annotated[int, Body(media_type='application/json')]``。
 
         字段名固定为 ``body``（不受 ``operation_id`` 是否 snake_case 影响），避免
@@ -1241,7 +1242,7 @@ components:
         assert "content_type" not in content
         compile(content, "set_importance.py", "exec")
 
-    def test_scalar_json_string(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_scalar_json_string(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``application/json`` 含 string scalar schema 生成 ``body: Annotated[str, Body(media_type='application/json')]``。
 
         字段名固定为 ``body``（不受 ``operation_id`` 是否 snake_case 影响）。
@@ -1282,7 +1283,7 @@ components:
         assert "content_type" not in content
         compile(content, "post_scalar.py", "exec")
 
-    def test_binary_octet_stream(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_binary_octet_stream(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``application/octet-stream`` 生成 ``body: UploadFile`` + ``upload_as_multipart=False``。
 
         字段名固定为 ``body``（不受 ``operation_id`` 是否 snake_case 影响）。
@@ -1316,7 +1317,7 @@ components:
         assert _content_type_line("application/octet-stream") in content
         compile(content, "upload_raw.py", "exec")
 
-    def test_binary_image_png(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_binary_image_png(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``image/png`` 生成 ``body: UploadFile`` + ``upload_as_multipart=False``。
 
         字段名固定为 ``body``。
@@ -1350,7 +1351,7 @@ components:
         assert _content_type_line("image/png") in content
         compile(content, "upload_image.py", "exec")
 
-    def test_form_urlencoded_non_snake_case_field(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_form_urlencoded_non_snake_case_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 urlencoded form 字段名非 snake_case 时自动加 ``Field(serialization_alias=...)`` 保留原名。"""
         spec = _build_spec_with_components(
             "/submit",
@@ -1382,7 +1383,7 @@ components:
         assert 'x_api_key: Annotated[str, Form(), Field(serialization_alias="X-API-Key")]' in content
         compile(content, "submit_form.py", "exec")
 
-    def test_multipart_form_non_snake_case_field(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_multipart_form_non_snake_case_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 multipart form 标量字段非 snake_case 时同样加 ``Field(serialization_alias=...)``。"""
         spec = _build_spec_with_components(
             "/upload-attrs",
@@ -1416,7 +1417,7 @@ components:
         assert "file: UploadFile" in content
         compile(content, "upload_with_attrs.py", "exec")
 
-    def test_urlencoded_form_binary_field_emits_warning(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_urlencoded_form_binary_field_emits_warning(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 urlencoded form 含 ``format=binary`` 字段时 emit ``UserWarning``（不抛错）。"""
         spec = _build_spec_with_components(
             "/mixed-bad",
@@ -1451,7 +1452,7 @@ components:
         assert "avatar: Annotated[str, Form()]" in content
         compile(content, "submit_mixed.py", "exec")
 
-    def test_multiple_media_types_silently_picks_first(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_multiple_media_types_silently_picks_first(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``requestBody`` 含多个 media type 时静默选第一个 + stderr 报告警告（不自举报错）。
 
         对应 commit 857e1b3：多 media type 行为从「抛错中断」改为「静默选第一个 + 报告到 stderr」。
@@ -1493,7 +1494,7 @@ components:
         assert "AmbiguousBodyRequest" in content
         compile(content, "ambiguous_body.py", "exec")
 
-    def test_multipart_file_field_non_snake_case_property(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_multipart_file_field_non_snake_case_property(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 multipart file property 名非 snake_case 时自动加 ``Field(serialization_alias=...)``。
 
         对应第三轮 follow-up ⑥：``_build_upload_file_field_line`` 现在对非 snake_case
@@ -1529,7 +1530,7 @@ components:
         assert "content_type" not in content
         compile(content, "upload_non_snake.py", "exec")
 
-    def test_binary_non_snake_case_operation_id(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_binary_non_snake_case_operation_id(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 binary body 字段名固定为 ``body``，不受 ``operation_id`` snake_case 影响。
 
         原行为：按 ``operation_id`` 派生 field name，非 snake_case 时追加
@@ -1573,7 +1574,7 @@ components:
 class TestMakeResponseBody:
     """测试各种 response body 场景的生成结果。"""
 
-    def test_response_with_ref_schema(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_ref_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 使用 ``$ref`` 引用的 schema 时生成对应模型。"""
         spec = """\
 openapi: 3.1.0
@@ -1648,7 +1649,7 @@ components:
         assert "APIRoute[" not in code
         assert "ClassVar[" not in code
 
-    def test_response_with_array_of_ref(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_array_of_ref(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 为引用类型的数组时生成 ``list[Model]``。"""
         spec = """\
 openapi: 3.1.0
@@ -1693,7 +1694,7 @@ components:
         assert "from ..models import ListUsersResponse" in content
         assert "APIRoute[" not in content
 
-    def test_response_with_nested_object_schema(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_nested_object_schema(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 为嵌套对象时能正常生成。"""
         spec = """\
 openapi: 3.1.0
@@ -1745,7 +1746,7 @@ paths:
         assert "from ..models import GetProfileResponse" in content
         assert "APIRoute[" not in content
 
-    def test_response_201_uses_201_status(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_201_uses_201_status(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 201 Created 响应也能正确识别。"""
         spec = """\
 openapi: 3.1.0
@@ -1785,7 +1786,7 @@ components:
         assert "model=User" in content
         assert "APIRoute[" not in content
 
-    def test_response_without_content(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_without_content(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 只有 description 没有 content 时生成 None 类型。"""
         spec = """\
 openapi: 3.1.0
@@ -1818,7 +1819,7 @@ paths:
         # 无 content-type 为 json 的响应，不生成泛型参数。
         assert "APIRoute)" in content
 
-    def test_response_with_non_snake_case_fields(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_non_snake_case_fields(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 顶层字段非 snake_case 时自动追加 ``alias=<origin>``。
 
         回归测试：response 由 ``datamodel-code-generator`` 生成的 model
@@ -1879,7 +1880,7 @@ paths:
         assert "item_count: int | None = None" in models
         assert 'item_count: int | None = Field(None, alias="item_count")' not in models
 
-    def test_response_with_nested_non_snake_case_fields(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_nested_non_snake_case_fields(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 嵌套对象内的非 snake_case 字段同样自动添加 ``alias``。
 
         回归测试：``datamodel-code-generator`` 对每一层嵌套对象独立应用
@@ -1940,7 +1941,7 @@ paths:
         assert 'street_name: Annotated[str | None, Field(alias="streetName")] = None' in models
         assert 'zip_code: Annotated[str | None, Field(alias="ZIPCode")] = None' in models
 
-    def test_response_with_oneof_union(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_oneof_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 使用 ``oneOf`` 引用多个 schema 时生成 union 类型。
 
         dmcg 对 response oneOf 包装为 ``RootModel[TypeA | TypeB]``，
@@ -2005,7 +2006,7 @@ components:
         assert "APIRoute[" not in route
         assert "from ..models import GetEntityResponse" in route
 
-    def test_response_with_anyof_union(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_anyof_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 response 使用 ``anyOf`` 引用多个 schema 时生成 union 类型。
 
         dmcg 对 response anyOf 包装为 ``RootModel[TypeA | TypeB]``，
@@ -2070,7 +2071,7 @@ components:
         assert "APIRoute[" not in route
         assert "from ..models import GetRecordResponse" in route
 
-    def test_response_with_multiple_status_codes_union(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_multiple_status_codes_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 200 ``$ref: User`` + 404 ``$ref: Error`` 时 route 泛型合并成 Union。
 
         行为契约：
@@ -2139,7 +2140,7 @@ components:
         assert "from ..models import Error, User" in route
         assert "APIRoute[" not in route
 
-    def test_response_with_duplicate_status_codes_dedup(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_duplicate_status_codes_dedup(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 200 ``$ref: User`` + 201 ``$ref: User`` 时 Union 去重。
 
         行为契约：
@@ -2196,7 +2197,7 @@ components:
         assert "import User, User" not in route
         assert "APIRoute[" not in route
 
-    def test_response_with_mixed_json_and_non_json_status(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_mixed_json_and_non_json_status(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 200 JSON ``$ref: User`` + 400 description-only 时 Union 退化为单元素。
 
         行为契约：
@@ -2253,7 +2254,7 @@ components:
         assert "from ..models import User" in route
         assert "APIRoute[" not in route
 
-    def test_response_with_only_non_json_status_codes(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_only_non_json_status_codes(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证所有 status 都只有 description、无 ``application/json`` 时，route 保持裸 ``APIRoute)``。
 
         行为契约：
@@ -2293,7 +2294,7 @@ paths:
         # 没有响应模型可 import，不应有 ``from .models import ...`` 行。
         assert "from ..models import" not in route
 
-    def test_response_with_three_status_codes_union(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_three_status_codes_union(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 200 + 400 + 500 三个 ``$ref`` 都参与 Union，且 import 行三个都列出。
 
         行为契约：
@@ -2375,7 +2376,7 @@ components:
         assert "from ..models import Error, ServerError, User" in route
         assert "APIRoute[" not in route
 
-    def test_response_with_inline_multi_status_uses_counter_suffix(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_inline_multi_status_uses_counter_suffix(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证多个 inline 响应用 dmcg 计数器后缀（``GetXResponse`` / ``GetXResponse1``）。
 
         行为契约：
@@ -2447,7 +2448,7 @@ paths:
         # import 行同时列出两者。
         assert "from ..models import GetXResponse, GetXResponse1" in route
 
-    def test_response_with_mixed_ref_and_inline_multi_status(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_mixed_ref_and_inline_multi_status(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 200 ``$ref User`` + 400/500 inline 时 ``$ref`` 不消耗 inline 计数器。
 
         行为契约：
@@ -2531,7 +2532,7 @@ components:
         assert "from ..models import GetXResponse, GetXResponse1, User" in route
         assert "APIRoute[" not in route
 
-    def test_response_with_only_error_status_codes_generates_models(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_response_with_only_error_status_codes_generates_models(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证仅有 4xx/5xx JSON 响应（无 200/201）时仍生成 ``models.py`` 与对应 route import。
 
         行为契约：
@@ -2612,7 +2613,7 @@ paths:
         assert "from ..models import Error, ServerError" in route
         assert "APIRoute[" not in route
 
-    def test_parser_has_json_payloads_true_when_only_error_responses(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_parser_has_json_payloads_true_when_only_error_responses(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """直接走 parser 探测 ``has_json_payloads``，验证错误响应纳入判定。
 
         行为契约：
@@ -2721,7 +2722,7 @@ paths:
         return f"              type: object\n              properties:\n{fields_block}"
 
     @staticmethod
-    def _run(cli_runner: Any, spec: str, out_dir: Path) -> str:
+    def _run(cli_runner: CliRunner, spec: str, out_dir: Path) -> str:
         """运行 CLI 并返回 route 文件内容。"""
         out_dir.mkdir(parents=True, exist_ok=True)
         spec_file = out_dir / "spec.yaml"
@@ -2752,7 +2753,7 @@ paths:
     )
     def test_form_field_description_only_renders_single_line(
         self,
-        cli_runner: Any,
+        cli_runner: CliRunner,
         tmp_path: Path,
         media_type: str,
         fields_block: str,
@@ -2793,7 +2794,7 @@ paths:
     )
     def test_form_field_description_and_single_example_renders_multiline(
         self,
-        cli_runner: Any,
+        cli_runner: CliRunner,
         tmp_path: Path,
         media_type: str,
         fields_block: str,
@@ -2839,7 +2840,7 @@ paths:
     )
     def test_form_field_description_and_multiple_examples_renders_bullets(
         self,
-        cli_runner: Any,
+        cli_runner: CliRunner,
         tmp_path: Path,
         media_type: str,
         fields_block: str,
@@ -2870,7 +2871,7 @@ paths:
     )
     def test_form_field_no_description_no_example_no_docstring(
         self,
-        cli_runner: Any,
+        cli_runner: CliRunner,
         tmp_path: Path,
         media_type: str,
         fields_block: str,
@@ -2882,7 +2883,7 @@ paths:
         assert field_token in content
         compile(content, "post_resource.py", "exec")
 
-    def test_scalar_body_description_only_renders_single_line(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_scalar_body_description_only_renders_single_line(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """scalar JSON integer body 仅有 description 时渲染单行 docstring。"""
         spec = self._build_spec(
             media_type="application/json",
@@ -2893,7 +2894,7 @@ paths:
         assert '"""分数"""' in content
 
     def test_scalar_body_description_and_single_example_renders_multiline(
-        self, cli_runner: Any, tmp_path: Path
+        self, cli_runner: CliRunner, tmp_path: Path
     ) -> None:
         """scalar body 含 description + 1 example 时，docstring 多行 + ``Example: <repr>``。"""
         spec = self._build_spec(
@@ -2906,7 +2907,7 @@ paths:
         assert "Example: 100" in content
 
     def test_scalar_body_description_and_multiple_examples_renders_bullets(
-        self, cli_runner: Any, tmp_path: Path
+        self, cli_runner: CliRunner, tmp_path: Path
     ) -> None:
         """scalar body 含 description + 多 examples 时，docstring 多行 + 项目符号列表。"""
         spec = self._build_spec(
@@ -2928,7 +2929,7 @@ paths:
         assert "- 200" in content
         assert "- 300" in content
 
-    def test_scalar_body_no_description_no_example_no_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_scalar_body_no_description_no_example_no_docstring(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """scalar body 既无 description 也无 example 时，docstring 为 None，模板条件跳过。"""
         spec = self._build_spec(
             media_type="application/json",
@@ -2938,7 +2939,7 @@ paths:
         assert "body: Annotated[int, Body(media_type='application/json')]" in content
         compile(content, "post_resource.py", "exec")
 
-    def test_binary_body_no_description_no_example_no_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_binary_body_no_description_no_example_no_docstring(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """binary body schema 固定为 ``string + format=binary``，通常无 description/example。
 
         spec 中即使声明 description 也会经 builder 处理，验证 docstring 仍走
@@ -3028,7 +3029,7 @@ paths:
 """
 
     @staticmethod
-    def _run(cli_runner: Any, spec: str, out_dir: Path) -> str:
+    def _run(cli_runner: CliRunner, spec: str, out_dir: Path) -> str:
         """运行 CLI 并返回 route 文件内容。"""
         out_dir.mkdir(parents=True, exist_ok=True)
         spec_file = out_dir / "spec.yaml"
@@ -3037,7 +3038,7 @@ paths:
         assert result.exit_code == 0, result.output
         return (out_dir / "endpoints" / "get_resource.py").read_text(encoding="utf-8")
 
-    def test_summary_none_no_literal_none_in_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_summary_none_no_literal_none_in_docstring(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """summary=None 时，class docstring 不含 ``None`` 字面量（回退到 operation_id）。
 
         场景：OpenAPI spec 中 endpoint 未声明 summary 字段，
@@ -3057,7 +3058,7 @@ paths:
         assert "class GetResource(APIRoute):" in content
         compile(content, "get_resource.py", "exec")
 
-    def test_summary_provided_uses_summary_text(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_summary_provided_uses_summary_text(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """summary 有值时，class docstring 使用该值而不是 operation_id。"""
         spec = self._build_spec(
             path="/resource",
@@ -3071,7 +3072,7 @@ paths:
         compile(content, "get_resource.py", "exec")
 
     def test_summary_none_with_description_renders_multiline_docstring(
-        self, cli_runner: Any, tmp_path: Path
+        self, cli_runner: CliRunner, tmp_path: Path
     ) -> None:
         """summary=None 但有 description 时，多行 docstring 正确显示 description 内容。
 
@@ -3194,7 +3195,7 @@ paths:
 """
 
     @staticmethod
-    def _run(cli_runner: Any, spec: str, out_dir: Path, file_name: str) -> str:
+    def _run(cli_runner: CliRunner, spec: str, out_dir: Path, file_name: str) -> str:
         """运行 CLI 并返回 route 文件内容。"""
         out_dir.mkdir(parents=True, exist_ok=True)
         spec_file = out_dir / "spec.yaml"
@@ -3203,7 +3204,7 @@ paths:
         assert result.exit_code == 0, result.output
         return (out_dir / "endpoints" / file_name).read_text(encoding="utf-8")
 
-    def test_json_body_only_no_unused_imports(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_json_body_only_no_unused_imports(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """JSON body only（仅 ``import_model``）→ 无 ``Annotated`` import + 无 ``Body`` import + 正确顺序。
 
         当 endpoint 只有 JSON body（``$ref`` 引用模型），没有 param/header/form/scalar 时：
@@ -3237,7 +3238,7 @@ paths:
         # 确保代码可编译
         compile(content, "create_item.py", "exec")
 
-    def test_json_body_with_query_param_has_annotated(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_json_body_with_query_param_has_annotated(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """JSON body + query param → ``Annotated`` import 存在且被使用。
 
         当 endpoint 有 query param 时，param 字段使用 ``Annotated[T, ...]`` 包装，
@@ -3258,7 +3259,7 @@ paths:
 
         compile(content, "create_item.py", "exec")
 
-    def test_form_body_has_form_and_annotated(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_form_body_has_form_and_annotated(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """form body → ``Form`` import + ``Annotated`` import 都存在。
 
         form 字段使用 ``Annotated[T, Form(...)]`` 包装，因此必须导入
@@ -3326,7 +3327,7 @@ paths:
 """
 
     @staticmethod
-    def _run(cli_runner: Any, spec: str, out_dir: Path) -> str:
+    def _run(cli_runner: CliRunner, spec: str, out_dir: Path) -> str:
         """运行 CLI 并返回 route 文件内容。"""
         out_dir.mkdir(parents=True, exist_ok=True)
         spec_file = out_dir / "spec.yaml"
@@ -3335,7 +3336,7 @@ paths:
         assert result.exit_code == 0, result.output
         return (out_dir / "endpoints" / "get_resource.py").read_text(encoding="utf-8")
 
-    def test_summary_only_renders_single_line_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_summary_only_renders_single_line_docstring(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """仅有 summary 时，模块 docstring 和类 docstring 都是单行。"""
         spec = self._build_spec(
             path="/resource",
@@ -3352,7 +3353,7 @@ paths:
         assert '"""getResource' not in content
         compile(content, "get_resource.py", "exec")
 
-    def test_description_only_renders_multiline_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_description_only_renders_multiline_docstring(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """仅有 description 时，docstring 只含 description 内容（无 summary）。"""
         spec = self._build_spec(
             path="/resource",
@@ -3368,7 +3369,7 @@ paths:
         assert '"""getResource' not in content, "description-only 时 operation_id 不应出现在 docstring"
         compile(content, "get_resource.py", "exec")
 
-    def test_summary_and_description_renders_both(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_summary_and_description_renders_both(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """summary 和 description 都有时，两者都渲染到 docstring 中。"""
         spec = self._build_spec(
             path="/resource",
@@ -3385,7 +3386,7 @@ paths:
         assert "Generated from OpenAPI: getResource" in content, "模块 docstring 应含 operation_id 标记"
         compile(content, "get_resource.py", "exec")
 
-    def test_neither_summary_nor_description_omits_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_neither_summary_nor_description_omits_docstring(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """summary 和 description 都没有时，模块 docstring 和类 docstring 都不渲染。
 
         这是核心回归测试：原来 summary or operation_id fallback 会生成
@@ -4012,7 +4013,7 @@ class TestTemplateEmitsPropertyDeclarations:
             spec_version="3.1",
         )
 
-    def test_class_line_has_no_generic(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_class_line_has_no_generic(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证渲染后 ``class <Name>(APIRoute):`` 无 ``[T]`` 泛型参数。"""
         spec = """\
 openapi: 3.1.0
@@ -4057,7 +4058,7 @@ components:
         assert "APIRoute[" not in content
         assert "APIRoute[User]" not in content
 
-    def test_property_emitted_for_each_decl(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_property_emitted_for_each_decl(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证每条 decl 都渲染为 ``@property def on_<status>(self) -> JSONResponseSpec[Model]:`` + ``JSONResponseSpec(...)`` 调用。
 
         下标中携带具体 model 是 IDE / mypy 推断 ``response.expect(spec)`` 返回类型的关键——
@@ -4114,7 +4115,7 @@ components:
         assert "ClassVar[" not in content
         assert "callable=" not in content
 
-    def test_property_emitted_for_raw_decl(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_property_emitted_for_raw_decl(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 Raw decl 渲染为 ``@property def on_<status>(self) -> RawResponseSpec[bytes]:`` + ``target_type=bytes``。
 
         ``image/png`` 是二进制族 → 注解用 ``RawResponseSpec[bytes]``，v2 重构后
@@ -4161,7 +4162,7 @@ paths:
         # 不含 model 关键字
         assert "model=" not in content
 
-    def test_default_decl_emits_lambda_status_code(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_default_decl_emits_lambda_status_code(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``default`` 响应渲染为 ``status_code=lambda c: c not in [...]`` + ``model=...``（不接受 ``callable=`` 别名）。
 
         单一 ``default``（无其他 int code）→ ``status_code=lambda c: c not in []``。
@@ -4215,7 +4216,7 @@ components:
         # 不再走 callable= 别名
         assert "callable=" not in content
 
-    def test_4xx_wildcard_emits_lambda_status_code(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_4xx_wildcard_emits_lambda_status_code(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``4XX`` 通配符渲染为 ``status_code=lambda c: 400 <= c < 500``。"""
         spec = """\
 openapi: 3.1.0
@@ -4260,7 +4261,7 @@ components:
         assert "status_code=lambda c: 400 <= c < 500" in content
         assert "callable=" not in content
 
-    def test_no_classvar_import_emitted(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_no_classvar_import_emitted(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证任意 decl 存在时也不输出 ``from typing import ClassVar``（Phase 2 不再需要）。"""
         spec = """\
 openapi: 3.1.0
@@ -4292,7 +4293,7 @@ paths:
         content = (out_dir / "endpoints" / "health_check.py").read_text(encoding="utf-8")
         assert "from typing import ClassVar" not in content
 
-    def test_json_response_spec_import_added(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_json_response_spec_import_added(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证有 JSON decl 时 ``from stoma import ... JSONResponseSpec`` 自动添加。"""
         spec = """\
 openapi: 3.1.0
@@ -4336,7 +4337,7 @@ components:
         assert "from stoma import APIRoute, JSONResponseSpec" in content
         assert "RawResponseSpec" not in content
 
-    def test_raw_response_spec_import_added(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_raw_response_spec_import_added(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证有 Raw decl 时 ``from stoma import ... RawResponseSpec`` 自动添加。"""
         spec = """\
 openapi: 3.1.0
@@ -4373,7 +4374,7 @@ paths:
         assert "from stoma import APIRoute, RawResponseSpec" in content
         assert "JSONResponseSpec" not in content
 
-    def test_mixed_json_and_raw_both_imports(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_mixed_json_and_raw_both_imports(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 JSON + Raw 混合时两种 spec class 都导入。"""
         spec = """\
 openapi: 3.1.0
@@ -4420,7 +4421,7 @@ components:
         content = (out_dir / "endpoints" / "get_file.py").read_text(encoding="utf-8")
         assert "from stoma import APIRoute, JSONResponseSpec, RawResponseSpec" in content
 
-    def test_no_apiroute_generic_brackets_anywhere(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_no_apiroute_generic_brackets_anywhere(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证整个输出文件不含 ``APIRoute[`` 残留。"""
         spec = """\
 openapi: 3.1.0
@@ -4477,7 +4478,7 @@ components:
         assert "APIRoute[User" not in content
         assert "APIRoute[User | Error]" not in content
 
-    def test_property_block_positioned_after_fields(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_property_block_positioned_after_fields(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``@property`` 块在 fields 之后渲染——``on_200`` 出现在 ``user_id:`` 之后。
 
         Phase 2 调整响应声明位置到 fields 之后，确保 route 文件的可读性——
@@ -4527,7 +4528,7 @@ components:
         user_id_pos = content.index("user_id:")
         assert on_200_pos > user_id_pos
 
-    def test_e2e_smoke_on_200_and_default(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_e2e_smoke_on_200_and_default(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """Phase 2 smoke：``200`` + ``default`` 端点同时含 ``@property def on_200`` 与 ``@property def on_default``。
 
         ``200`` 走 ``status_code=200`` 精确匹配；``default`` 走

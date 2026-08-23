@@ -19,6 +19,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from typer.testing import CliRunner
+
 from stoma.cli import app
 
 # ===== generate_models 端到端 =====
@@ -103,7 +105,7 @@ class TestGenerateModels:
 class TestFieldConstraints:
     """测试 OpenAPI schema 字段约束场景的生成结果。"""
 
-    def test_enum_string_field(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_enum_string_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 OpenAPI enum 字段生成 Pydantic StrEnum 类。
 
         回归测试：``datamodel-code-generator`` 对
@@ -158,7 +160,7 @@ components:
         assert "class Pet(BaseModel):" in models
         assert "kind: Kind" in models
 
-    def test_format_datetime_field(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_format_datetime_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``format: date-time`` 字段生成 ``AwareDatetime`` 类型注解。
 
         回归测试：``datamodel-code-generator`` 将 OpenAPI ``format: date-time``
@@ -199,7 +201,7 @@ paths:
         models = (out_dir / "models.py").read_text(encoding="utf-8")
         assert "AwareDatetime" in models
 
-    def test_nullable_and_default_field(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_nullable_and_default_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``nullable: true`` 和 ``default: <v>`` 正确生成 Pydantic 字段。
 
         - ``nullable: true`` → ``str | None = None``
@@ -243,7 +245,7 @@ paths:
         assert "prev: str | None = None" in content
         assert 'next: str | None = "last"' in content
 
-    def test_min_max_length_constraints(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_min_max_length_constraints(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``minimum/maximum/minLength/maxLength`` 约束被保留为 Pydantic v2 风格。
 
         ``src/openapi/model_generator.py`` 已启用 dmcg 的 ``field_constraints=True``
@@ -302,7 +304,7 @@ paths:
         assert "constr(" not in content
         assert "from typing import Annotated" in content
 
-    def test_additional_properties_dict(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_additional_properties_dict(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``additionalProperties: { schema }`` 生成 ``dict[str, <type>]`` 注解。
 
         dmcg 0.72.2 将 OpenAPI 的
@@ -352,7 +354,7 @@ paths:
         assert "dict[" in models, "tags field should be typed as dict[str, ...]"
         assert "list[str]" in models, "tags field should be typed as dict[..., list[str]]"
 
-    def test_format_uuid_and_byte_fields(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_format_uuid_and_byte_fields(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``format: uuid`` 生成 ``UUID``，``format: byte`` 生成 ``Base64Str``。
 
         dmcg 0.72.2 对 OpenAPI ``format: uuid`` → Pydantic ``UUID``，
@@ -400,7 +402,7 @@ paths:
         # format: byte → Base64Str（不是内置 bytes）。
         assert "Base64Str" in models
 
-    def test_read_only_and_write_only_fields(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_read_only_and_write_only_fields(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 OpenAPI ``readOnly`` / ``writeOnly`` 字段修饰符的 dmcg 默认行为。
 
         回归测试：在 ``src/openapi/model_generator.py:41-52`` 的固化参数下，
@@ -458,7 +460,7 @@ paths:
         assert "write_only" not in models
         assert "json_schema_extra" not in models
 
-    def test_non_snake_case_field_uses_annotated_alias(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_non_snake_case_field_uses_annotated_alias(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证非 snake_case 字段的 ``alias`` 以 ``Annotated[T, Field(...)]`` 形式输出。
 
         与 ``test_min_max_length_constraints`` 配对：
@@ -514,7 +516,7 @@ class TestFieldDescriptionAsDocstring:
     而不是「启用描述」（help 文本："Use schema description to populate field docstring"）。
     """
 
-    def test_description_becomes_single_line_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_description_becomes_single_line_docstring(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """纯短 description → 单行 docstring，且不进 ``Field(description=...)``。"""
         spec = """\
 openapi: 3.1.0
@@ -553,7 +555,7 @@ paths:
         assert "description=" not in content
         assert "Field(" not in content
 
-    def test_description_with_single_example_emits_multiline_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_description_with_single_example_emits_multiline_docstring(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """``description`` + 单个 ``examples`` → 多行 docstring（dmcg 原生行为）。
 
         ``use_single_line_docstring=True`` 只在 docstring 只有一个段落时成立；
@@ -599,7 +601,7 @@ paths:
         assert "Example: 'cpu_percent'" in content
         assert 'Field(examples=["cpu_percent"])' in content
 
-    def test_description_with_multiple_examples_uses_bullet_list(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_description_with_multiple_examples_uses_bullet_list(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """多个 ``examples`` → docstring 用 ``Examples:`` + 项目符号列表。"""
         spec = """\
 openapi: 3.1.0
@@ -642,7 +644,7 @@ paths:
         assert "- 'beta'" in content
         assert 'description="the kind"' not in content
 
-    def test_examples_only_field_has_example_docstring_no_description(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_examples_only_field_has_example_docstring_no_description(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """只有 ``examples`` 没有 ``description`` → docstring 仅含 ``Example:`` 段落。"""
         spec = """\
 openapi: 3.1.0
@@ -682,7 +684,7 @@ paths:
         assert 'Field(examples=["W-1"])' in content
         assert "description=" not in content
 
-    def test_mixed_fields_each_get_their_own_docstring(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_mixed_fields_each_get_their_own_docstring(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """混合字段：每个字段按自身情况渲染 docstring，互不干扰。"""
         spec = """\
 openapi: 3.1.0

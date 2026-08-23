@@ -9,9 +9,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
+from typer.testing import CliRunner
 
 from stoma.cli import app
 from stoma.openapi.parser import make_openapi_parser
@@ -23,7 +23,7 @@ FIXTURE_NULLABLE_PARAM: Path = Path(__file__).parent / "fixtures" / "nullable_pa
 class TestMakeParameters:
     """测试各种 parameter 场景的生成结果。"""
 
-    def test_query_parameters_with_types(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_query_parameters_with_types(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证不同类型的 query 参数被正确映射为 Python 类型。"""
         spec = """\
 openapi: 3.1.0
@@ -74,7 +74,7 @@ paths:
         assert "score: float | None = None" in content
         assert "active: bool | None = None" in content
 
-    def test_header_parameter_uses_annotated(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_header_parameter_uses_annotated(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 header 参数使用 ``Annotated[..., Header(...)]`` 标记。
 
         非 snake_case 参数会被转为 snake_case 并通过 ``Field(serialization_alias=...)``
@@ -126,7 +126,7 @@ paths:
             in content
         )
 
-    def test_required_vs_optional_path_param(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_required_vs_optional_path_param(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 path 参数必填、无默认值。"""
         spec = """\
 openapi: 3.1.0
@@ -160,7 +160,7 @@ paths:
         # required 参数不应有 = None 默认值。
         assert "item_id: str = None" not in content
 
-    def test_parameter_ref_resolves(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_parameter_ref_resolves(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 spec 中 ``components.parameters`` 的 ``$ref`` 能被解析并生成正确字段。"""
         spec = """\
 openapi: 3.1.0
@@ -194,7 +194,7 @@ paths:
         content = (out_dir / "endpoints" / "list_items.py").read_text(encoding="utf-8")
         assert "page: int | None = None" in content
 
-    def test_parameter_v30_ref_detection(self, cli_runner: Any, valid_v30_spec: Path) -> None:
+    def test_parameter_v30_ref_detection(self, cli_runner: CliRunner, valid_v30_spec: Path) -> None:
         """验证 OpenAPI 3.0.x ``parameters[*].$ref`` 被 CLI 正确解析。
 
         ``components.parameters.UserIdParam`` 定义 ``schema: type: string``，
@@ -209,7 +209,7 @@ paths:
         assert "user_id: str" in content
         assert "user_id: UserIdParam" not in content
 
-    def test_parameter_ref_chained_resolves(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_parameter_ref_chained_resolves(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 A → B → C 三层链式 ref 能递归解析到 C。"""
         spec = """\
 openapi: 3.1.0
@@ -247,7 +247,7 @@ paths:
         content = (out_dir / "endpoints" / "list_items.py").read_text(encoding="utf-8")
         assert "page: int | None = None" in content
 
-    def test_parameter_cycle_raises(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_parameter_cycle_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``components.parameters.A -> B -> A`` 环引用被 CLI 捕获并报告。
 
         经 ``make_openapi_parser`` 在工厂层做 cycle 检测，遇到环立即抛
@@ -284,7 +284,7 @@ paths:
         assert "Cycle detected in parameter $ref chain" in result.output
         assert "A -> B -> A" in result.output
 
-    def test_parameter_external_ref_raises(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_parameter_external_ref_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证指向外部文件的 ``$ref``（如 ``common.yaml#/schemas/X``）被 CLI 捕获并报告。
 
         :func:`expand_path_refs` 委托 :mod:`jsonref` 解析，jsonref 抛
@@ -318,7 +318,7 @@ paths:
         assert result.exit_code != 0
         assert "Failed to resolve parameter or requestBody $ref" in result.output
 
-    def test_parameter_cycle_not_referenced_still_raises(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_parameter_cycle_not_referenced_still_raises(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``components.parameters`` 中的环即使没被任何 path 引用也被检测到。
 
         :func:`src.openapi.reference.validate_cycle_refs` 是对整张
@@ -356,7 +356,7 @@ paths:
         assert "Cycle detected in parameter $ref chain" in result.output
         assert "C -> D -> C" in result.output
 
-    def test_path_item_parameters_merged_with_override(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_path_item_parameters_merged_with_override(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 path_item 级 + operation 级同名覆盖 + path_item 级独占继承同时工作。
 
         场景：
@@ -425,7 +425,7 @@ paths:
         # 3. operation 级独有的 q
         assert "q: str | None = None" in content
 
-    def test_path_item_parameters_inherited_when_no_operation_override(self, cli_runner: Any, tmp_path: Path) -> None:
+    def test_path_item_parameters_inherited_when_no_operation_override(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 operation 没 override 时，path_item 级参数被自动继承。
 
         path_item 级 X-Tenant-ID (required=true)，operation 没 parameters → 继承后
@@ -496,7 +496,7 @@ paths:
 """
 
     @staticmethod
-    def _run(cli_runner: Any, spec: str, out_dir: Path) -> str:
+    def _run(cli_runner: CliRunner, spec: str, out_dir: Path) -> str:
         """运行 CLI 并返回 route 文件内容。"""
         out_dir.mkdir(parents=True, exist_ok=True)
         spec_file = out_dir / "spec.yaml"
@@ -538,7 +538,7 @@ paths:
         ],
     )
     def test_description_only_renders_single_line_docstring(
-        self, cli_runner: Any, tmp_path: Path, field_block: str, field_docstring_token: str
+        self, cli_runner: CliRunner, tmp_path: Path, field_block: str, field_docstring_token: str
     ) -> None:
         """每类参数仅有 description 时，docstring 渲染为单行三引号格式。"""
         spec = self._build_spec(field_block)
@@ -585,7 +585,7 @@ paths:
     )
     def test_description_and_single_example_renders_multiline_docstring(
         self,
-        cli_runner: Any,
+        cli_runner: CliRunner,
         tmp_path: Path,
         field_block: str,
         description_token: str,
@@ -652,7 +652,7 @@ paths:
     )
     def test_description_and_multiple_examples_renders_bullet_list(
         self,
-        cli_runner: Any,
+        cli_runner: CliRunner,
         tmp_path: Path,
         field_block: str,
         description_token: str,
@@ -696,7 +696,7 @@ paths:
     )
     def test_no_description_no_example_no_docstring_line(
         self,
-        cli_runner: Any,
+        cli_runner: CliRunner,
         tmp_path: Path,
         field_block: str,
         field_line_token: str,

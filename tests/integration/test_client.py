@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from stoma import Body, Form, Header, JSONResponseSpec, Path, Query, RawResponseSpec, UploadFile
 from stoma.client import Client
 from stoma.routing import APIRoute, APIRouter
+from tests.integration.mock_server import _ServerThread
 
 
 class UserData(BaseModel):
@@ -289,7 +290,7 @@ class ProbeOptions(APIRoute):
 
 
 @pytest.fixture
-def api_context(mock_server: Any) -> Any:
+def api_context(mock_server: _ServerThread) -> Any:
     """创建 Playwright APIRequestContext（使用 mock_server 提供 base_url）。"""
     from playwright.sync_api import sync_playwright
 
