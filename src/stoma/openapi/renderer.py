@@ -184,13 +184,9 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
            （Reference）与场景 6（inline object）填了该字段，其他场景为
            ``None`` 跳过；按 spec 顺序去重；body 字段的 ``import_model``
            追加到末尾并一起去重。
-        3. ``imported_specs`` 按 decls 的 ``media_type is None`` 决定：
-           ``media_type=None`` 的 decl（无 content 或 schema 无法派生类型）
-           → ``"EmptyResponseSpec"`` 加入；``media_type`` 非空的 decl
-           → ``"ResponseSpec"`` 加入。两类型同时存在按 Empty → Response
-           顺序添加。
-        4. 模板按 ``response_spec_decls`` 在 fields 之后输出 ``@property``
-           方法，每个 decl 一条 ``on_<attr_name>`` 属性。
+         3. 模板按 ``response_spec_decls`` 在 fields 之后输出 ``@property``
+            方法，每个 decl 一条 ``on_<attr_name>`` 属性。
+
 
         :param endpoint: :class:`Endpoint` IR 对象，类型参数用 ``Any``
             表达（renderer 不依赖具体 spec 版本类型）。
@@ -219,16 +215,6 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
         if body_import_model:
             imported.append(body_import_model)
         imported = list(dict.fromkeys(imported))
-
-        # ``imported_specs`` 按 decls 的 ``media_type is None`` 决定，按 Empty → Response
-        # 顺序添加。``media_type=None`` 的 decl（无 content 或 schema 无法派生类型）
-        # 派生 ``EmptyResponseSpec``；其余 decl 派生 ``ResponseSpec``。模板据此条件
-        # 导入 ``EmptyResponseSpec`` / ``ResponseSpec``。
-        imported_specs: list[str] = []
-        if any(decl.media_type is None for decl in response_spec_decls):
-            imported_specs.append("EmptyResponseSpec")
-        if any(decl.media_type is not None for decl in response_spec_decls):
-            imported_specs.append("ResponseSpec")
 
         # 把 body fields 子类拍平为 template 变量。
         # NONE 路径返回空字典时模板所有 body 块跳过。
@@ -276,7 +262,6 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
             imported=imported,
             uses_field_import=uses_field_import,
             response_spec_decls=response_spec_decls,
-            imported_specs=imported_specs,
             module_docstring=module_docstring,
             class_docstring=class_docstring,
             has_class_body_content=has_class_body_content,

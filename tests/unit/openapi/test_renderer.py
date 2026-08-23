@@ -4071,8 +4071,8 @@ class TestRenderPassesResponseSpecDecls:
 
     直接捕获 ``render()`` 内部传给 ``Template.render(...)`` 的 kwargs，断言：
     ``response_spec_decls`` 是 6 字段 :class:`ResponseSpecDecl` 列表、
-    ``imported_specs`` 按 JSON/Raw 类型正确收集、``imported`` 按 decl
-    ``import_model`` 去重收集。Phase 2 不再使用 ``uses_classvar_import``
+    ``imported`` 按 decl ``import_model`` 去重收集。Phase 2 不再使用
+    ``uses_classvar_import``
     （``@property`` 形式不需要 ``ClassVar`` import）。
     """
 
@@ -4099,64 +4099,6 @@ class TestRenderPassesResponseSpecDecls:
             import_model="User",
         )
 
-    def test_render_passes_imported_specs_json_only(self) -> None:
-        """仅 JSON 响应 → ``imported_specs == ["ResponseSpec"]``，不含 ``ResponseSpec``。"""
-        renderer = make_endpoint_renderer("3.1")
-        endpoint = _make_endpoint(
-            {
-                "200": _FakeResponse(
-                    content={"application/json": _FakeMediaType(media_type_schema=_make_ref("User"))},
-                ),
-            },
-        )
-        kwargs = _capture_render_kwargs(renderer, endpoint)
-        assert kwargs["imported_specs"] == ["ResponseSpec"]
-
-    def test_render_passes_imported_specs_raw_only(self) -> None:
-        """仅 Raw 响应（``image/png`` + binary schema） → ``imported_specs == ["ResponseSpec"]``。
-
-        Phase 1 v3 重构后 binary 与 JSON 共用 ``ResponseSpec``，导入一致；
-        binary schema 必须是 ``{"type":"string","format":"binary"}`` 形态才能
-        命中 binary 检测分支（空 schema 走 ``EmptyResponseSpec`` 路径）。
-        """
-        renderer = make_endpoint_renderer("3.1")
-        endpoint = _make_endpoint(
-            {
-                "200": _FakeResponse(
-                    content={
-                        "image/png": _FakeMediaType(
-                            media_type_schema=_FakeDictSchema({"type": "string", "format": "binary"}),
-                        ),
-                    },
-                ),
-            },
-        )
-        kwargs = _capture_render_kwargs(renderer, endpoint)
-        assert kwargs["imported_specs"] == ["ResponseSpec"]
-
-    def test_render_passes_imported_specs_both_json_and_raw(self) -> None:
-        """JSON + Raw 混合 → ``imported_specs == ["ResponseSpec"]``（单条去重）。
-
-        Phase 1 v3 重构后两种 decl 合并为同一 ``ResponseSpec``，导入行只出现一次；
-        binary schema 必须是 ``{"type":"string","format":"binary"}`` 形态才能
-        命中 binary 检测分支（空 schema 走 ``EmptyResponseSpec`` 路径）。
-        """
-        renderer = make_endpoint_renderer("3.1")
-        endpoint = _make_endpoint(
-            {
-                "200": _FakeResponse(
-                    content={
-                        "application/json": _FakeMediaType(media_type_schema=_make_ref("User")),
-                        "image/png": _FakeMediaType(
-                            media_type_schema=_FakeDictSchema({"type": "string", "format": "binary"}),
-                        ),
-                    },
-                ),
-            },
-        )
-        kwargs = _capture_render_kwargs(renderer, endpoint)
-        assert kwargs["imported_specs"] == ["ResponseSpec"]
-
     def test_render_does_not_pass_uses_classvar_import(self) -> None:
         """``@property`` 形式不需要 ``ClassVar`` import → render() 不再传递该变量。
 
@@ -4175,12 +4117,11 @@ class TestRenderPassesResponseSpecDecls:
         assert "uses_classvar_import" not in kwargs
 
     def test_render_response_spec_decls_empty_when_no_responses(self) -> None:
-        """``responses=None`` → 0 个 decl → ``response_spec_decls`` 为空 + ``imported_specs`` 为空。"""
+        """``responses=None`` → 0 个 decl → ``response_spec_decls`` 为空。"""
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(None)
         kwargs = _capture_render_kwargs(renderer, endpoint)
         assert kwargs["response_spec_decls"] == []
-        assert kwargs["imported_specs"] == []
 
     def test_render_response_spec_decls_empty_when_only_description(self) -> None:
         """``responses`` 含但 ``content`` 为空 → 派发 1 条 :class:`EmptyResponseSpec` decl。
@@ -4188,8 +4129,7 @@ class TestRenderPassesResponseSpecDecls:
         Phase 3 修复：旧行为是 status code 被静默丢弃，``response_spec_decls``
         为空、模板不渲染任何 ``on_<status>`` 属性。新行为是每个 status code
         都派发 1 条 ``EmptyResponseSpec`` decl（``media_type=None`` /
-        ``expected_type=None``），并通过 :attr:`imported_specs` 让模板自动
-        ``from stoma import EmptyResponseSpec``。
+        ``expected_type=None``）。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint({"200": _FakeResponse(content={})})
@@ -4203,8 +4143,6 @@ class TestRenderPassesResponseSpecDecls:
             media_type=None,
             expected_type=None,
         )
-        # imported_specs 按 decl.media_type is None 派生 EmptyResponseSpec。
-        assert kwargs["imported_specs"] == ["EmptyResponseSpec"]
 
     def test_render_imported_models_collected_from_decl_model_names(self) -> None:
         """多 decl → ``imported`` 从 ``decl.import_model`` 去重收集。
@@ -4315,7 +4253,7 @@ class TestTemplateEmitsPropertyDeclarations:
     - 不再有 ``from typing import ClassVar``（``@property`` 不需要 ``ClassVar``）。
     - 不再有 ``callable=lambda ...``（v2 :class:`stoma.BaseResponseSpec.status_code`
       直接接受 ``Callable``，统一走 ``status_code=lambda ...`` 关键字路径）。
-    - ``from stoma import ResponseSpec`` / ``ResponseSpec`` 按 ``imported_specs`` 添加。
+
     - 全文不含 ``APIRoute[``（带方括号的泛型语法已被淘汰）。
     - ``on_<status>`` 在 fields 之后（顺序与阅读习惯一致：先字段、再响应声明）。
     """
