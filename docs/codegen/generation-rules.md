@@ -163,7 +163,7 @@ Codegen 过程中收集的错误分为 3 类，由 `GenerationErrorKind`（`rend
 | 错误名 | 何时抛出 | CLI 是否导致 exit 1 | 典型示例 |
 |--------|----------|---------------------|----------|
 | `MULTI_MEDIA_TYPE` | `content` 中有 2 个及以上不同 media type key | 否 | POST endpoint 同时支持 `application/json` 和 `text/plain`，已用第一个 |
-| `MISSING_RESPONSE_MODEL` | Response 模型名在 `models.py` 中不存在 | 否 | endpoint 声明返回 `BookResponse`，但 dmcg 未生成该类，已 fallback 到 generic |
+| `MISSING_RESPONSE_MODEL` | Response 模型名在 `models.py` 中不存在（仅作用于对象 schema，Reference 或 inline object） | 否 | endpoint 声明返回 `BookResponse`，但 dmcg 未生成该类，已 fallback 到 generic |
 | `SCHEMA_UNSUPPORTED` | schema 顶层含 `oneOf`/`anyOf`/`allOf`（非 JSON 路径），或 schema 形态完全不被支持 | 是 | `multipart/form-data` schema 含顶层 `oneOf`，无法静态推断字段，route 文件未生成 |
 
 错误收集与退出码判断逻辑在 `src/stoma/cli.py` 第 117-138 行。
@@ -233,7 +233,33 @@ flowchart TD
 
 ## 响应声明属性渲染规则
 
-`_extract_response_specs`（`renderer.py` 第 836-960 行）在生成响应声明时，按 `status_code + media_type` 组合生成唯一的属性名。命名规则由 `sanitize_media_type`（`media_type.py` 第 100-127 行）实现。
+`_extract_response_specs`（`renderer.py` 第 836-960 行）在生成响应声明时，按 `status_code + media_type` 组合生成唯一的属性名。**每个 status code 都生成 property**，即使多个 status code 指向同一 model，也各自生成独立属性。命名规则由 `sanitize_media_type`（`media_type.py` 第 100-127 行）实现。
+
+响应分为两种声明类型：`ResponseSpec` 和 `EmptyResponseSpec`。
+
+### ResponseSpec
+
+用于有实际响应体的场景，`expected_type` 指明响应体类型：
+
+- primitive scalar（`int`/`str`/`float`/`bool`）：直接内联到泛型参数
+- binary（`bytes`）：`expected_type=bytes`
+- Reference：`expected_type="<RefName>"`
+- inline object：`expected_type="{OpId}Response[N]"`
+
+### EmptyResponseSpec
+
+用于无响应体或仅有 header 的场景，返回 `None`，不校验 `available_models`。
+
+### 6 场景派发表
+
+| schema 形态 | decl 类型 | expected_type | available_models 校验 |
+|---|---|---|---|
+| 无 content | EmptyResponseSpec | None | 否 |
+| 有 content + 无 schema | EmptyResponseSpec | None | 否 |
+| primitive scalar | ResponseSpec | "int"/"str"/"float"/"bool" | 否 |
+| binary | ResponseSpec | "bytes" | 否 |
+| Reference | ResponseSpec | "<RefName>" | 是 |
+| inline object | ResponseSpec | "{OpId}Response[N]" | 是 |
 
 ### 单 media type
 
@@ -242,11 +268,11 @@ flowchart TD
 ```python
 class GetBookById(APIRoute):
     @property
-    def on_200(self) -> JSONResponseSpec[BookResponse]:
-        return JSONResponseSpec(
+    def on_200(self) -> ResponseSpec[BookResponse]:
+        return ResponseSpec(
             status_code=200,
             media_type="application/json",
-            model=BookResponse,
+            expected_type=BookResponse,
         )
 ```
 
@@ -257,19 +283,19 @@ class GetBookById(APIRoute):
 ```python
 class GetBookById(APIRoute):
     @property
-    def on_200(self) -> JSONResponseSpec[BookResponse]:
-        return JSONResponseSpec(
+    def on_200(self) -> ResponseSpec[BookResponse]:
+        return ResponseSpec(
             status_code=200,
             media_type="application/json",
-            model=BookResponse,
+            expected_type=BookResponse,
         )
 
     @property
-    def on_200_application_problem_plus_json(self) -> JSONResponseSpec[ErrorResponse]:
-        return JSONResponseSpec(
+    def on_200_application_problem_plus_json(self) -> ResponseSpec[ErrorResponse]:
+        return ResponseSpec(
             status_code=200,
             media_type="application/problem+json",
-            model=ErrorResponse,
+            expected_type=ErrorResponse,
         )
 ```
 
@@ -285,18 +311,18 @@ class GetBookById(APIRoute):
    4. `.` → `_`
    5. 空格 → `_`
 
-### Raw 响应
+### 二进制响应
 
-非 JSON media type 生成 `RawResponseSpec` 而非 `JSONResponseSpec`，通过 `target_type` 参数指定目标类型：
+非 JSON media type 生成 `ResponseSpec`，通过 `expected_type=bytes` 指定目标类型：
 
 ```python
 class DownloadFile(APIRoute):
     @property
-    def on_200(self) -> RawResponseSpec[bytes]:
-        return RawResponseSpec(
+    def on_200(self) -> ResponseSpec[bytes]:
+        return ResponseSpec(
             status_code=200,
             media_type="application/octet-stream",
-            target_type=bytes,
+            expected_type=bytes,
         )
 ```
 
@@ -309,11 +335,11 @@ OpenAPI 的 `default`、`4XX`、`5XX` 等通配符无法用精确整数匹配，
 ```python
 class SomeEndpoint(APIRoute):
     @property
-    def on_default(self) -> JSONResponseSpec[ErrorResponse]:
-        return JSONResponseSpec(
+    def on_default(self) -> ResponseSpec[ErrorResponse]:
+        return ResponseSpec(
             status_code=lambda s: True,
             media_type="application/json",
-            model=ErrorResponse,
+            expected_type=ErrorResponse,
         )
 ```
 
@@ -324,19 +350,19 @@ class SomeEndpoint(APIRoute):
 ```python
 class SomeEndpoint(APIRoute):
     @property
-    def on_4xx(self) -> JSONResponseSpec[ErrorResponse]:
-        return JSONResponseSpec(
+    def on_4xx(self) -> ResponseSpec[ErrorResponse]:
+        return ResponseSpec(
             status_code=lambda s: 400 <= s < 500,
             media_type="application/json",
-            model=ErrorResponse,
+            expected_type=ErrorResponse,
         )
 
     @property
-    def on_5xx(self) -> JSONResponseSpec[InternalServerError]:
-        return JSONResponseSpec(
+    def on_5xx(self) -> ResponseSpec[InternalServerError]:
+        return ResponseSpec(
             status_code=lambda s: 500 <= s < 600,
             media_type="application/json",
-            model=InternalServerError,
+            expected_type=InternalServerError,
         )
 ```
 
