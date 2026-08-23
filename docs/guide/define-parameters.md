@@ -1,101 +1,54 @@
-# 参数标记
+# 接口参数
 
-HTTP 接口由多个部分组成，Stoma 通过 `Annotated[T, Mark()]` 风格声明参数。
+Stoma 通过 `Annotated[T, Mark()]` 风格声明参数。
 
-Stoma 定义了 `Path()`、`Query()`、`Header()`、`Body()`、`Form()`、`UploadFile` 六种标记，分别对应 HTTP 请求的不同位置。
+Stoma 定义了 `Path()`、`Query()`、`Header()`、`Body()`、`Form()`、`UploadFile` 六种参数标记，分别对应 HTTP 请求的不同位置。
 
 ```info
 `Path()`、`Query()`、`Header()`、`Body()`、`Form()` 实际是函数，返回的是同名数据类型的实例，`UploadFile` 是一种类型。
 ```
-
 ## Path()
 
 `Path()` 用于声明路径参数，用于替换路径中的占位符。
 
 ```python
-from typing import Annotated
-from stoma import APIRoute, APIRouter, ResponseSpec, Path
-
-router = APIRouter()
-
-
 @router.get("/users/{user_id}")
 class GetUserById(APIRoute):
     """根据 ID 获取用户。"""
 
     user_id: Annotated[int, Path()]
-
-    @property
-    def on_200(self) -> ResponseSpec[dict]:
-        return ResponseSpec(
-            200,
-            media_type="application/json",
-            expected_type=dict,
-        )
 ```
 
 `Client` 发送请求之前，会使用字段 `user_id` 的值替换路径中的占位符。
-
 
 ## Query()
 
 `Query()` 用于声明查询参数。
 
 ```python
-from typing import Annotated
-from stoma import APIRoute, APIRouter, ResponseSpec, Query
-
-router = APIRouter()
-
-
 @router.get("/users")
 class GetUsers(APIRoute):
     """获取用户列表，支持分页。"""
 
     limit: Annotated[int, Query()] = 20
     offset: Annotated[int, Query()] = 0
-
-    @property
-    def on_200(self) -> ResponseSpec[list[dict]]:
-        return ResponseSpec(
-            200,
-            media_type="application/json",
-            expected_type=list[dict],
-        )
 ```
 
 `Client` 发送请求之前，会将查询参数附加在 URL 后面（`?limit=20&offset=0`）。
-
 
 ## Header()
 
 `Header()` 用于声明请求头参数，常见场景是传递认证令牌。
 
 ```python
-from typing import Annotated
-from pydantic import Field
-from stoma import APIRoute, APIRouter, Header, ResponseSpec
-
-router = APIRouter()
-
-
 @router.get("/users")
 class GetUsers(APIRoute):
     """获取用户列表，需要认证。"""
 
     authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")] = "Bearer token"
-
-    @property
-    def on_200(self) -> ResponseSpec[list[dict]]:
-        return ResponseSpec(
-            200,
-            media_type="application/json",
-            expected_type=list[dict],
-        )
 ```
 
 `Client()` 发送请求之前会将请求头传递给 Playwright（`{"Authorization": "Bearer token"}`）。
-
 
 ## Body()
 
@@ -114,28 +67,17 @@ from typing import Annotated
 from pydantic import BaseModel
 from stoma import APIRoute, APIRouter, Body, ResponseSpec
 
-
 class UserCreateRequest(BaseModel):
     name: str
     email: str
 
-
 router = APIRouter()
-
 
 @router.post("/users")
 class CreateUser(APIRoute):
     """创建用户。"""
 
     body: Annotated[UserCreateRequest, Body()]
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(
-            201,
-            media_type="application/json",
-            expected_type=dict,
-        )
 ```
 
 只有一个 Body 参数且参数类型是 Pydantic 模型时，Stoma 会忽略字段名，只将模型的字段传给 Playwright：
@@ -155,10 +97,6 @@ class CreateUser(APIRoute):
     """创建用户。"""
 
     body: Annotated[UserCreateRequest, Body(embed=True)]
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 ```
 
 这样 Stoma 传给 Playwright 时会嵌套字段名：
@@ -180,16 +118,11 @@ from stoma import APIRoute, APIRouter, Body, ResponseSpec
 
 router = APIRouter()
 
-
 @router.post("/text-body")
 class SendText(APIRoute):
     """发送纯文本请求体。"""
 
     content: Annotated[str, Body()] = "some text"
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 ```
 
 只有一个 Body 参数且参数类型是标量时，Stoma 也会忽略字段名，只将字段的值传给 Playwright：
@@ -206,10 +139,6 @@ class SendText(APIRoute):
     """发送纯文本请求体。"""
 
     content: Annotated[str, Body(media_type="text/plain")] = "some text"
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 ```
 
 这种情况下，Content-Type 头被设置为 `text/plain`。
@@ -222,10 +151,6 @@ class SendText(APIRoute):
     """发送纯文本请求体。"""
 
     content: Annotated[str, Body(embed=True)] = "some text"
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 ```
 
 这样 Stoma 会传给 Playwright：
@@ -251,14 +176,11 @@ from typing import Annotated
 from pydantic import BaseModel
 from stoma import APIRoute, APIRouter, Body, ResponseSpec
 
-
 class UserCreateRequest(BaseModel):
     name: str
     email: str
 
-
 router = APIRouter()
-
 
 @router.post("/users")
 class CreateUser(APIRoute):
@@ -266,10 +188,6 @@ class CreateUser(APIRoute):
 
     data: Annotated[UserCreateRequest, Body()]
     phone: Annotated[str, Body()]
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 ```
 
 存在多个 Body 参数时，Stoma 会忽略 `embed` 和 `media_type`，始终以 dict 形式传递给 Playwright，将字段名作为 key。
@@ -294,23 +212,17 @@ from stoma import APIRoute, APIRouter, Form, ResponseSpec
 
 router = APIRouter()
 
-
 @router.post("/login")
 class Login(APIRoute):
     """用户登录，支持标签。"""
 
     username: Annotated[str, Form()]
     tags: Annotated[list[str], Form()] = []
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 ```
 
 Stoma 会将 `Form()` 字段的值填充到 Playwright [FormData](https://playwright.dev/python/docs/api/class-formdata) 实例，并最终赋值给 [APIRequestContext.fetch()](https://playwright.dev/python/docs/api/class-apirequestcontext#api-request-context-fetch) 方法的 `form=` 参数，Playwright 会自动设置 `Content-Type` 请求头为 `application/x-www-form-urlencoded`。
 
 对于标量列表，会调用 `FormData` 的 `append()` 方法添加表单数据。
-
 
 ## UploadFile
 
@@ -321,16 +233,11 @@ from stoma import APIRoute, APIRouter, ResponseSpec, UploadFile
 
 router = APIRouter()
 
-
 @router.post("/upload")
 class UploadAvatar(APIRoute):
     """上传用户头像。"""
 
     avatar: UploadFile
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 ```
 
 `UploadFile` 目前只有一个参数 `path`，类型为 `pathlib.Path`，用于指定本地文件路径，Stoma 会将 `path` 的值填充到 Playwright [FormData](https://playwright.dev/python/docs/api/class-formdata) 实例，并最终赋值给 [APIRequestContext.fetch()](https://playwright.dev/python/docs/api/class-apirequestcontext#api-request-context-fetch) 方法的 `multipart=` 参数，Playwright 会自动推断文件名并将 `Content-Type` 请求头设置为 `multipart/form-data`。
@@ -346,17 +253,12 @@ from stoma import APIRoute, APIRouter, Form, ResponseSpec, UploadFile
 
 router = APIRouter()
 
-
 @router.post("/upload-mix")
 class UploadWithForm(APIRoute):
     """同时发送表单字段和文件。"""
 
     username: Annotated[str, Form()]
     avatar: UploadFile
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 ```
 
 ⚠️ 注意：存在 `Form()` 或 `UploadFile` 参数时，不能存在 `Body()` 参数。
@@ -369,21 +271,15 @@ Stoma 使用 `upload_as_multipart=False` 支持这种情况，请求体会被替
 
 ```python
 import pathlib
-
 from stoma import APIRoute, APIRouter, ResponseSpec, UploadFile
 
 router = APIRouter()
-
 
 @router.post("/raw-upload", upload_as_multipart=False)
 class RawUpload(APIRoute):
     """裸字节上传。"""
 
     file: UploadFile
-
-    @property
-    def on_201(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=201, media_type="application/json", expected_type=dict)
 ```
 
 `upload_as_multipart=False` 只在这种情况下生效：
@@ -402,10 +298,6 @@ class GetUserById(APIRoute):
     """根据 ID 获取用户。"""
 
     user_id: int
-
-    @property
-    def on_200(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 ```
 
 如果有别名，需要别名和路径占位符一致。
@@ -416,11 +308,9 @@ class GetUserById(APIRoute):
     """根据 ID 获取用户。"""
 
     user_id: Annotated[int, Field(serialization_alias="userId")]
-
-    @property
-    def on_200(self) -> ResponseSpec[dict]:
-        return ResponseSpec(status_code=200, media_type="application/json", expected_type=dict)
 ```
+
+### 识别顺序
 
 注意：不管什么类型的参数，有别名时就只会用别名对比，没有别名才会使用字段名。后面用参数名表示别名和字段名的竞争结果。
 

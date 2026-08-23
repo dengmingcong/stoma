@@ -8,7 +8,10 @@ Stoma 是一个接口自动化和接口自动化测试工具，尝试实现「�
 ## 指南
 
 - [快速开始](./docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
-- [定义接口路由](./docs/guide/defining-routes.md) — 如何声明接口路由、HTTP 方法与路径参数。
+- 定义接口 — Stoma 中一个接口由接口路由、接口参数和响应协议组成。
+    * [接口路由](./docs/guide/define-routes.md)
+    * [接口参数](./docs/guide/define-parameters.md)
+    * [响应协议](./docs/guide/define-response-specs.md)
 - [参数与请求体](./docs/guide/parameters.md) — Stoma 支持的所有参数类型说明。
 - [响应与断言](./docs/guide/response-and-validation.md) — 验证状态码、响应体结构与字段值的常用模式。内置 JSON Schema 断言与自定义业务规则断言写法
 - [客户端与认证](./docs/guide/client-and-auth.md) — 配置测试客户端、注入 Token、处理鉴权头的常用模式。涵盖 Bearer Token、API Key 与自定义请求头的注入策略
