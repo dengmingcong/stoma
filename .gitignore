@@ -32,3 +32,12 @@ Thumbs.db
 
 # OpenCode
 .omo/
+
+# Spec Kit tooling
+.claude/
+.github/agents/
+.github/prompts/
+.specify/
+
+# Python version pinning
+.python-version
