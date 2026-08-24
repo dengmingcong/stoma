@@ -17,6 +17,10 @@ venv/
 .pytest_cache/
 allure-results/
 
+# Linter / type-checker caches
+.mypy_cache/
+.ruff_cache/
+
 # IDE/editor
 .idea/
 .vscode/
