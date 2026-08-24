@@ -52,7 +52,8 @@ def is_binary_schema_dict(schema: dict[str, Any] | None) -> bool:
         return False
     if schema.get("type") != "string":
         return False
-    return (schema.get("schema_format", "") or schema.get("format", "")) == "binary"
+    schema_format: str = schema.get("schema_format", "") or schema.get("format", "")
+    return schema_format == "binary"
 
 
 __all__ = ["has_combinator", "is_binary_schema_dict", "is_primitive_schema_dict"]
