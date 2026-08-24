@@ -163,8 +163,8 @@ def build_endpoint_docstring(
             return f'"""{summary_str}。\n\n{op_id_line}\n"""'
         return f'"""{summary_str}。"""'
 
-    # No indent — ruff formats `"""\ndesc\n"""` to `"""desc"""` (single-line).
-    return f'"""\n{description_str}\n"""'
+    msg = "unreachable: summary_str and description_str are both empty after line 145"
+    raise AssertionError(msg)
 
 
 def _unwrap_example(value: Any) -> Any:
