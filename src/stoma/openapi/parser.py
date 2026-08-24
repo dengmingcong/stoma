@@ -192,9 +192,8 @@ class OpenAPIParser[
             if not schema:
                 continue
             # truthy 判断：Schema(BaseModel) 实例本身 truthy=True，但其内容（dump 后）可能为 {}
-            if hasattr(schema, "model_dump"):
-                if not schema.model_dump(mode="json", exclude_none=True):
-                    continue
+            if hasattr(schema, "model_dump") and not schema.model_dump(mode="json", exclude_none=True):
+                continue
             return True
         return False
 
