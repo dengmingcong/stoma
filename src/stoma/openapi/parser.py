@@ -7,8 +7,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
-import yaml
 from pydantic import BaseModel, ValidationError
+from ruamel.yaml import YAML
 
 from stoma.exceptions import OpenAPISchemaError
 from stoma.openapi.media_type import is_json_media_type
@@ -28,14 +28,16 @@ from stoma.openapi.version import (
     SpecVersion,
 )
 
+_yaml_loader = YAML(typ="safe", pure=False)
+
 
 def _read_raw_spec(spec_path: Path) -> dict[str, Any]:
     """读取 YAML 或 JSON 格式的 OpenAPI 规范。
 
     :param spec_path: OpenAPI 规范文件路径。
-    :return: 原始规范字典。
+    :return: 顶层为 dict 的 OpenAPI 规范（顶层键转 str）。
     :raise FileNotFoundError: 规范文件不存在。
-    :raise ValueError: 文件后缀不受支持或顶层不是映射。
+    :raise ValueError: 文件后缀不受支持或顶层不是 dict。
     """
     if not spec_path.exists():
         msg = f"OpenAPI specification file not found: {spec_path}"
@@ -45,7 +47,7 @@ def _read_raw_spec(spec_path: Path) -> dict[str, Any]:
     suffix = spec_path.suffix.lower()
     raw_spec: object
     if suffix in {".yaml", ".yml"}:
-        raw_spec = yaml.safe_load(content)
+        raw_spec = _yaml_loader.load(content)
     elif suffix == ".json":
         raw_spec = json.loads(content)
     else:
