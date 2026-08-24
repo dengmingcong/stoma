@@ -38,6 +38,3 @@ Thumbs.db
 .github/agents/
 .github/prompts/
 .specify/
-
-# Python version pinning
-.python-version
