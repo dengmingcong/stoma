@@ -7,13 +7,11 @@
 
 Fixtures：
 - ``cli_runner``：Typer ``CliRunner`` 实例，供 ``test_codegen.py`` 调用 ``stoma make`` 命令使用。
-- ``_shared_playwright``：session 级，所有 e2e fixtures 共享的 Playwright 实例。
-  避免多个 ``sync_playwright().start()`` 在同一 pytest session 内冲突。
+- ``_shared_playwright``：来自顶层 ``tests/conftest.py``，session 级共享。
 - ``e2e_client_playwright`` / ``e2e_client``：session 级，无 auth headers
 
 每个 ``*_client_playwright`` fixture 创建独立的 APIRequestContext，
-共享同一个 Playwright 实例。session 结束时统一 teardown（context.dispose() +
-playwright.stop()）。
+共享同一个 Playwright 实例。session 结束时统一 teardown（context.dispose()）。
 
 本文件不启动 mock server，不连 localhost，所有请求发往真实 api.rest.sh。
 """
@@ -23,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Generator  # noqa: E402
 
 import pytest  # noqa: E402
-from playwright.sync_api import APIRequestContext, Playwright, sync_playwright  # noqa: E402
+from playwright.sync_api import APIRequestContext, Playwright  # noqa: E402
 from typer.testing import CliRunner  # noqa: E402
 
 from stoma.client import Client  # noqa: E402
@@ -39,22 +37,6 @@ __all__ = [
 def cli_runner() -> CliRunner:
     """Typer ``CliRunner`` 实例，供 CLI 端到端测试使用。"""
     return CliRunner()
-
-
-@pytest.fixture(scope="session")
-def _shared_playwright() -> Generator[Playwright, None, None]:
-    """所有 e2e fixtures 共享的 Playwright session 实例。
-
-    每次 sync_playwright().start() 创建独立 asyncio loop，但 pytest
-    session 共享同一事件循环；多个 Playwright 实例会冲突。因此
-    用单个 session fixture + 每个 client fixture 创建独立的
-    APIRequestContext。
-    """
-    playwright_instance: Playwright = sync_playwright().start()
-    try:
-        yield playwright_instance
-    finally:
-        playwright_instance.stop()
 
 
 @pytest.fixture(scope="session")
