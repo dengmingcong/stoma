@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from datamodel_code_generator import (
+    Formatter,
     InputFileType,
     OpenAPIScope,
     PythonVersion,
@@ -71,6 +72,7 @@ def generate_models(spec_dict: dict[str, Any], output_path: Path) -> None:
             use_field_description=True,
             use_field_description_example=True,
             use_single_line_docstring=True,
+            formatters=[Formatter.BUILTIN],
         )
     except Exception as e:
         msg = f"datamodel-code-generator 调用失败: {e}"

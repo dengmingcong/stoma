@@ -64,6 +64,7 @@ def make(
     if raw_spec is not None and endpoints:
         schemas = (raw_spec.get("components") or {}).get("schemas") or {}
         if schemas or has_json_payloads:
+            typer.echo("→ 生成 models.py", err=True)
             generate_models(raw_spec, out / "models.py")
             if shutil.which("ruff") is not None:
                 subprocess.run(
@@ -86,6 +87,7 @@ def make(
 
     router_template = renderer.env.get_template("router.py.jinja2")
     router_code = router_template.render(prefix=prefix or "")
+    typer.echo("→ 生成 router.py", err=True)
     render_to_file(
         output_dir=out,
         file_name="router.py",
@@ -99,6 +101,7 @@ def make(
 
     for endpoint in endpoints:
         try:
+            typer.echo(f"→ 渲染 {endpoint.method} {endpoint.path}", err=True)
             file_name, rendered_code = renderer.render(endpoint)
             file_path = render_to_file(
                 output_dir=out / "endpoints",
@@ -144,11 +147,6 @@ def make(
         # 只有 SCHEMA_UNSUPPORTED（实际未生成文件）才 exit 1
         if by_kind.get(GenerationErrorKind.SCHEMA_UNSUPPORTED):
             raise typer.Exit(code=1)
-
-    # 输出结果。
-    typer.echo(f"生成 models.py + {len(generated_files)} 个 route 文件到 {out}:")
-    for f in generated_files:
-        typer.echo(f"  - {f.name}")
 
 
 if __name__ == "__main__":
