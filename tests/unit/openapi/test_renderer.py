@@ -2845,7 +2845,7 @@ class TestExtractResponseSpecs:
         源字符串（无其他 int 状态码时退化为 ``c not in []``，等价 ``True``），
         attr_name 不含数字而是字面 ``on_default``。``status_code`` 字段在
         5 字段 decl 形态中直接存 lambda 源字符串，模板负责拼装 ``status_code=``
-        前缀（不再走 :func:`render_status_code_kwarg`）。
+        前缀。
         """
         renderer = make_endpoint_renderer("3.1")
         endpoint = _make_endpoint(

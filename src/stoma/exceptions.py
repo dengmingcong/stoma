@@ -13,8 +13,6 @@ class StomaError(Exception):
     所有框架自定义异常都应继承自此类。
     """
 
-    pass
-
 
 class ValidationError(StomaError):
     """参数验证失败异常。
@@ -126,5 +124,3 @@ class ParseError(StomaError):
 
 class OpenAPISchemaError(StomaError):
     """OpenAPI schema 校验失败。"""
-
-    pass

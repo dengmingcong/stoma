@@ -54,10 +54,14 @@ def python_type_name(json_type: str) -> str:
     """JSON Schema ``type`` 字符串 → Python 类型名字符串。
 
     :param json_type: JSON Schema ``type`` 字符串。
-    :return: 命中 :data:`JSON_TYPE_TO_PYTHON` 时返回对应 Python 类型名；
-        未命中时返回原字符串（用于 ``cast`` / debug 时保留原信息）。
+    :return: 命中 :data:`JSON_TYPE_TO_PYTHON` 时返回对应 Python 类型名。
+    :raise OpenAPISchemaError: ``json_type`` 不在 :data:`JSON_TYPE_TO_PYTHON` 中时抛出，
+        行为与 :func:`python_type_for_nullable_param` 一致。
     """
-    return JSON_TYPE_TO_PYTHON.get(json_type, json_type)
+    if json_type not in JSON_TYPE_TO_PYTHON:
+        msg = f"Unsupported JSON Schema type: {json_type!r}"
+        raise OpenAPISchemaError(msg)
+    return JSON_TYPE_TO_PYTHON[json_type]
 
 
 def python_type_for_array_items(items: dict[str, Any] | None) -> str:

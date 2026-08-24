@@ -78,8 +78,8 @@ def make(
     generated_files: list[Path] = []
     renderer = make_endpoint_renderer(parser.spec_version)
 
-    # 从生成的 models.py 提取所有 class 名字，注入到 renderer
-    # renderer 据 此 检 查 {OpId}Response 是否真实存在；不存在的跳过 + 记录
+    # 从生成的 models.py 提取所有 class 名字，注入到 renderer。
+    # renderer 据此检查 {OpId}Response 是否真实存在；不存在的跳过 + 记录。
     models_path = out / "models.py"
     if models_path.exists():
         tree = ast.parse(models_path.read_text(encoding="utf-8"))

@@ -3,9 +3,9 @@
 为 parser 与 renderer 共享 snake_case / PascalCase / 字段名转换函数。
 提取为独立模块，避免互相依赖时出现循环 import。
 
-- :func:`_is_snake_case`：判断字符串是否已经是合法 snake_case。
-- :func:`_to_field_name`：将任意 OpenAPI 参数名转为合法 snake_case 字段名。
-- :func:`_to_pascal_case`：将 operationId 转换为 PascalCase 类名。
+- :func:`is_snake_case`：判断字符串是否已经是合法 snake_case。
+- :func:`to_field_name`：将任意 OpenAPI 参数名转为合法 snake_case 字段名。
+- :func:`to_pascal_case`：将 operationId 转换为 PascalCase 类名。
 """
 
 from __future__ import annotations
