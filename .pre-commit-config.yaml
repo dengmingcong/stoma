@@ -12,11 +12,6 @@ repos:
   #     - id: mypy
   #       additional_dependencies: [pydantic>=2.6.0, types-pyyaml]
 
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.3.0
-    hooks:
-      - id: flake8
-
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v3.31.0
     hooks:
