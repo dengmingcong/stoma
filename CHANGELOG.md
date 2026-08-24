@@ -1,0 +1,244 @@
+## v0.2.0 (2026-08-24)
+
+### Feat
+
+- return body.text() for str
+- **cli**: 输出生成进度并消除 dmcg FutureWarning
+- **template**: render EmptyResponseSpec and ResponseSpec with new 5-field decl
+- **template**: emit on_* ClassVar response spec declarations
+- **media-type**: add sanitize_media_type for on_* attribute names
+- **api**: export BaseResponseSpec, JSONResponseSpec, RawResponseSpec from stoma
+- **response**: add RawResponseSpec with generic-driven bytes/str dispatch
+- **response**: add JSONResponseSpec with Pydantic TypeAdapter validation
+- **response**: add BaseResponseSpec with strict status/media-type validation
+- **codegen**: router.py + endpoints/ 子目录, --prefix 标志
+- **routing**: APIRouter 接受 prefix 参数
+- **examples**: add Petstore spec + generated app
+- **openapi**: generate dmcg-style docstring for non-model fields
+- generate docstring for fields
+- **cli**: renderer 后接 ruff format + isort fix，新增 --no-format flag
+- **cli**: per-endpoint 错误收集而非 abort，exit code 反映失败状态
+- **examples**: generate api.rest.sh routes into tests/examples/api_rest_sh/app
+- **openapi**: render OpenAPI 3.1 nullable param schemas as Optional[T]
+- **openapi**: add list type parsing helpers for OpenAPI 3.1 nullable
+- set Body.media_type for scalar body
+- set media type only for scalar body and binary file body
+- **openapi**: 模板按 BodyKind 派发多字段请求体渲染
+- **openapi**: renderer 按 BodyKind 派发多字段请求体
+- **openapi**: parser 探测 form / multipart / binary / scalar-json 四种请求体
+- **openapi**: 新增 BodyKind 枚举与 Endpoint 结构化 IR
+- **simplify-body-embed-and-media-type**: complete plan implementation
+- **routing**: raw-body 接受 UploadFile | None
+- **utils**: add _is_raw_body_uploadfile_annotation helper
+- **client**: _execute_request RAW_BINARY 分支 + headers 合并
+- **client**: _serialize_body_params raw-body 短路分支
+- **routing**: raw-body 启动期校验 (upload_as_multipart=False)
+- **router**: add upload_as_multipart kwarg to all 8 APIRouter methods
+- **routing**: thread upload_as_multipart kwarg through api_route_decorator and _get_dependant
+- **client**: add RequestBodyKind.RAW_BINARY + raw_body/headers fields
+- **dependencies**: add upload_as_multipart flag to Dependant
+- **upload**: support UploadFile | None / list[UploadFile] | None fields
+- **client**: _serialize_body_params dispatch by three body lists + migrate tests
+- **routing**: _get_dependant classifies into three body lists + mutex check
+- **client+utils**: add RequestBody types and UploadFile annotation helper
+- **params**: add Form(Body) marker and UploadFile dataclass
+- **routing**: extend Literal and APIRouter with head/options/trace; sync docstrings
+- **openapi**: expand parser to 8 OAS methods and normalize Endpoint.method to uppercase
+- **renderer**: reject non-primitive parameter schemas with OpenAPISchemaError
+- **openapi**: add selective parameter $ref expansion via jsonref
+- **openapi**: add models_types.py with SpecVersion Literal
+- **openapi**: add reference_types.py with version class aliases
+- use annotated and field constraints
+- make operationId required, use it for all class names
+- **cli**: wire spec-transform + model-generator into make command
+- **openapi**: add model_generator wrapping datamodel-code-generator
+- **openapi**: add spec_transform for inline-title injection and embed unwrap
+- generate models for nested objects
+- make field name snake_case for body models
+- path parameter other than snake_case is acceptable
+- serialize http requests with serialization_alias property
+- make field name always snake_case
+- pure APIRoute (without generic type) is ok
+- serialize other complex types except BaseModel
+- set field info by pydantic Field() instead of custom Param()
+- determine value of 'embed' automatically
+- add cli
+- implement param mapping
+- extract components
+- validate openapi json schema
+- add openapi parser
+- send request via new Client instance
+- add with_context() and provide default context
+- set playwright response as raw response
+- let api always return Response instance instead of specific model
+- add response models
+- add methods to serialize and send requests
+- serialize query params
+- interpolate path
+- implement server in future
+- recognize params
+- **tasks**: collect params
+- add class APIRouter
+- add decorator 'api_route_decorator'
+- add class APIRoute
+- 实现参数标记类型 (Query/Path/Header/Body)
+
+### Fix
+
+- **test**: add python-multipart to test deps for FastAPI form/file tests
+- **renderer**: increment inline_counter once per status_code, not per media_type
+- **renderer**: emit ClassVar[JSONResponseSpec[Model]] with subscript
+- remove APIRoute[T] residuals + dead response_type code + unused mypy ignore
+- **dependencies**: check json_response_schema before parsing JSON response
+- **examples**: rename petstore test_app.py to test_petstore.py to avoid basename conflict
+- **examples**: drop stoma module patch + restore Petstore link
+- **renderer**: apply missing ruff I,F401 --fix to golden files
+- **renderer**: clean up generated route file imports and docstrings
+- **tests**: update test_cli.py to use stoma command after src/stoma/ refactor
+- **openapi**: skip JSON parse for empty body responses
+- **examples**: use single-segment path in test_get_anything_path
+- **openapi**: include +json media types in response union
+- **examples**: remove obsolete model imports and body params after regen
+- **openapi**: skip non-existent response models and report them as warnings
+- **examples**: update test_e2e_anon.py to match new generated code
+- **openapi**: treat empty schema {} as no schema via truthy check
+- **examples**: share playwright session across all e2e fixtures
+- **examples**: adjust e2e tests to match api.rest.sh actual behavior
+- **examples**: patch stoma module alias at conftest import time
+- **openapi**: silently use first media type + report affected endpoints
+- **fields**: accept Optional[T] type string in build_param_field_line
+- **client**: BINARY branch with binary_body=None sends no body or Content-Type
+- **client**: drop type annotation on RequestBodyKind enum members
+- **routing**: correct Korean typo in _get_dependant docstring
+- **parser**: count 4xx/5xx JSON responses in has_payloads
+- **openapi**: expand path-item level parameter $ref (not just operation-level)
+- **pyproject**: correct openapi_pydantic dependency name
+- **renderer**: dedupe imported_models to avoid duplicate import
+- **parser**: resolve parameter $ref and merge PathItem parameters
+- **parser**: drop required check from _unwrap_single_property_to
+- **model_generator**: use title-as-name to dedup $ref body
+- **template**: preserve blank line between imports and router = APIRouter()
+- **template**: preserve newlines between import statements
+- **template**: always import APIRouter, APIRoute
+- should not add 'Annotated' when embed is false
+- `embed` was not set properly
+- missing header params in rendered files
+- complex type like dict will be treated as query params
+- multiple body params will be expanded
+- cannot get origin type from FieldInfo.annotation
+- no parameter hint when instantiating GetUsers
+- no parameter named "token" when instantiating GetUsers
+
+### Refactor
+
+- **renderer**: drop unused imported_specs collection (template hardcodes import)
+- **openapi**: split status_code helpers and ResponseSpecDecl into separate modules
+- **renderer**: add import_model field to ResponseSpecDecl; drop _is_object_model_name
+- **renderer**: shrink ResponseSpecDecl to 5 fields; remove _raw_target_type_for; 6-scenario dispatch in _extract_response_specs; update imported_specs and imported collection for new spec types
+- **stoma**: re-export ResponseSpec + EmptyResponseSpec in package root
+- **dependencies**: merge JSONResponseSpec + RawResponseSpec into ResponseSpec + EmptyResponseSpec
+- **v2**: simplify template imports + sanitize_media_type + doc examples
+- **renderer**: emit @property def on_<status> declarations
+- **v2**: simplify spec API - drop callable= kwarg, RawResponseSpec uses target_type
+- **spec**: accept callable= kwarg; renderer emits raw factory + subscript
+- **renderer**: emit on_* ClassVar declarations instead of APIRoute[T]
+- **renderer**: rewrite response extraction to per-status ResponseSpecDecl list
+- **client**: send() requires expect; AssertionError propagates unwrapped
+- **response**: narrow Response.validated to T; delete build_response
+- **dependencies**: remove json_response_schema fields from Dependant
+- **routing**: drop APIRoute generic; add __init_subclass__ reserved-keyword check
+- **codegen**: 简化模板 - 去掉 no_format/Init 模板 + 条件 prefix
+- **routing**: APIRouter.prefix 默认值改为 None
+- **routing**: APIRouter.prefix 改为 Optional + 归一化尾部斜杠
+- **petstore**: 移除 Petstore3Context, 改用 APIRouter prefix
+- **cli**: 改用 renderer.errors，按 GenerationErrorKind 分组打印
+- **renderer**: 用统一的 GenerationError 替换 multi_media_type_endpoints + missing_response_models
+- **examples**: 删除鉴权示例（test_e2e_auth + conftest auth fixtures）
+- **stoma**: restructure to src/stoma/ layout per setuptools recommendation
+- **examples**: remove stoma module patch in conftest
+- **openapi**: extract is_json_media_type helper to media_type.py
+- reorganize tests
+- remove module constants
+- client
+- simplify renderer
+- move OpenAPISchemaError to exceptions
+- add module constants
+- make all annotation functions support Annotated
+- **openapi**: 删除旧 BodyKind/RequestBodyField + 简化 _build_json_body + 加 alias
+- **openapi**: RequestBodyFields 拆分为子类 + parser 展开 requestBody + renderer 简化
+- **openapi**: parser 剥离 body 分类 + renderer 重写 _extract_request_body_info 对齐 runtime RequestBodyKind
+- rename enum items
+- **openapi**: 重命名 has_payloads + 抽 detector helper + 共享命名工具 + array 字段支持
+- **client**: merge RequestBody binary fields and reverse header merge
+- **utils+routing**: rename to validate_binary_body_annotation
+- **client**: simplify _fill_scalar_form_field to value-type dispatch
+- **client**: inline list dispatch in _fill_scalar_form_field
+- **form**: validate Form annotation at routing; drop runtime checks
+- **imports**: switch tests to import from src (not src.params)
+- **params**: add param_functions module; cache kind on Form instance
+- **client**: drop pathlib.Path Form dispatch; keep scalar-only
+- **routing**: restrict Form to scalar/list[scalar]; drop pathlib.Path Form support
+- **client**: remove BaseModel Form dispatch; keep scalar-only
+- **routing**: reject Annotated[BaseModel, Form()] at classification time
+- **client**: address F2 findings (DRY + error msg + naming)
+- **client**: implement BaseModel + scalar Form dispatch
+- **client**: rewrite _serialize_body_params dispatch
+- **client**: add 5 form dispatch helpers
+- **params**: remove embed kwarg from Form.__init__
+- **client**: remove json_encode flag from _fill_form_field (always true)
+- **client**: scalars always raw, collections always json-dumped in FormData fill
+- **client**: unify FormData into single instance for both forms
+- **client**: use FormData for urlencoded form too
+- **client**: return NamedTuple from _extract_request_params
+- **client**: use Playwright FormData for multipart, drop json.dumps on Form fields when mixed with files
+- **dependencies**: split Dependant body_params into three lists
+- **renderer**: move Field() into Annotated[...] for parameter fields
+- **renderer**: collect response models from all JSON status codes with inline counter
+- **renderer**: remove dead _is_reference branch in _extract_params
+- **parser**: drop defensive TypeGuard helpers, trust jsonref invariants
+- **parser**: delete dead _resolve_one (jsonref guarantees Parameter inputs)
+- **parser**: wire jsonref expansion and cycle detection into factory
+- **parser**: drop referencing-based ref resolution (moved to jsonref upstream)
+- **parser**: drop dead spec_path parameter from OpenAPIParser constructor
+- **parser**: move I/O and version check into factory; load() only validates
+- **parser**: drop _compatibility_parser shims, expose resolve_parameter_refs publicly
+- **cli**: use openapi parser/renderer factories
+- **openapi**: make parser generic with version-aware factory
+- **openapi**: make renderer generic with version-aware factory
+- **openapi**: make Endpoint generic, drop Union aliases
+- remove meaningless model ResolvedType
+- return file name too
+- drop use_title_as_name, rely on datamodel-codegen's method+path naming
+- drop prance + _fill_schema_titles, renderer reads Reference.ref
+- **parser**: restore _is_inline_object function
+- **parser**: inline _is_inline_object check, drop function
+- **parser**: tighten _is_inline_object signature to dict only
+- drop embed wrapper detection, simplify pipeline
+- **cli**: drop _has_any_payloads, use parser.has_payloads
+- **renderer**: replace _unwrap_model_name with ResolvedType
+- **renderer**: move embed detection into renderer, delete spec_transform
+- **openapi**: merge inject_inline_titles into _fill_schema_titles
+- **renderer**: drop unused response_imports from _extract_response_info
+- **parser**: restore _fill_schema_titles — needed for datamodel-codegen dedup
+- **renderer**: strip model generation, emit route.py referencing models.py + update template
+- do not convert model to dict
+- resolve $ref with prance
+- resolve $ref with prance
+- resolve $ref with prance
+- simplify serializing body params
+- replace APIRoute[Any] with APIRoute
+- split tests
+- use fastapi as http mock server
+- let playwright serialize dict to json string
+- remove redundant functions
+- instantiate ModelField at first
+- merge _route_meta into _dependant
+- introduce Dependant from fastapi
+
+### Perf
+
+- set title manually to avoid lookup components
+- iterate over methods that are actually defined
+- let playwright join query params
+
+## v0.1.0 (2025-11-07)

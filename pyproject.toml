@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stoma"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pythonic 接口自动化与接口自动化测试框架，代码即协议"
 readme = "README.md"
 requires-python = ">=3.12"
