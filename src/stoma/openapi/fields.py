@@ -379,12 +379,7 @@ def build_param_field_line(
     is_snake = is_snake_case(name)
     field_name = name if is_snake else to_field_name(name)
 
-    if required:
-        base_type = param_type
-    elif " | None" in param_type:
-        base_type = param_type
-    else:
-        base_type = f"{param_type} | None"
+    base_type = param_type if required or " | None" in param_type else f"{param_type} | None"
 
     metadata: list[str] = []
     if is_header:
@@ -392,10 +387,7 @@ def build_param_field_line(
     if not is_snake:
         metadata.append(f"Field(serialization_alias={name!r})")
 
-    if metadata:
-        annotation = f"Annotated[{base_type}, {', '.join(metadata)}]"
-    else:
-        annotation = base_type
+    annotation = f"Annotated[{base_type}, {', '.join(metadata)}]" if metadata else base_type
 
     default = "" if required else " = None"
     line = f"{field_name}: {annotation}{default}"
