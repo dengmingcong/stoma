@@ -989,10 +989,11 @@ wheels = [
 [[package]]
 name = "stoma"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "playwright" },
     { name = "pydantic" },
+    { name = "typer" },
 ]
 
 [package.optional-dependencies]
@@ -1001,22 +1002,6 @@ cli = [
     { name = "jsonref" },
     { name = "openapi-pydantic" },
     { name = "pyyaml" },
-    { name = "typer" },
-]
-dev = [
-    { name = "allure-pytest" },
-    { name = "commitizen" },
-    { name = "datamodel-code-generator" },
-    { name = "fastapi" },
-    { name = "jsonref" },
-    { name = "mypy" },
-    { name = "openapi-pydantic" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pyyaml" },
-    { name = "ruff" },
-    { name = "typer" },
-    { name = "uvicorn" },
 ]
 test = [
     { name = "allure-pytest" },
@@ -1025,26 +1010,39 @@ test = [
     { name = "uvicorn" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "commitizen" },
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "ruff" },
+    { name = "stoma", extra = ["cli", "test"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "allure-pytest", marker = "extra == 'test'", specifier = ">=2.15.2" },
-    { name = "commitizen", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "datamodel-code-generator", marker = "extra == 'cli'", specifier = ">=0.25.0" },
     { name = "fastapi", marker = "extra == 'test'", specifier = ">=0.141.1" },
     { name = "jsonref", marker = "extra == 'cli'", specifier = ">=1.1.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0" },
     { name = "openapi-pydantic", marker = "extra == 'cli'", specifier = ">=0.5.1" },
     { name = "playwright", specifier = ">=1.60.0" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "pydantic", specifier = ">=2.6.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.4.2" },
     { name = "pyyaml", marker = "extra == 'cli'", specifier = ">=6.0.2" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
-    { name = "stoma", extras = ["cli", "test"], marker = "extra == 'dev'" },
-    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.9.0" },
+    { name = "typer", specifier = ">=0.9.0" },
     { name = "uvicorn", marker = "extra == 'test'", specifier = ">=0.30.0" },
 ]
-provides-extras = ["cli", "test", "dev"]
+provides-extras = ["cli", "test"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "commitizen", specifier = ">=3.0.0" },
+    { name = "mypy", specifier = ">=1.10.0" },
+    { name = "pre-commit", specifier = ">=3.0.0" },
+    { name = "ruff", specifier = ">=0.8.0" },
+    { name = "stoma", extras = ["cli", "test"] },
+]
 
 [[package]]
 name = "termcolor"
