@@ -12,7 +12,7 @@ APIRoute 本身不持有 Playwright context，也不直接发送请求。
 
 import re
 from collections.abc import Callable
-from typing import Annotated, ClassVar, Literal, get_args, get_origin
+from typing import Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict
 
@@ -222,7 +222,7 @@ class APIRoute(BaseModel):
             return None
 
         # 获取字段的类型注解
-        annotation = annotations[field_name]
+        annotation: Any = annotations[field_name]
 
         # 检查是否是 Annotated 类型
         origin = get_origin(annotation)

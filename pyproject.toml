@@ -90,10 +90,10 @@ known-first-party = ["stoma"]
 python_version = "3.12"
 strict = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "jsonref"
 ignore_missing_imports = true
-# 剩余已知问题：routing.py:229  `if origin is not Annotated` 比较类型推断 bug
-# （cls.__annotations__ 被推成 ParamSpec）。
-# 修复后改为按模块覆盖：[[tool.mypy.overrides]] module = ["jsonref"] ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
