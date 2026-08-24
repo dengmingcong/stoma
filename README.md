@@ -13,11 +13,7 @@ Stoma 是一个接口自动化和接口自动化测试工具，尝试实现「�
     * [接口参数](./docs/guide/define-parameters.md)
     * [响应协议](./docs/guide/define-response-specs.md)
 - [接口请求和断言](./docs/guide/client.md) — 使用 `Client` 调用接口，对接口响应断言。
-
-## 脚手架工具
-
-- [脚手架工具](./docs/codegen/stoma-make.md) — 命令行工具完整参考：选项、生成规则、输出布局与多语言支持
-- [生成规则](./docs/codegen/generation-rules.md) — stoma 代码生成的内部规则与自定义配置选项详解
+- [生成接口](./docs/guide/cli.md) — Stoma 提供了 CLI 命令基于 OpenAPI 协议自动生成接口。
 
 ## 实例
 
