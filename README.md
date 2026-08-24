@@ -19,3 +19,6 @@ Stoma 是一个接口自动化和接口自动化测试工具，尝试实现「�
 
 - [Petstore](./tests/examples/petstore/) — 演示如何使用 Stoma 定义并调用 Swagger 官方 [Petstore](https://petstore3.swagger.io/) 接口。
 
+## 关于
+
+[关于 Stoma](./docs/about.md) - 关于项目的说明。
