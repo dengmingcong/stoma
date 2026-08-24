@@ -1,0 +1,178 @@
+"""参数标记类型，参考 FastAPI 的实现方式。
+
+此模块提供了用于标记接口参数来源的类型，包括：
+
+- Query：查询参数
+- Path：路径参数
+- Header：请求头参数
+- Body：请求体参数
+
+这些类型只是标记，用于区分参数来源，不继承任何 Pydantic 类。
+其他属性（如 alias、ge、le 等）使用 Pydantic 原生 ``Field()`` 设置。
+"""
+
+import pathlib
+from dataclasses import dataclass
+from enum import Enum
+
+
+class ParamTypes(Enum):
+    """参数类型枚举。
+
+    stoma 不处理 cookie 参数：cookie 值由用户在创建 Playwright APIRequestContext 时通过
+    ``storage_state={"cookies": [...]}`` 注入，Playwright 会自动随请求发送。
+    """
+
+    query = "query"
+    header = "header"
+    path = "path"
+    body = "body"
+
+
+class Param:
+    """参数标记基类。
+
+    只用于标记参数来源（query/header/path/body），不保存其他属性。
+    其他属性使用 Pydantic ``Field()`` 设置。
+
+    FastAPI 的 Param 之所以需要继承 FieldInfo，是因为 FastAPI 是以函数的形式定义接口的，
+    而我们是以类的形式定义接口的并且继承了 pydantic BaseModel，所以不需要继承 FieldInfo。
+    这样更简单，而且可以直接使用 Pydantic 的 Field() 来设置其他属性。
+
+    Example::
+
+        # ✅ 推荐写法（FastAPI 官方示例）：metadata 全部放进 ``Annotated[...]``
+        authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]
+
+        # ✅ 兼容写法（旧代码示例）：``Field()`` 放在 ``=`` 右侧，Pydantic v2 同样支持
+        authorization: Annotated[str, Header()] = Field(alias="Authorization")
+    """
+
+    in_: ParamTypes
+
+
+class Path(Param):
+    """路径参数标记。
+
+    用于标记接口类中的路径参数字段。路径参数必须在路径模板中定义（如 /users/{user_id}）。
+
+    Example::
+
+        # ✅ 推荐写法：``Annotated[T, Path()]``
+        user_id: Annotated[int, Path()]
+
+        # ✅ 兼容写法：``Annotated[T, Path()] = Field(...)``
+        user_id: Annotated[int, Path()] = Field(ge=1)
+    """
+
+    in_ = ParamTypes.path
+
+
+class Query(Param):
+    """查询参数标记。
+
+    用于标记接口类中的查询参数字段。查询参数会附加在 URL 后面（如 ?limit=10）。
+
+    Example::
+
+        # ✅ 推荐写法：``Annotated[T, Query(), Field(...)]``
+        limit: Annotated[int, Query(), Field(ge=1, le=100)]
+
+        # ✅ 兼容写法：``Annotated[T, Query()] = Field(...)``
+        limit: Annotated[int, Query()] = Field(ge=1, le=100)
+    """
+
+    in_ = ParamTypes.query
+
+
+class Header(Param):
+    """请求头参数标记。
+
+    用于标记接口类中的请求头字段。请求头参数会从 HTTP 请求头中提取。
+
+    Example::
+
+        # ✅ 推荐写法：``Annotated[T, Header(), Field(serialization_alias=...)]``
+        authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]
+
+        # ✅ 兼容写法：``Annotated[T, Header()] = Field(alias=...)``
+        authorization: Annotated[str, Header()] = Field(alias="Authorization")
+    """
+
+    in_ = ParamTypes.header
+
+
+class Body(Param):
+    """请求体参数标记。
+
+    用于标记接口类中的请求体字段。请求体会被序列化为 JSON 发送到服务器。
+
+    :param embed: 是否嵌入单个字段。仅 1 个 body 参数时生效：``embed=True`` 嵌入到
+        ``{alias: value}``；``embed=False`` 直接返回 dumped 值（BaseModel 平展、
+        标量裸值）。多个 body 参数时 ``embed`` 被忽略，每个字段始终按 alias 独立嵌入。
+        default: ``False``
+    :param media_type: 显式 Content-Type。仅当同时满足三个条件时生效：仅 1 个 body
+        参数 + ``embed=False`` + 字段类型是标量。任一条件不满足静默忽略；同名
+        ``Header()`` 参数的优先级更高。default: ``None``
+
+    Example::
+
+        class UserCreateRequest(BaseModel):
+            name: str
+            email: str
+
+        # ✅ 推荐写法：``Annotated[T, Body()]``
+        body: Annotated[UserCreateRequest, Body()]
+        data: Annotated[User, Body(embed=True)]
+
+        # ✅ 兼容写法：``Annotated[T, Body()] = Field(...)``
+        body: Annotated[UserCreateRequest, Body()] = Field(description="请求体")
+    """
+
+    in_ = ParamTypes.body
+
+    def __init__(self, embed: bool = False, media_type: str | None = None) -> None:
+        """初始化 Body 标记。
+
+        :param embed: 是否嵌入单个字段。
+        :param media_type: 显式 Content-Type。仅在 1 个 body + ``embed=False`` + 标量字段
+            三条件同时满足时生效；任一条件不满足静默忽略。
+        """
+        self.embed = embed
+        self.media_type = media_type
+
+
+class Form(Param):
+    """表单参数标记。
+
+    用于标记接口类中的表单字段。表单数据会被编码后发送到服务器。
+
+    ``Form`` 直接继承 ``Param``（不继承 ``Body``），无 ``embed`` / ``media_type`` 等
+    运行时状态。字段语义类别（scalar / list）在 ``src.routing`` 分类阶段由
+    ``validate_form_field_annotation`` 校验，``src.client`` 直接基于
+    ``field_info.annotation`` 自行判断 dispatch 路径。
+
+    .. versionchanged:: 1.0.0
+        ``Form`` 不再继承 ``Body``，移除了 ``embed`` 字段与 ``__init__`` 方法。
+        调用 ``Form(embed=...)`` 或 ``Form(media_type=...)`` 会抛 ``TypeError``
+        （继承自 ``Param`` / ``object`` 的 ``__init__`` 不接受任何关键字参数）。
+        ``Form`` 仅接受标量或 ``list[标量]``（含 Optional 形式）；文件上传请直接使用
+        ``UploadFile`` / ``list[UploadFile]``（不要加 ``Form()`` 标记）。
+    """
+
+    in_ = ParamTypes.body
+
+
+@dataclass
+class UploadFile:
+    """上传文件标记。
+
+    用于标记接口类中的文件上传字段。
+
+    :var path: 上传文件的本地路径。
+    """
+
+    path: pathlib.Path
+
+
+__all__ = ["Param", "ParamTypes", "Query", "Path", "Header", "Body", "Form", "UploadFile"]

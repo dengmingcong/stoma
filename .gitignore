@@ -5,6 +5,36 @@ build/
 dist/
 wheels/
 *.egg-info
+*.log
+*.tmp
+*.swp
 
 # Virtual environments
-.venv
+.venv/
+venv/
+
+# Test and reports
+.pytest_cache/
+allure-results/
+
+# Linter / type-checker caches
+.mypy_cache/
+.ruff_cache/
+
+# IDE/editor
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Env files
+.env*
+
+# OpenCode
+.omo/
+
+# Spec Kit tooling
+.claude/
+.github/agents/
+.github/prompts/
+.specify/

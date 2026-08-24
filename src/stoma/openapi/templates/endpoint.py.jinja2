@@ -1,0 +1,67 @@
+{% if module_docstring %}{{ module_docstring }}
+{% endif %}
+from __future__ import annotations
+
+from typing import Annotated
+from pydantic import Field
+from stoma import APIRoute, ResponseSpec, EmptyResponseSpec, Header, Body, Form, UploadFile
+
+from ..router import router
+
+{% if imported -%}
+from ..models import {{ imported | join(', ') }}
+{% endif -%}
+
+
+@router.{{ method }}("{{ path }}"{% if not upload_as_multipart %}, upload_as_multipart=False{% endif %})
+class {{ class_name }}(APIRoute):
+{% if class_docstring %}    {{ class_docstring }}
+{% endif %}
+{% if not class_docstring and not has_class_body_content and not response_spec_decls %}    pass
+{% endif %}
+{# Fields #}
+{% if param_fields %}{% for decl in param_fields %}
+    {{ decl.line }}
+{% if decl.docstring %}    {{ decl.docstring }}
+{% endif %}{% endfor %}{% endif %}
+{% if header_fields %}{% for decl in header_fields %}
+    {{ decl.line }}
+{% if decl.docstring %}    {{ decl.docstring }}
+{% endif %}{% endfor %}{% endif %}
+{% if import_model and not form_text_fields and not form_file_fields and not scalar_field and not binary_file_field %}
+    body: {{ import_model }}
+{% endif %}
+{% if scalar_field %}
+    {{ scalar_field.line }}
+{% if scalar_field.docstring %}    {{ scalar_field.docstring }}
+{% endif %}{% endif %}
+{% if binary_file_field %}
+    {{ binary_file_field.line }}
+{% if binary_file_field.docstring %}    {{ binary_file_field.docstring }}
+{% endif %}{% endif %}
+{% if form_text_fields %}{% for decl in form_text_fields %}
+    {{ decl.line }}
+{% if decl.docstring %}    {{ decl.docstring }}
+{% endif %}{% endfor %}{% endif %}
+{% if form_file_fields %}{% for decl in form_file_fields %}
+    {{ decl.line }}
+{% if decl.docstring %}    {{ decl.docstring }}
+{% endif %}{% endfor %}{% endif %}
+{# Response spec declarations as @property methods #}
+{% if response_spec_decls %}
+{% for decl in response_spec_decls %}
+    @property
+    def {{ decl.attr_name }}(self) -> {{ decl.annotation }}:
+{% if decl.media_type is none %}
+        return EmptyResponseSpec(
+            status_code={{ decl.status_code }},
+        )
+{% else %}
+        return ResponseSpec(
+            status_code={{ decl.status_code }},
+            media_type="{{ decl.media_type }}",
+            expected_type={{ decl.expected_type }},
+        )
+{% endif %}
+{% endfor %}
+{% endif %}

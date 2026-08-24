@@ -1,0 +1,59 @@
+openapi: 3.1.0
+info:
+  title: Nullable Param Tests
+  version: "1.0.0"
+paths:
+  /opPlainScalar:
+    get:
+      operationId: opPlainScalar
+      summary: Plain scalar (non-nullable)
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+  /opNullableString:
+    get:
+      operationId: opNullableString
+      summary: Nullable string
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: OK
+  /opNullableArray:
+    get:
+      operationId: opNullableArray
+      summary: Nullable array of strings
+      parameters:
+        - name: tags
+          in: query
+          required: false
+          schema:
+            type: ["array", "null"]
+            items:
+              type: string
+      responses:
+        "200":
+          description: OK
+  /opNestedNullable:
+    get:
+      operationId: opNestedNullable
+      summary: Nullable integer (single-level representation of nested nullable)
+      parameters:
+        - name: inner
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: OK
