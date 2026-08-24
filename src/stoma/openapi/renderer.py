@@ -57,7 +57,7 @@ from stoma.openapi.schema import (
     is_binary_schema_dict,
     is_primitive_schema_dict,
 )
-from stoma.openapi.status_code import parse_status_key, render_status_code_kwarg  # noqa: F401
+from stoma.openapi.status_code import parse_status_key
 from stoma.openapi.type_mapping import is_primitive_json_type, python_type_name
 from stoma.openapi.version import Reference30, Reference31, SpecVersion
 
@@ -728,8 +728,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
 
                 # 场景 2：schema 缺失或为空 → EmptyResponseSpec 兜底。
                 if schema is None or (
-                    hasattr(schema, "model_dump")
-                    and not schema.model_dump(mode="json", exclude_none=True)
+                    hasattr(schema, "model_dump") and not schema.model_dump(mode="json", exclude_none=True)
                 ):
                     decls.append(
                         ResponseSpecDecl(
@@ -784,10 +783,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 # 场景 5：Reference → ResponseSpec decl，``expected_type`` 为 ref 末段 PascalCase。
                 if isinstance(schema, self.Reference):
                     model_name = to_pascal_case(schema.ref.rsplit("/", 1)[-1])
-                    if (
-                        self.available_models is not None
-                        and model_name not in self.available_models
-                    ):
+                    if self.available_models is not None and model_name not in self.available_models:
                         self.errors.append(
                             GenerationError(
                                 method=endpoint.method,
@@ -823,10 +819,7 @@ class EndpointRenderer[ReferenceT: _ReferenceLike]:
                 else:
                     model_name = f"{operation_id_pascal}Response{inline_counter - 1}"
 
-                if (
-                    self.available_models is not None
-                    and model_name not in self.available_models
-                ):
+                if self.available_models is not None and model_name not in self.available_models:
                     self.errors.append(
                         GenerationError(
                             method=endpoint.method,
@@ -917,6 +910,5 @@ __all__ = [
     "GenerationErrorKind",
     "ResponseSpecDecl",
     "make_endpoint_renderer",
-    "render_status_code_kwarg",
     "render_to_file",
 ]

@@ -230,8 +230,7 @@ class ResponseSpecDecl(NamedTuple):
 
     状态码为 ``int`` 时模板输出 ``status_code=200``；
     为 lambda 源字符串（如 ``"lambda c: c not in [200]"``）时模板输出
-    ``status_code=lambda c: ...``（lambda 前缀保留，模板不再走
-    :func:`render_status_code_kwarg`，由模板条件分支直接拼装）。
+    ``status_code=lambda c: ...``（lambda 前缀保留，由模板条件分支直接拼装）。
 
     :var attr_name: ``@property`` 方法名（如 ``on_200`` / ``on_4xx`` /
         ``on_default`` / ``on_200_application_xml``）。
