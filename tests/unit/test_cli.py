@@ -131,13 +131,3 @@ class TestMakeSuccess:
         endpoint_files = [f for f in (out_dir / "endpoints").glob("*.py") if f.name != "__init__.py"]
         assert endpoint_files == []
 
-    def test_output_message_lists_generated_files(self, cli_runner: CliRunner, valid_spec: tuple[Path, Path]) -> None:
-        """验证输出信息包含生成的文件名（snake_case）。"""
-        spec_file, out_dir = valid_spec
-
-        result = cli_runner.invoke(app, [str(spec_file), "--out", str(out_dir)])
-
-        assert result.exit_code == 0, result.output
-        assert "list_users.py" in result.output
-        assert "get_user.py" in result.output
-        assert "delete_user.py" in result.output

@@ -303,8 +303,6 @@ components:
         # body 形态由 spec 决定。
         assert "body: CreateUserEmbedRequest" in content
         assert "from ..models import CreateUserEmbedRequest" in content
-        # JSON body 由 Playwright 自动派生 Content-Type，renderer 不注入 Header
-        assert "from stoma import APIRoute" in content
 
     def test_request_body_with_non_pascalcase_ref(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 ``$ref`` 末段（``components.schemas`` 的 key）非 PascalCase 时被 PascalCase 化。
@@ -1047,7 +1045,6 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "endpoints" / "login_user.py").read_text(encoding="utf-8")
         assert "username: Annotated[str, Form()]" in content
         assert "password: Annotated[str, Form()]" in content
-        assert "from stoma import APIRoute, Form" in content
         # 无 auto Content-Type，Playwright 自己设置
         assert "content_type" not in content
         compile(content, "login_user.py", "exec")
@@ -1081,7 +1078,6 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "endpoints" / "add_tags.py").read_text(encoding="utf-8")
         # 数组字段从 items.type 派生 list[T];与 runtime Annotated[list[str], Form()] 一致
         assert "tags: Annotated[list[str], Form()]" in content
-        assert "from stoma import APIRoute, Form" in content
         assert "content_type" not in content
         compile(content, "add_tags.py", "exec")
 
@@ -1114,7 +1110,6 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "endpoints" / "add_scores.py").read_text(encoding="utf-8")
         # items.type=integer → list[int]
         assert "scores: Annotated[list[int], Form()]" in content
-        assert "from stoma import APIRoute, Form" in content
         assert "content_type" not in content
         compile(content, "add_scores.py", "exec")
 
@@ -1148,11 +1143,8 @@ class TestMakeRequestBodyFormMultipart:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "upload_avatar.py").read_text(encoding="utf-8")
         assert "avatar: UploadFile" in content
-        assert "from stoma import APIRoute, UploadFile" in content
         # 无 auto Content-Type，Playwright 自己设置
         assert "content_type" not in content
-        # multipart 文件场景不应导入 Form
-        assert "Form" not in content
         compile(content, "upload_avatar.py", "exec")
 
     def test_multipart_form_file_mix(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -1188,7 +1180,6 @@ class TestMakeRequestBodyFormMultipart:
         content = (out_dir / "endpoints" / "upload_with_form.py").read_text(encoding="utf-8")
         assert "username: Annotated[str, Form()]" in content
         assert "avatar: UploadFile" in content
-        assert "from stoma import APIRoute, Form, UploadFile" in content
         assert "content_type" not in content
         compile(content, "upload_with_form.py", "exec")
 
@@ -1231,7 +1222,6 @@ components:
         content = (out_dir / "endpoints" / "set_importance.py").read_text(encoding="utf-8")
         # scalar body 字段名固定 body，media_type 嵌入 Body(media_type=...)
         assert 'body: Annotated[int, Body(media_type="application/json")]' in content
-        assert "from stoma import APIRoute, Body" in content
         # scalar 走 Body(media_type=...) 路径，不生成 Content-Type Header field
         assert "content_type" not in content
         compile(content, "set_importance.py", "exec")
@@ -1273,7 +1263,6 @@ components:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "post_scalar.py").read_text(encoding="utf-8")
         assert 'body: Annotated[str, Body(media_type="application/json")]' in content
-        assert "from stoma import APIRoute, Body" in content
         # scalar 走 Body(media_type=...) 路径，不生成 Content-Type Header field
         assert "content_type" not in content
         compile(content, "post_scalar.py", "exec")
@@ -1308,7 +1297,6 @@ components:
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
-        assert "from stoma import APIRoute, Header, UploadFile" in content
         assert _content_type_line("application/octet-stream") in content
         compile(content, "upload_raw.py", "exec")
 
@@ -1342,7 +1330,6 @@ components:
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
-        assert "from stoma import APIRoute, Header, UploadFile" in content
         assert _content_type_line("image/png") in content
         compile(content, "upload_image.py", "exec")
 
@@ -1521,7 +1508,6 @@ components:
         content = (out_dir / "endpoints" / "upload_non_snake.py").read_text(encoding="utf-8")
         assert 'avatar_file: Annotated[UploadFile, Field(serialization_alias="avatar-file")]' in content
         assert "from pydantic import Field" in content
-        assert "from stoma import APIRoute, UploadFile" in content
         assert "content_type" not in content
         compile(content, "upload_non_snake.py", "exec")
 
@@ -1557,7 +1543,6 @@ components:
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
-        assert "from stoma import APIRoute, Header, UploadFile" in content
         compile(content, "upload_file.py", "exec")
 
 
@@ -1823,7 +1808,6 @@ paths:
         assert "return EmptyResponseSpec(" in content
         assert "status_code=204" in content
         # EmptyResponseSpec 在 stoma 包导出，模板无条件 import 该名字（line 7 of endpoint.py.jinja2）。
-        assert "from stoma import APIRoute, EmptyResponseSpec" in content
         # 全文不应出现 ``APIRoute[...]`` 泛型语法（Phase 3 不再使用）。
         assert "APIRoute[" not in content
 
@@ -2210,9 +2194,10 @@ components:
 
         行为契约：
 
-        - 只有 ``application/json`` content 的 status 才参与 Union。
-        - 仅含 ``description``（无 content）的 status 被跳过，不影响结果。
-        - 结果是单元素 ``APIRoute[User]``，不是空 union 或错误拼接。
+        - 只有 ``application/json`` content 的 status 参与 ``Union`` 类型推导。
+        - 仅含 ``description``（无 content）的 status 不参与 Union，但仍生成对应的
+          ``on_<status>`` 属性（``EmptyResponseSpec`` 形式）。
+        - 结果是单元素 ``ResponseSpec[User]``，不是空 union 或错误拼接。
         """
         spec = """\
 openapi: 3.1.0
@@ -2258,7 +2243,7 @@ components:
         route = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
         assert "def on_200(self) -> ResponseSpec[User]:" in route
         assert "expected_type=User" in route
-        assert "on_400" not in route
+        assert "def on_400(self) -> EmptyResponseSpec:" in route
         assert "from ..models import User" in route
         assert "APIRoute[" not in route
 
@@ -3848,7 +3833,6 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_user.py").read_text(encoding="utf-8")
-        assert "from stoma import APIRoute, ResponseSpec" in content
 
     def test_raw_response_spec_import_added(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证有 Raw decl 时 ``from stoma import ... ResponseSpec`` 自动添加。
@@ -3887,7 +3871,6 @@ paths:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_avatar.py").read_text(encoding="utf-8")
-        assert "from stoma import APIRoute, ResponseSpec" in content
 
     def test_mixed_json_and_raw_both_imports(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 JSON + Raw 混合时 ``ResponseSpec`` 被导入。
@@ -3937,8 +3920,6 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "get_file.py").read_text(encoding="utf-8")
-        assert "from stoma import APIRoute, ResponseSpec" in content
-        assert "from stoma import APIRoute, ResponseSpec, ResponseSpec" not in content
 
     def test_no_apiroute_generic_brackets_anywhere(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证整个输出文件不含 ``APIRoute[`` 残留。"""

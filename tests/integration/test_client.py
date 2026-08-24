@@ -16,6 +16,7 @@ from typing import Annotated, Any
 import pytest
 
 pytest.importorskip("fastapi", reason="Mock server 测试需要 fastapi (stoma[test])")
+from playwright.sync_api import Playwright
 from pydantic import BaseModel, Field
 
 from stoma import Body, Form, Header, Path, Query, ResponseSpec, UploadFile
@@ -290,15 +291,19 @@ class ProbeOptions(APIRoute):
 
 
 @pytest.fixture
-def api_context(mock_server: _ServerThread) -> Any:
-    """创建 Playwright APIRequestContext（使用 mock_server 提供 base_url）。"""
-    from playwright.sync_api import sync_playwright
+def api_context(
+    mock_server: _ServerThread,
+    _shared_playwright: Playwright,
+) -> Any:
+    """创建 Playwright APIRequestContext（使用 mock_server 提供 base_url）。
 
-    playwright = sync_playwright().start()
-    context = playwright.request.new_context(base_url=mock_server.base_url)
-    yield {"context": context, "base_url": mock_server.base_url, "playwright": playwright}
+    复用顶层 ``tests/conftest.py`` 的会话级 ``_shared_playwright``，
+    不在本地 ``sync_playwright().start()``，避免与其他 e2e/示例测试
+    共存时产生 asyncio loop 状态污染。
+    """
+    context = _shared_playwright.request.new_context(base_url=mock_server.base_url)
+    yield {"context": context, "base_url": mock_server.base_url, "playwright": _shared_playwright}
     context.dispose()
-    playwright.stop()
 
 
 @pytest.fixture

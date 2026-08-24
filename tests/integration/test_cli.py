@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 from click.testing import Result
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Playwright
 
 pytest.importorskip("typer", reason="CLI 测试需要 typer (stoma[cli])")
 from typer.testing import CliRunner
@@ -126,15 +126,21 @@ def test_codegen_all_methods(
 
 
 @pytest.fixture
-def api_context(mock_server: _ServerThread) -> Generator[dict[str, Any], None, None]:
-    """创建 Playwright APIRequestContext（使用 ``mock_server`` 提供 base_url）。"""
-    playwright = sync_playwright().start()
-    context = playwright.request.new_context(base_url=mock_server.base_url)
+def api_context(
+    mock_server: _ServerThread,
+    _shared_playwright: Playwright,
+) -> Generator[dict[str, Any], None, None]:
+    """创建 Playwright APIRequestContext（使用 ``mock_server`` 提供 base_url）。
+
+    复用顶层 ``tests/conftest.py`` 的会话级 ``_shared_playwright``，不在本地
+    ``sync_playwright().start()``，避免与其他 e2e/示例测试共存时产生
+    asyncio loop 状态污染。
+    """
+    context = _shared_playwright.request.new_context(base_url=mock_server.base_url)
     try:
-        yield {"context": context, "playwright": playwright}
+        yield {"context": context, "playwright": _shared_playwright}
     finally:
         context.dispose()
-        playwright.stop()
 
 
 @pytest.fixture

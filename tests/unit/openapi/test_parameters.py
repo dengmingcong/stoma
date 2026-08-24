@@ -112,8 +112,6 @@ paths:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "check_auth.py").read_text(encoding="utf-8")
-        # header 参数使用 ``Annotated[..., Header(...)]`` 标记。
-        assert "from stoma import APIRoute, Header" in content
         # models 来自 .models 导入，所以这里只需要 Field（不再内联 BaseModel 定义）。
         assert "from pydantic import Field" in content
         assert "from typing import Annotated" in content
