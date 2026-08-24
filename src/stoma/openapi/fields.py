@@ -178,7 +178,7 @@ def _unwrap_example(value: Any) -> Any:
     :return: unwrap 后的字面量值。
     """
     if isinstance(value, BaseModel) and "value" in type(value).model_fields:
-        return value.value
+        return value.value  # type: ignore[attr-defined]
     return value
 
 
