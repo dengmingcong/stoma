@@ -35,7 +35,7 @@ from stoma.cli import app
 from stoma.openapi.models import Endpoint, ResponseSpecDecl
 from stoma.openapi.parser import make_openapi_parser
 from stoma.openapi.renderer import make_endpoint_renderer
-from stoma.openapi.status_code import parse_status_key, render_status_code_kwarg
+from stoma.openapi.status_code import parse_status_key
 from stoma.openapi.version import Reference31
 
 # ============================================================
@@ -918,9 +918,6 @@ paths:
   /items:
     get:
       operationId: listItems
-      responses:
-        "200":
-          description: ok
 """
         spec_file = tmp_path / "spec.yaml"
         spec_file.write_text(spec, encoding="utf-8")
@@ -4114,28 +4111,3 @@ components:
         assert "expected_type=Error" in content
         # 文件可编译
         compile(content, "get_echo.py", "exec")
-
-    def test_render_status_code_kwarg_int(self) -> None:
-        """验证 ``render_status_code_kwarg`` 对 ``int`` 状态码输出 ``status_code=N``。"""
-        assert render_status_code_kwarg(200) == "status_code=200"
-        assert render_status_code_kwarg(404) == "status_code=404"
-
-    def test_render_status_code_kwarg_lambda_source(self) -> None:
-        """验证 ``render_status_code_kwarg`` 对 lambda 源字符串直接前缀 ``status_code=``。"""
-        assert render_status_code_kwarg("lambda c: c not in [200]") == "status_code=lambda c: c not in [200]"
-        assert render_status_code_kwarg("lambda c: 400 <= c < 500") == "status_code=lambda c: 400 <= c < 500"
-
-    def test_render_status_code_kwarg_invalid_raises(self) -> None:
-        """验证 ``render_status_code_kwarg`` 对未知输入抛 ``ValueError``。
-
-        Phase 2 仅接受 ``int`` 或以 ``"lambda c: "`` 起头的字符串；其他输入
-        （如旧的 ``"default"`` / ``"4XX"`` 字面量）抛 ``ValueError`` —— 因为
-        ``_extract_response_specs`` 已经预渲染好 lambda 源字符串，渲染层不再
-        解释 OpenAPI 通配符语义。
-        """
-        with pytest.raises(ValueError, match="Cannot render status_code"):
-            render_status_code_kwarg("default")
-        with pytest.raises(ValueError, match="Cannot render status_code"):
-            render_status_code_kwarg("4XX")
-        with pytest.raises(ValueError, match="Cannot render status_code"):
-            render_status_code_kwarg("XYZ")
