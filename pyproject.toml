@@ -1,17 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "stoma"
 version = "0.1.0"
-description = "Add your description here"
+description = "Pythonic 接口自动化与接口自动化测试框架，代码即协议"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+authors = [
+    { name = "dengmingcong", email = "mc.deng@outlook.com" },
+]
+keywords = ["http", "api", "testing", "automation", "openapi", "pydantic", "fastapi"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: Pytest",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "pydantic>=2.6.0",
     "playwright>=1.60.0",
+    "typer>=0.9.0",
 ]
 
 [project.optional-dependencies]
 cli = [
-    "typer>=0.9.0",
     "openapi-pydantic>=0.5.1",
     "datamodel-code-generator>=0.25.0",
     "pyyaml>=6.0.2",
@@ -23,6 +41,14 @@ test = [
     "fastapi>=0.141.1",
     "uvicorn>=0.30.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/dengmingcong/stoma"
+
+[project.scripts]
+stoma = "stoma.cli:app"
+
+[dependency-groups]
 dev = [
     "mypy>=1.10.0",
     "ruff>=0.8.0",
@@ -30,6 +56,9 @@ dev = [
     "commitizen>=3.0.0",
     "stoma[cli,test]",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stoma"]
 
 [tool.ruff]
 line-length = 120
@@ -45,37 +74,34 @@ select = [
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
     "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "PIE", # flake8-pie
+    "PT",  # flake8-pytest-style
+    # 不启用 RUF：RUF002/003 把全角字符判定为 ambiguous，与项目中文标点规范冲突。
 ]
-ignore = []
 
 [tool.ruff.lint.isort]
 known-first-party = ["stoma"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011", "PT011"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
-warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_any_generics = true
-check_untyped_defs = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-follow_imports = "normal"
 ignore_missing_imports = true
+# 已知问题：此选项全局开启会静默吞掉所有第三方库的类型错误。
+# 理想做法：① `uv add --dev types-PyYAML` 安装 PyYAML 类型桩，
+# ② 修复 src/stoma/openapi/__init__.py:13 的 `from src.openapi.parser` 错位导入（应是相对导入），
+# ③ 修复 routing.py:229 ParamSpec 比较、fields.py:181 BaseModel.value 等真实 bug，
+# 完成后改为按模块覆盖：[[tool.mypy.overrides]] module = ["jsonref"] ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
-# 测试文件可以放宽某些类型检查
 disallow_untyped_defs = false
 check_untyped_defs = false
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-
-[project.scripts]
-stoma = "stoma.cli:app"
-
