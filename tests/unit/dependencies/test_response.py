@@ -270,16 +270,21 @@ class TestResponseSpec:
         assert result == b"\x89PNG\r\n\x1a\n"
 
     def test_str_target_type_returns_str(self) -> None:
-        """``expected_type=str`` 时通过 ``validate_json`` 解析 JSON 字符串。"""
+        """``expected_type=str`` 时直接返回 ``response.text()`` 的原始文本。
+
+        不走 ``validate_json``：JSON 字符串字面量（如 ``"hello"``）的解析会被绕过，
+        派发路径上 body 中的外层引号会被保留，对应 OpenAPI ``{"schema": {"type": "string"}}``
+        在现实服务端常以 ``text/plain`` 形式返纯文本的实际契约。
+        """
         spec = ResponseSpec(200, "text/plain", str)
         api_response = _make_api_response(
             status=200,
             content_type="text/plain",
-            body=b'"hello"',
+            text='"hello"',  # 即便形如 JSON 字符串字面量也按原文返回。
         )
         result = spec.validate_response(api_response)
         assert isinstance(result, str)
-        assert result == "hello"
+        assert result == '"hello"'
 
     def test_bytes_target_type_via_kwarg(self) -> None:
         """``expected_type=bytes`` 作为关键字参数也工作（与位置参数等价）。"""
@@ -302,10 +307,10 @@ class TestResponseSpec:
         api_response = _make_api_response(
             status=200,
             content_type="text/plain; charset=utf-8",
-            body=b'"content"',
+            text="raw text content",
         )
         result = spec.validate_response(api_response)
-        assert result == "content"
+        assert result == "raw text content"
 
     def test_missing_target_type_raises_type_error(self) -> None:
         """裸 ``ResponseSpec(...)``（漏 ``expected_type``）抛 ``TypeError``。"""
@@ -322,22 +327,23 @@ class TestResponseSpec:
         spec = ResponseSpec(200, "application/json", expected_type=int)
         assert spec.expected_type is int
 
-    def test_unicode_decode_error_wrapped_as_parse_error(self) -> None:
-        """``expected_type=str`` 时非 JSON 字节抛 :class:`ValidationError`。
+    def test_str_target_type_propagates_unicode_decode_error(self) -> None:
+        """``expected_type=str`` 时响应体非合法 UTF-8 时 ``UnicodeDecodeError`` 原样透传。
 
-        Phase 1 v3 重构后 ``ResponseSpec`` 不再有 ``str`` 原始文本派发，统一走
-        ``validate_json``——非合法 JSON 字节由 Pydantic 抛 ``ValidationError``，
-        包含 Pydantic ``errors``。
+        文本解码是 Python 自身职责，``ResponseSpec`` 不包装该异常——调用方按 Python 习惯
+        直接处理 ``UnicodeDecodeError`` 即可。
         """
         spec = ResponseSpec(200, "text/plain", str)
         api_response = _make_api_response(
             status=200,
             content_type="text/plain",
-            body=b"\xff\xfe",  # 非合法 JSON
+            body=b"\xff\xfe",  # 非合法 UTF-8。
         )
-        with pytest.raises(ValidationError) as exc_info:
+        api_response.text.side_effect = UnicodeDecodeError(
+            "utf-8", b"\xff\xfe", 0, 1, "invalid start byte"
+        )
+        with pytest.raises(UnicodeDecodeError):
             spec.validate_response(api_response)
-        assert exc_info.value.errors is not None
 
     def test_status_mismatch_raises_assertion(self) -> None:
         """status 不匹配抛 ``AssertionError``（bytes 派发）。"""

@@ -5,9 +5,10 @@
 - :class:`BaseResponseSpec` — 响应协议抽象基类（泛型 ``T``），
   定义按 HTTP 状态码与 media type 严格校验响应的契约。
 - :class:`ResponseSpec` — 通用响应协议（泛型 ``T``），
-  处理 JSON / 标量 / 二进制等已知类型的响应：通过 ``expected_type`` 决定派发路径——
+  处理 JSON / 标量 / 文本 / 二进制等已知类型的响应：通过 ``expected_type`` 决定派发路径——
   ``expected_type is bytes`` 时直接返回 ``response.body()`` 的原始字节；
-  其他 ``expected_type``（如 Pydantic 模型、``int``、``str``、``dict`` 等）走
+  ``expected_type is str`` 时直接返回 ``response.text()`` 的 UTF-8 解码字符串；
+  其他 ``expected_type``（如 Pydantic 模型、``int``、``dict`` 等）走
   :meth:`pydantic.TypeAdapter.validate_json` 路径。
 - :class:`EmptyResponseSpec` — 空响应协议，仅校验 HTTP 状态码，
   适用于 204 No Content、无响应 schema 或无法确定类型的描述性响应。
@@ -150,24 +151,35 @@ class ResponseSpec[T](BaseResponseSpec[T]):
     """通用响应协议。
 
     在 :class:`BaseResponseSpec` 的协议级强校验基础上，
-    按 ``expected_type`` 派发响应处理：
+    按 ``expected_type`` 派发响应：
 
     - ``expected_type is bytes`` → 直接返回 ``response.body()`` 的原始字节，
       适用于图片、protobuf、二进制下载等。
-    - 其他 ``expected_type``（如 Pydantic 模型、``int``、``str``、``dict`` 等）
+    - ``expected_type is str`` → 直接返回 ``response.text()`` 的 UTF-8 解码字符串，
+      对应 OpenAPI ``{"schema": {"type": "string"}}`` 的实际响应（服务端常以纯文本或
+      JSON 字符串字面量两种形式返回，此处统一为 user-visible 的原始文本）。
+      注意：若服务端返回 JSON 字符串字面量（如 ``"hello"``），本派发会保留外层引号，
+      与走 JSON 解析后去掉引号的结果不同——这是 "原始文本" 派发的明确语义。
+    - 其他 ``expected_type``（如 Pydantic 模型、``int``、``dict`` 等）
       → :class:`pydantic.TypeAdapter.validate_json` 按 ``expected_type`` 校验
       JSON body 并返回强类型 ``T`` 实例。
 
     设计要点：
 
-    - **统一 adapter 派发**：构造时通过 :class:`pydantic.TypeAdapter` 编译
-      ``expected_type``，``validate_response`` 直接复用同一适配器实例，
-      避免每次调用都重新构造。
+    - **三路派发**：``bytes`` / ``str`` 各走短路路径（无需 Pydantic 适配器），
+      仅其他类型（``int`` / Pydantic 模型 / ``dict`` 等）走
+      :class:`pydantic.TypeAdapter.validate_json`。
     - **bytes 走特殊路径**：JSON 解码要求 UTF-8 文本，二进制数据无法被
       ``validate_json`` 解析，所以 ``bytes`` 必须先短路返回 ``response.body()``
       而非走 JSON 路径。
-    - **统一异常类型**：JSON 解析失败与 Pydantic schema 不匹配都映射为
-      :class:`ValidationError`，上层只需捕获一种异常类型。
+    - **str 走原始文本**：与 Phase 1 v3 重构后 "统一走 ``validate_json``" 的旧行为不同——
+      实际服务端（尤其登录/会话类接口）常以 ``text/plain`` 形式返回纯文本 token，
+      与 OpenAPI ``schema: {type: string}`` 在 wire 上的 JSON 字符串字面量语义不一致；
+      为贴合现实契约，此处 ``str`` 派发不经过 JSON 解析，直接取 ``response.text()``。
+    - **非 UTF-8 行为**：``response.text()`` 遇非法 UTF-8 字节会抛 :class:`UnicodeDecodeError`，
+      本协议类不包装该异常，按 Python 习惯直接透传给调用方。
+    - **统一异常类型**（针对 JSON 路径）：JSON 解析失败与 Pydantic schema 不匹配
+      都映射为 :class:`ValidationError`，上层只需捕获一种异常类型。
 
     :var status_code: 期望的 HTTP 状态码（``int``）或状态码谓词（``Callable[[int], bool]``）。
     :vartype status_code: int | Callable[[int], bool]
@@ -188,6 +200,10 @@ class ResponseSpec[T](BaseResponseSpec[T]):
         # JSON 标量响应（如计数）。
         spec = ResponseSpec(200, "application/json", int)
         result = response.expect(spec)  # → int
+
+        # 纯文本响应（如登录 token）。
+        spec = ResponseSpec(200, "text/plain", str)
+        result = response.expect(spec)  # → str
 
         # 字节响应（如图片下载）。
         spec = ResponseSpec(200, "image/png", bytes)
@@ -217,20 +233,25 @@ class ResponseSpec[T](BaseResponseSpec[T]):
         流程：
 
         1. 调用 :meth:`_assert_status` 与 :meth:`_assert_media_type` 做协议级强校验。
-        2. ``expected_type is bytes`` → 直接返回 ``response.body()``；
+        2. ``expected_type is bytes`` → 直接返回 ``response.body()`` 的原始字节；
+           ``expected_type is str`` → 直接返回 ``response.text()`` 的 UTF-8 解码字符串；
            其他 ``expected_type`` → 调用 ``self.adapter.validate_json(response.body())``
            按 ``expected_type`` 校验，失败抛 :class:`ValidationError`（带 Pydantic ``errors``）。
 
         :param response: Playwright 响应对象。
         :return: 已校验的响应数据，类型为 ``T``。
         :raise AssertionError: status 或 content-type 与 spec 不匹配。
-        :raise ValidationError: 响应解析或校验失败。
+        :raise ValidationError: 响应解析或校验失败（非 str/bytes 的 ``expected_type``）。
+        :raise UnicodeDecodeError: ``expected_type=str`` 且响应体非合法 UTF-8 时透传。
         """
         self._assert_status(response.status)
         self._assert_media_type(response.headers.get("content-type", ""))
 
         if self.expected_type is bytes:
             return cast(T, response.body())
+
+        if self.expected_type is str:
+            return cast(T, response.text())
 
         try:
             return self.adapter.validate_json(response.body())
