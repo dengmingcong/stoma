@@ -1010,7 +1010,6 @@ version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "datamodel-code-generator" },
-    { name = "jinja2" },
     { name = "jsonref" },
     { name = "openapi-pydantic" },
     { name = "playwright" },
@@ -1042,7 +1041,6 @@ requires-dist = [
     { name = "allure-pytest", marker = "extra == 'test'", specifier = ">=2.15.2" },
     { name = "datamodel-code-generator", specifier = ">=0.25.0" },
     { name = "fastapi", marker = "extra == 'test'", specifier = ">=0.141.1" },
-    { name = "jinja2", specifier = ">=3.1.0" },
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "openapi-pydantic", specifier = ">=0.5.1" },
     { name = "playwright", specifier = ">=1.60.0" },
