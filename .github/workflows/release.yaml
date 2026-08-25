@@ -47,6 +47,8 @@ jobs:
       - name: bump version and generate changelog
         id: bump
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           set +e
           uv run cz bump --changelog --yes
           BUMP_EXIT=$?
