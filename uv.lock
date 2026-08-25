@@ -1006,21 +1006,19 @@ wheels = [
 
 [[package]]
 name = "stoma"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "datamodel-code-generator" },
+    { name = "jsonref" },
+    { name = "openapi-pydantic" },
     { name = "playwright" },
     { name = "pydantic" },
+    { name = "ruamel-yaml" },
     { name = "typer" },
 ]
 
 [package.optional-dependencies]
-cli = [
-    { name = "datamodel-code-generator" },
-    { name = "jsonref" },
-    { name = "openapi-pydantic" },
-    { name = "ruamel-yaml" },
-]
 test = [
     { name = "allure-pytest" },
     { name = "fastapi" },
@@ -1035,25 +1033,25 @@ dev = [
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "ruff" },
-    { name = "stoma", extra = ["cli", "test"] },
+    { name = "stoma", extra = ["test"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "allure-pytest", marker = "extra == 'test'", specifier = ">=2.15.2" },
-    { name = "datamodel-code-generator", marker = "extra == 'cli'", specifier = ">=0.25.0" },
+    { name = "datamodel-code-generator", specifier = ">=0.25.0" },
     { name = "fastapi", marker = "extra == 'test'", specifier = ">=0.141.1" },
-    { name = "jsonref", marker = "extra == 'cli'", specifier = ">=1.1.0" },
-    { name = "openapi-pydantic", marker = "extra == 'cli'", specifier = ">=0.5.1" },
+    { name = "jsonref", specifier = ">=1.1.0" },
+    { name = "openapi-pydantic", specifier = ">=0.5.1" },
     { name = "playwright", specifier = ">=1.60.0" },
     { name = "pydantic", specifier = ">=2.6.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.4.2" },
     { name = "python-multipart", marker = "extra == 'test'", specifier = ">=0.0.20" },
-    { name = "ruamel-yaml", marker = "extra == 'cli'", specifier = ">=0.18.0" },
+    { name = "ruamel-yaml", specifier = ">=0.18.0" },
     { name = "typer", specifier = ">=0.9.0" },
     { name = "uvicorn", marker = "extra == 'test'", specifier = ">=0.30.0" },
 ]
-provides-extras = ["cli", "test"]
+provides-extras = ["test"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1061,7 +1059,7 @@ dev = [
     { name = "mypy", specifier = ">=1.10.0" },
     { name = "pre-commit", specifier = ">=3.0.0" },
     { name = "ruff", specifier = ">=0.8.0" },
-    { name = "stoma", extras = ["cli", "test"] },
+    { name = "stoma", extras = ["test"] },
 ]
 
 [[package]]

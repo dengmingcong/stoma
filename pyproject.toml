@@ -23,18 +23,16 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
-    "pydantic>=2.6.0",
+    "datamodel-code-generator>=0.25.0",
+    "jsonref>=1.1.0",
+    "openapi-pydantic>=0.5.1",
     "playwright>=1.60.0",
+    "pydantic>=2.6.0",
+    "ruamel.yaml>=0.18.0",
     "typer>=0.9.0",
 ]
 
 [project.optional-dependencies]
-cli = [
-    "openapi-pydantic>=0.5.1",
-    "datamodel-code-generator>=0.25.0",
-    "ruamel.yaml>=0.18.0",
-    "jsonref>=1.1.0",
-]
 test = [
     "pytest>=8.4.2",
     "allure-pytest>=2.15.2",
@@ -55,7 +53,7 @@ dev = [
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",
     "commitizen>=3.0.0",
-    "stoma[cli,test]",
+    "stoma[test]",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -107,6 +105,12 @@ testpaths = ["tests"]
 addopts = "--ignore=tests/examples"
 
 [tool.commitizen]
-name = "cz_conventional_commits"
+name = "cz_customize"
 version_provider = "pep621"
 tag_format = "v$version"
+
+[tool.commitizen.customize]
+commit_parser = '''^(?P<change_type>feat|fix|perf|docs|BREAKING CHANGE)(?:\((?P<scope>[^()\r\n]*)\)|\()?(?P<breaking>!?):\s(?P<message>.*)?'''
+change_type_map = { feat = "Feat", fix = "Fix", perf = "Perf", docs = "Docs" }
+changelog_pattern = '''^((feat|fix|perf|docs)|BREAKING[\-\ ]CHANGE)(\(.+\))?!?:'''
+change_type_order = ["BREAKING CHANGE", "Feat", "Fix", "Perf", "Docs"]
