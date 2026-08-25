@@ -106,6 +106,12 @@ testpaths = ["tests"]
 addopts = "--ignore=tests/examples"
 
 [tool.commitizen]
-name = "cz_conventional_commits"
+name = "cz_customize"
 version_provider = "pep621"
 tag_format = "v$version"
+
+[tool.commitizen.customize]
+commit_parser = '''^(?P<change_type>feat|fix|perf|docs|BREAKING CHANGE)(?:\((?P<scope>[^()\r\n]*)\)|\()?(?P<breaking>!?):\s(?P<message>.*)?'''
+change_type_map = { feat = "Feat", fix = "Fix", perf = "Perf", docs = "Docs" }
+changelog_pattern = '''^((feat|fix|perf|docs)|BREAKING[\-\ ]CHANGE)(\(.+\))?!?:'''
+change_type_order = ["BREAKING CHANGE", "Feat", "Fix", "Perf", "Docs"]
