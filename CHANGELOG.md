@@ -1,3 +1,14 @@
+## v0.3.0 (2026-08-25)
+
+### Feat
+
+- make dependencies for cli required
+
+### Fix
+
+- commits were not pushed to github
+- empty ident name
+
 ## v0.2.0 (2026-08-24)
 
 ### Feat
