@@ -5,6 +5,14 @@ Stoma 是一个接口自动化和接口自动化测试工具，尝试实现「�
 * 代码中请求 HTTP 接口，IDE 不能自动联想接口参数，需要左边屏幕打开 IDE，右边屏幕在浏览器打开接口协议。
 * 从响应中提取信息或者对响应断言时，同样需要左右对比查看结构。
 
+现在 IDE 可以自动联想 Stoma 接口和响应。
+
+<img width="80%" style="border-radius: 8px;" alt="Image" src="./docs/assets/readme/autocomplete.gif" />
+
+Stoma 提供了 CLI 自动生成接口。
+
+<img width="80%" style="border-radius: 8px;" alt="Image" src="./docs/assets/readme/cli.gif" />
+
 ## 指南
 
 - [快速开始](./docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
