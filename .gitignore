@@ -32,9 +32,11 @@ Thumbs.db
 
 # OpenCode
 .omo/
+.opencode/
 
 # Spec Kit tooling
 .claude/
 .github/agents/
 .github/prompts/
 .specify/
+specs/
