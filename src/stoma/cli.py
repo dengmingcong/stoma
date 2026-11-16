@@ -1,6 +1,9 @@
 """Stoma CLI。
 
-提供 stoma make 命令从 OpenAPI 规范生成接口代码。
+提供 stoma SPEC --out DIR 命令从 OpenAPI 规范生成接口代码。
+
+只注册了一个命令，Typer 会把它提升为顶层命令，因此调用形式是
+``stoma <spec> [--out DIR] [--prefix PREFIX]``，命令名不作为子命令出现。
 """
 
 from __future__ import annotations
