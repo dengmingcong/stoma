@@ -56,7 +56,24 @@ print("  description  :", d.get("description"))
 '
 
 echo
+echo "=== 外部贡献者（无需认证） ==="
+curl -fsS "https://api.github.com/repos/${REPO}/contributors" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+if isinstance(data, dict):
+    print("  (获取失败)")
+else:
+    logins = [c["login"] for c in data]
+    print("  all          :", logins)
+    # 排除作者本人与机器人 —— 它们不是「外部贡献者」。
+    external = [x for x in logins if x != "dengmingcong" and not x.endswith("[bot]")]
+    print("  external     :", external)
+    print("  external_count:", len(external))
+'
+
+echo
 echo "=== 提醒 ==="
 echo "1. watchers 必须读 subscribers_count，不能读 watchers_count（后者是 star 的别名）。"
 echo "2. PyPI 项目页的下载量已被官方禁用（返回 -1），必须使用 pypistats。"
 echo "3. 下载量含 CI 通胀（GitHub Actions 矩阵每次提交都会产生下载），不等于真人。"
+echo "4. 贡献者列表含 github-actions[bot]，统计外部贡献者时必须排除机器人。"
