@@ -102,7 +102,7 @@ check_untyped_defs = false
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "--ignore=tests/examples"
+addopts = ""
 
 [tool.commitizen]
 name = "cz_customize"
