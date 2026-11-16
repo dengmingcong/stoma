@@ -8,9 +8,6 @@
 ```bash
 # 安装运行时需要的依赖
 pip install stoma
-
-# 安装运行时需要的依赖，并增加 CLI 需要的依赖
-pip install stoma[cli]
 ```
 
 ## 定义接口
