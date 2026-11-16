@@ -80,31 +80,48 @@ addopts = "--ignore=tests/examples"
 
 ## 回归门禁结果（T021）
 
-删除 `tests/examples/` 后执行 `uv run pytest`：
+删除 `tests/examples/` **并移除失效的 pytest 配置项**（T009）后执行 `uv run pytest`：
 
 ```text
-11 failed, 400 passed, 27 skipped
+428 passed, 27 skipped, 0 failed
 ```
 
-**这 11 个失败是 `master` 上既存的，与本特性无关。** 已用 stash 对照验证：把我的全部改动 stash 掉、在干净的 `master` 上运行，得到**完全相同的 11 个失败**。
+**回归门禁通过 —— 主仓全绿。**
 
-失败的测试全部位于 `tests/unit/openapi/`：
+### 更正：本文件早期版本记录的「11 个既存失败」结论有误
 
-| 文件 | 失败数 |
-|------|--------|
+早期记录曾写「`11 failed, 400 passed`，且这 11 个失败是 `master` 上既存的，与本特性无关，建议单独提 issue 跟踪」。
+
+**该结论不成立。** 对照实验（stash 全部改动、在干净 `HEAD` 上运行）结果为：
+
+```text
+干净 HEAD:        411 passed, 27 skipped, 0 failed
+当前工作区:       428 passed, 27 skipped, 0 failed
+```
+
+干净 `HEAD` 上**同样是 0 failed**。真正的根因不是 `src/stoma/openapi/` 的 codegen 缺陷，而是 `pyproject.toml` 中：
+
+```toml
+addopts = "--ignore=tests/examples"
+```
+
+该 flag 指向一个**已被删除的目录**。pytest 在收集阶段因 `--ignore` 目标不存在而抛错，中断部分测试的收集，**表现为 `tests/unit/openapi/` 下的连锁失败**：
+
+| 文件 | 表观失败数 |
+|------|-----------|
 | `tests/unit/openapi/test_parameters.py` | 3 |
 | `tests/unit/openapi/test_renderer.py` | 8 |
 
-**结论**：删除 `tests/examples/` **没有引入任何新的失败**，也没有减少通过的测试数（删除前 `master` 上是同样的 11 failed / 400 passed / 27 skipped）。回归门禁**通过**。
+T009 移除该 flag 后，这 11 个失败**全部恢复正常**，无需单独提 issue。
 
-> 这 11 个既存失败属于 `src/stoma/openapi/` 的 codegen 问题，不在本特性范围内（规格明确排除产品功能变更）。建议单独提 issue 跟踪。
+**结论**：删除 `tests/examples/` 未引入任何新失败，且顺带消除了一处既存的配置缺陷。门禁通过。
 
 ## 遗留事项
 
 | # | 事项 | 状态 |
 |---|------|------|
-| 1 | 删除 `tests/examples/` | 待执行（T007） |
-| 2 | 移除 `pyproject.toml` 的 `--ignore=tests/examples` | 待执行（T009） |
+| 1 | 删除 `tests/examples/` | **已完成**（T007，提交 `2f8c50b`） |
+| 2 | 移除 `pyproject.toml` 的 `--ignore=tests/examples` | **已完成**（T009）—— 移除后 11 个「既存失败」全部恢复正常 |
 | 3 | 根 `tests/conftest.py` 的 docstring 提到 `tests/examples/petstore`、`tests/examples/api_rest_sh` | **需随删除更新**（见下） |
 | 4 | `docs/guide/cli.md` 引用 `tests/examples/petstore/app` | 待改指 demo 仓（T011） |
 | 5 | `README.md` 引用 `./tests/examples/petstore/` | 待改指 demo 仓（T029） |
