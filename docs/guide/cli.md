@@ -61,43 +61,12 @@ Options:
 
 ## 完整输出示例
 
-`tests/examples/petstore/app` 下的文件就是用 `stoma` 命令生成的，运行的命令及输出如下：
+[stoma-demo](https://github.com/dengmingcong/stoma-demo) 仓库的 `app/` 目录就是用 `stoma` 命令生成的，
+运行的命令及输出如下：
 
 ```shell
-$ stoma tests/examples/petstore/spec/openapi.json -o tests/examples/petstore/app --prefix=/api/v3
+$ stoma spec.json -o app
 → 生成 models.py
 → 生成 router.py
-→ 渲染 POST /pet
-→ 渲染 PUT /pet
-→ 渲染 GET /pet/findByStatus
-→ 渲染 GET /pet/findByTags
-→ 渲染 GET /pet/{petId}
-→ 渲染 POST /pet/{petId}
-→ 渲染 DELETE /pet/{petId}
-→ 渲染 POST /pet/{petId}/uploadImage
-→ 渲染 GET /store/inventory
-→ 渲染 POST /store/order
-→ 渲染 GET /store/order/{orderId}
-→ 渲染 DELETE /store/order/{orderId}
-→ 渲染 POST /user
-→ 渲染 POST /user/createWithList
-→ 渲染 GET /user/login
-→ 渲染 GET /user/logout
-→ 渲染 GET /user/{username}
-→ 渲染 PUT /user/{username}
-→ 渲染 DELETE /user/{username}
-⚠ 以下 endpoint 有多个 media type（已用第一个）：
-  - POST /pet
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-  - PUT /pet
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-  - POST /store/order
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-  - POST /user
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-  - PUT /user/{username}
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-⚠ 以下 endpoint 生成失败（spec 不被支持）：
-  - GET /pet/findByTags
-    Unsupported nullable param schema: 'array'
+→ 渲染 GET /users/{user_id}
 ```
