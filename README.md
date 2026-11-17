@@ -118,4 +118,5 @@ pytest
 
 ## 关于
 
-[关于 Stoma](./docs/about.md) - 关于项目的说明。
+- [关于 Stoma](https://github.com/dengmingcong/stoma/blob/master/docs/about.md) — 项目由来、灵感与依赖。
+- 许可证：[MIT](https://github.com/dengmingcong/stoma/blob/master/LICENSE)
