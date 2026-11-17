@@ -7,11 +7,11 @@ Stoma 是一个接口自动化和接口自动化测试工具，尝试实现「�
 
 现在 IDE 可以自动联想 Stoma 接口和响应。
 
-<img width="80%" style="border-radius: 8px;" alt="Image" src="./docs/assets/readme/autocomplete.gif" />
+<img width="80%" style="border-radius: 8px;" alt="Image" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
 
 Stoma 提供了 CLI 自动生成接口。
 
-<img width="80%" style="border-radius: 8px;" alt="Image" src="./docs/assets/readme/cli.gif" />
+<img width="80%" style="border-radius: 8px;" alt="Image" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
 
 ## 指南
 
