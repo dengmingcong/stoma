@@ -29,30 +29,31 @@ Stoma 依赖 Playwright 的 Python 包，但**不需要浏览器二进制** —�
 定义接口、调用接口、对响应断言，三步完成。
 
 ```python
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from stoma import APIRoute, APIRouter, ResponseSpec
 
 
-class User(BaseModel):
-    id: int
+class Pet(BaseModel):
+    id: int | None = None
     name: str
+    photo_urls: list[str] = Field(alias="photoUrls")
 
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v3")
 
 
-@router.get("/users/{user_id}")
-class GetUserById(APIRoute):
-    """按 ID 查询用户。"""
+@router.get("/pet/{pet_id}")
+class GetPetById(APIRoute):
+    """按 ID 查询宠物。"""
 
-    user_id: int
+    pet_id: int
 
     @property
-    def on_200(self) -> ResponseSpec[User]:
+    def on_200(self) -> ResponseSpec[Pet]:
         return ResponseSpec(
             status_code=200,
             media_type="application/json",
-            expected_type=User,
+            expected_type=Pet,
         )
 ```
 
@@ -66,16 +67,19 @@ with sync_playwright() as p:
     ctx = p.request.new_context(base_url="https://petstore3.swagger.io")
     client = Client(context=ctx)
 
-    endpoint = GetUserById(user_id=1)
+    endpoint = GetPetById(pet_id=1)
     response = client.send(endpoint)
-    user = response.expect(endpoint.on_200)
-    assert user.id == 1
-    assert user.name == "alice"
+    pet = response.expect(endpoint.on_200)
+    assert pet.id == 1
+    assert pet.name
 ```
 
-接口定义与断言响应是同一套模型 —— `GetUserById` 用 `user_id: int` 声明请求参数，
+接口定义与断言响应是同一套模型 —— `GetPetById` 用 `pet_id: int` 声明请求参数，
 用 `on_200` 声明响应协议，`response.expect()` 会校验 Status Code 与 Media type，
-并把响应体转成 `User`。
+并把响应体转成 `Pet`。
+
+> 上面查询的是 Petstore 公开演示服务里的宠物 `1`。若该服务的数据被重置，
+> 查询会返回 404 —— 完整示例项目里演示了「先创建再查询」的写法。
 
 ## 指南
 
@@ -87,9 +91,30 @@ with sync_playwright() as p:
 - [接口请求和断言](https://github.com/dengmingcong/stoma/blob/master/docs/guide/client.md) — 使用 `Client` 调用接口，对接口响应断言。
 - [生成接口](https://github.com/dengmingcong/stoma/blob/master/docs/guide/cli.md) — Stoma 提供了 CLI 命令基于 OpenAPI 协议自动生成接口。
 
-## 实例
+## 示例项目
 
-- [Petstore](./tests/examples/petstore/) — 演示如何使用 Stoma 定义并调用 Swagger 官方 [Petstore](https://petstore3.swagger.io/) 接口。
+[stoma-demo](https://github.com/dengmingcong/stoma-demo) 是一个可独立克隆运行的完整项目
+—— 它自带 Petstore 接口的 OpenAPI 规范、生成的接口定义和带断言的测试，
+克隆下来就能跑通「定义接口 → 调用 → 断言」的完整链路，无需任何额外配置。
+
+```bash
+git clone https://github.com/dengmingcong/stoma-demo.git
+cd stoma-demo
+uv run pytest -v
+```
+
+没有 uv 也可以走 pip：
+
+```bash
+git clone https://github.com/dengmingcong/stoma-demo.git
+cd stoma-demo
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pytest
+```
+
+演示后端是 Swagger 官方 [Petstore](https://petstore3.swagger.io/) 公共服务，
+因此运行测试需要联网；服务不可达时测试会跳过并给出明确提示。
 
 ## 关于
 
