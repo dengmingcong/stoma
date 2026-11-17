@@ -24,6 +24,59 @@ pip install stoma
 Stoma 依赖 Playwright 的 Python 包，但**不需要浏览器二进制** —— 它只用 Playwright 的
 `APIRequestContext` 发送请求，不启动浏览器，因此无需执行 `playwright install` 下载浏览器组件。
 
+## 最小示例
+
+定义接口、调用接口、对响应断言，三步完成。
+
+```python
+from pydantic import BaseModel
+from stoma import APIRoute, APIRouter, ResponseSpec
+
+
+class User(BaseModel):
+    id: int
+    name: str
+
+
+router = APIRouter()
+
+
+@router.get("/users/{user_id}")
+class GetUserById(APIRoute):
+    """按 ID 查询用户。"""
+
+    user_id: int
+
+    @property
+    def on_200(self) -> ResponseSpec[User]:
+        return ResponseSpec(
+            status_code=200,
+            media_type="application/json",
+            expected_type=User,
+        )
+```
+
+调用并断言：
+
+```python
+from playwright.sync_api import sync_playwright
+from stoma import Client
+
+with sync_playwright() as p:
+    ctx = p.request.new_context(base_url="https://petstore3.swagger.io")
+    client = Client(context=ctx)
+
+    endpoint = GetUserById(user_id=1)
+    response = client.send(endpoint)
+    user = response.expect(endpoint.on_200)
+    assert user.id == 1
+    assert user.name == "alice"
+```
+
+接口定义与断言响应是同一套模型 —— `GetUserById` 用 `user_id: int` 声明请求参数，
+用 `on_200` 声明响应协议，`response.expect()` 会校验 Status Code 与 Media type，
+并把响应体转成 `User`。
+
 ## 指南
 
 - [快速开始](./docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
