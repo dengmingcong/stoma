@@ -79,13 +79,13 @@ with sync_playwright() as p:
 
 ## 指南
 
-- [快速开始](./docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
+- [快速开始](https://github.com/dengmingcong/stoma/blob/master/docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
 - 定义接口 — Stoma 中一个接口由接口路由、接口参数和响应协议组成。
-    * [接口路由](./docs/guide/define-routes.md)
-    * [接口参数](./docs/guide/define-parameters.md)
-    * [响应协议](./docs/guide/define-response-specs.md)
-- [接口请求和断言](./docs/guide/client.md) — 使用 `Client` 调用接口，对接口响应断言。
-- [生成接口](./docs/guide/cli.md) — Stoma 提供了 CLI 命令基于 OpenAPI 协议自动生成接口。
+    * [接口路由](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-routes.md)
+    * [接口参数](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-parameters.md)
+    * [响应协议](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-response-specs.md)
+- [接口请求和断言](https://github.com/dengmingcong/stoma/blob/master/docs/guide/client.md) — 使用 `Client` 调用接口，对接口响应断言。
+- [生成接口](https://github.com/dengmingcong/stoma/blob/master/docs/guide/cli.md) — Stoma 提供了 CLI 命令基于 OpenAPI 协议自动生成接口。
 
 ## 实例
 
