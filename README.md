@@ -13,6 +13,17 @@ Stoma 提供了 CLI 自动生成接口。
 
 <img width="80%" style="border-radius: 8px;" alt="Image" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
 
+## 安装
+
+需要 Python 3.12 或更高版本。
+
+```bash
+pip install stoma
+```
+
+Stoma 依赖 Playwright 的 Python 包，但**不需要浏览器二进制** —— 它只用 Playwright 的
+`APIRequestContext` 发送请求，不启动浏览器，因此无需执行 `playwright install` 下载浏览器组件。
+
 ## 指南
 
 - [快速开始](./docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
