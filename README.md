@@ -33,27 +33,27 @@ from pydantic import BaseModel, Field
 from stoma import APIRoute, APIRouter, ResponseSpec
 
 
-class Pet(BaseModel):
+class User(BaseModel):
     id: int | None = None
-    name: str
-    photo_urls: list[str] = Field(alias="photoUrls")
+    username: str
+    first_name: str | None = Field(default=None, alias="firstName")
 
 
 router = APIRouter(prefix="/api/v3")
 
 
-@router.get("/pet/{pet_id}")
-class GetPetById(APIRoute):
-    """按 ID 查询宠物。"""
+@router.get("/user/{username}")
+class GetUserByName(APIRoute):
+    """按用户名查询用户。"""
 
-    pet_id: int
+    username: str
 
     @property
-    def on_200(self) -> ResponseSpec[Pet]:
+    def on_200(self) -> ResponseSpec[User]:
         return ResponseSpec(
             status_code=200,
             media_type="application/json",
-            expected_type=Pet,
+            expected_type=User,
         )
 ```
 
@@ -67,19 +67,19 @@ with sync_playwright() as p:
     ctx = p.request.new_context(base_url="https://petstore3.swagger.io")
     client = Client(context=ctx)
 
-    endpoint = GetPetById(pet_id=1)
+    endpoint = GetUserByName(username="user1")
     response = client.send(endpoint)
-    pet = response.expect(endpoint.on_200)
-    assert pet.id == 1
-    assert pet.name
+    user = response.expect(endpoint.on_200)
+    assert user.username == "user1"
+    assert user.first_name
 ```
 
-接口定义与断言响应是同一套模型 —— `GetPetById` 用 `pet_id: int` 声明请求参数，
+接口定义与断言响应是同一套模型 —— `GetUserByName` 用 `username: str` 声明请求参数，
 用 `on_200` 声明响应协议，`response.expect()` 会校验 Status Code 与 Media type，
-并把响应体转成 `Pet`。
+并把响应体转成 `User`。响应里的 `firstName` 会按模型声明的别名映射到 `first_name`。
 
-> 上面查询的是 Petstore 公开演示服务里的宠物 `1`。若该服务的数据被重置，
-> 查询会返回 404 —— 完整示例项目里演示了「先创建再查询」的写法。
+> 上面查询的是 Swagger 官方 Petstore 公开演示服务。它是**人人共享的公共服务，
+> 可用性不保证，可能返回 HTTP 500** —— 这是服务状态问题，与 Stoma 无关。
 
 ## 指南
 
@@ -94,7 +94,7 @@ with sync_playwright() as p:
 ## 示例项目
 
 [stoma-demo](https://github.com/dengmingcong/stoma-demo) 是一个可独立克隆运行的完整项目
-—— 它自带 Petstore 接口的 OpenAPI 规范、生成的接口定义和带断言的测试，
+—— 它自带 Petstore 的 OpenAPI 规范、生成的接口定义和带断言的测试，
 克隆下来就能跑通「定义接口 → 调用 → 断言」的完整链路，无需任何额外配置。
 
 ```bash
@@ -114,7 +114,8 @@ pytest
 ```
 
 演示后端是 Swagger 官方 [Petstore](https://petstore3.swagger.io/) 公共服务，
-因此运行测试需要联网；服务不可达时测试会跳过并给出明确提示。
+因此运行测试需要联网。它是**人人共享的公共服务，可用性不保证，可能返回 HTTP 500**
+—— 这是服务状态问题，与 Stoma 无关。
 
 ## 关于
 
