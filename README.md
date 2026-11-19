@@ -88,7 +88,7 @@ with sync_playwright() as p:
 - 代码即协议：Stoma 保存接口调用所需的所有信息，调用接口时再也不用在 IDE 和接口文档之间切换。
 - 自动联想： 感谢 Pydantic 和范型特性，IDE 可以自动补全请求和响应参数。
 - OpenAPI CLI：提供 CLI 基于 OpenAPI 规范文档生成全部接口代码。
-<img width="80%" style="border-radius: 8px;" alt="stoma CLI 生成接口代码" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
+  <img width="80%" style="border-radius: 8px;" alt="stoma CLI 生成接口代码" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
 
 
 ## 文档
