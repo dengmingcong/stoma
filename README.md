@@ -1,17 +1,25 @@
 # Stoma
 
-Stoma 是一个接口自动化和接口自动化测试工具，尝试实现「代码即协议」来解决如下问题：
+<p align="center">
+  <a href="https://pypi.org/project/stoma/"><img alt="PyPI version" src="https://img.shields.io/pypi/v/stoma.svg"></a>
+  <a href="https://pypi.org/project/stoma/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/stoma.svg"></a>
+  <a href="https://img.shields.io/pypi/dm/stoma.svg"><img alt="PyPI downloads" src="https://img.shields.io/pypi/dm/stoma.svg"></a>
+  <a href="https://github.com/dengmingcong/stoma/blob/master/LICENSE"><img alt="License" src="https://img.shields.io/github/license/dengmingcong/stoma.svg"></a>
+</p>
 
-* 代码中请求 HTTP 接口，IDE 不能自动联想接口参数，需要左边屏幕打开 IDE，右边屏幕在浏览器打开接口协议。
-* 从响应中提取信息或者对响应断言时，同样需要左右对比查看结构。
+<p align="center"><b>用 OpenAPI 定义接口，用 Python 调用接口 —— 代码即协议。</b></p>
 
-现在 IDE 可以自动联想 Stoma 接口和响应。
+<p align="center">
+  <a href="#安装">安装</a> ·
+  <a href="#30-秒-demo">30 秒 Demo</a> ·
+  <a href="#为什么-stoma">为什么 Stoma</a> ·
+  <a href="#完整示例">完整示例</a> ·
+  <a href="#指南">指南</a> ·
+  <a href="#示例项目">示例项目</a> ·
+  <a href="#关于">关于</a>
+</p>
 
-<img width="80%" style="border-radius: 8px;" alt="Image" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
-
-Stoma 提供了 CLI 自动生成接口。
-
-<img width="80%" style="border-radius: 8px;" alt="Image" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
+---
 
 ## 安装
 
@@ -24,19 +32,92 @@ pip install stoma
 Stoma 依赖 Playwright 的 Python 包，但**不需要浏览器二进制** —— 它只用 Playwright 的
 `APIRequestContext` 发送请求，不启动浏览器，因此无需执行 `playwright install` 下载浏览器组件。
 
-## 最小示例
+依赖的 Stoma 版本范围为 `stoma>=0.3.0,<0.4.0`。
 
-定义接口、调用接口、对响应断言，三步完成。
+> **Stoma 当前是 Alpha 阶段（v0.3.0）**，API 与 CLI 仍可能调整。
+> 本文档目前只有中文版，英文版随后提供。
+
+## 30 秒 Demo
+
+调用一个接口，就是一次普通的 Python 调用：
 
 ```python
+endpoint = GetUserByName(username="user1")
+response = client.send(endpoint)
+user = response.expect(endpoint.on_200)
+assert user.username == "user1"
+```
+
+参数名、参数类型、响应结构，全部由 IDE 校验 —— 接口规范就是代码本身，
+不再需要在 IDE 和接口文档之间来回切换。
+
+Stoma 也提供 CLI，能直接从 OpenAPI 规范生成全部接口代码：
+
+<img width="80%" style="border-radius: 8px;" alt="stoma CLI 生成接口代码" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
+
+## 为什么 Stoma
+
+写接口自动化测试时，下面三件事最消耗时间。
+
+### 1. 写请求参数时，IDE 什么都不知道
+
+用裸字符串调接口时，URL 和参数都是没有约束的文本：
+
+```python
+client.get("https://api.example.com/user", params={"user_nmae": "user1"})  # 拼错了，运行时才发现
+```
+
+Stoma 里接口是一个 Pydantic 模型，参数名写错、类型写错，IDE 当场标红：
+
+```python
+endpoint = GetUserByName(username="user1")
+```
+
+### 2. 断言响应时，要肉眼比对 JSON 结构
+
+手写 `response.json()["user"]["firstName"]` 这种写法，字段拼错了要等断言失败才知道，
+失败信息还只是一个 `KeyError`。
+
+Stoma 会按响应协议校验并解析响应，返回的就是模型对象：
+
+```python
+user = response.expect(endpoint.on_200)
+assert user.first_name == "John"  # IDE 能补全，字段名写错立刻报错
+```
+
+### 3. 几百个接口，一个一个手工抄
+
+Stoma 提供 CLI，直接从 OpenAPI 规范生成全部接口代码：
+
+```bash
+stoma spec.json --out app --prefix /api/v3
+```
+
+## 完整示例
+
+以 Swagger Petstore 的 [getUserByName](https://petstore3.swagger.io/#/user/getUserByName) 接口为例。
+
+### 1. 定义接口
+
+接口由「路由 + 参数 + 响应协议」组成，写法和定义 Pydantic 模型一样：
+
+```python
+from typing import Annotated
+
 from pydantic import BaseModel, Field
+
 from stoma import APIRoute, APIRouter, ResponseSpec
 
 
 class User(BaseModel):
-    id: int | None = None
-    username: str
-    first_name: str | None = Field(default=None, alias="firstName")
+    id: Annotated[int | None, Field(examples=[10])] = None
+    """Example: 10"""
+
+    username: Annotated[str | None, Field(examples=["theUser"])] = None
+    """Example: 'theUser'"""
+
+    first_name: Annotated[str | None, Field(alias="firstName", examples=["John"])] = None
+    """Example: 'John'"""
 
 
 router = APIRouter(prefix="/api/v3")
@@ -57,10 +138,14 @@ class GetUserByName(APIRoute):
         )
 ```
 
-调用并断言：
+### 2. 调用接口
+
+Stoma 基于 Playwright 的 [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext)
+发送请求，Cookie、代理、超时、并发等 Playwright 特性全部可用。
 
 ```python
 from playwright.sync_api import sync_playwright
+
 from stoma import Client
 
 with sync_playwright() as p:
@@ -71,15 +156,41 @@ with sync_playwright() as p:
     response = client.send(endpoint)
     user = response.expect(endpoint.on_200)
     assert user.username == "user1"
-    assert user.first_name
 ```
 
-接口定义与断言响应是同一套模型 —— `GetUserByName` 用 `username: str` 声明请求参数，
-用 `on_200` 声明响应协议，`response.expect()` 会校验 Status Code 与 Media type，
-并把响应体转成 `User`。响应里的 `firstName` 会按模型声明的别名映射到 `first_name`。
+### 3. IDE 里自动联想
 
-> 上面查询的是 Swagger 官方 Petstore 公开演示服务。它是**人人共享的公共服务，
-> 可用性不保证，可能返回 HTTP 500** —— 这是服务状态问题，与 Stoma 无关。
+Stoma 把所有接口定义为 Pydantic 模型，所以 IDE 能自动联想所有参数：
+
+<img width="80%" style="border-radius: 8px;" alt="IDE 自动联想接口参数" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
+
+鼠标悬浮即可查看参数说明：
+
+<img width="80%" style="border-radius: 8px;" alt="悬浮查看参数说明" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/hover-param.png" />
+
+响应同样是强类型对象，`expect()` 的返回值类型由泛型推断：
+
+<img width="80%" style="border-radius: 8px;" alt="IDE 自动联想响应类型" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-response.png" />
+
+## 从 OpenAPI 生成接口
+
+`stoma` 命令读取 OpenAPI 规范（3.0 / 3.1，支持 YAML 和 JSON），生成可运行的接口代码：
+
+```bash
+stoma spec.json --out app --prefix /api/v3
+```
+
+生成结果：
+
+```text
+app/
+├── models.py       # 数据模型
+├── router.py       # 路由汇总
+└── endpoints/      # 每个接口一个文件
+```
+
+生成过程支持按状态码和媒体类型生成响应协议、表单与文件上传请求体、以及字段名自动转为
+snake_case；遇到规范中暂不支持的形态会跳过该接口并给出提示，而不是中断整批生成。
 
 ## 指南
 
@@ -100,14 +211,6 @@ with sync_playwright() as p:
 ```bash
 git clone https://github.com/dengmingcong/stoma-demo.git
 cd stoma-demo
-uv run pytest -v
-```
-
-没有 uv 也可以走 pip：
-
-```bash
-git clone https://github.com/dengmingcong/stoma-demo.git
-cd stoma-demo
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 pytest
@@ -119,5 +222,29 @@ pytest
 
 ## 关于
 
+### 项目状态
+
+Stoma 目前处于 **Alpha** 阶段（v0.3.0），接口仍可能调整。
+
+### 参与
+
+Stoma 还在早期，最有价值的贡献是**使用反馈**：哪些接口场景覆盖不到、生成代码是否符合你的
+编码习惯、文档哪里看不懂，都可以来讨论。
+
+- 问题与建议：[Stoma Discussions](https://github.com/dengmingcong/stoma/discussions)
+- 如果愿意一起完善，欢迎提交 PR。
+
+本地开发：
+
+```bash
+git clone https://github.com/dengmingcong/stoma.git
+cd stoma
+uv sync
+uv run pytest
+```
+
+### 许可证
+
+[MIT](https://github.com/dengmingcong/stoma/blob/master/LICENSE)
+
 - [关于 Stoma](https://github.com/dengmingcong/stoma/blob/master/docs/about.md) — 项目由来、灵感与依赖。
-- 许可证：[MIT](https://github.com/dengmingcong/stoma/blob/master/LICENSE)
