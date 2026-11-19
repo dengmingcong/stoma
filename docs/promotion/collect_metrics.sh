@@ -45,7 +45,7 @@ import json, sys
 d = json.load(sys.stdin)
 print("  stars        :", d["stargazers_count"])
 # 注意：watchers_count 在 REST API 中是 stargazers_count 的别名，不是真正的关注者数。
-# 真正的 watcher 数是 subscribers_count —— 用 watchers_count 会静默地测错 SC-004。
+# 真正的 watcher 数是 subscribers_count —— 用 watchers_count 会静默地测错关注数。
 print("  watchers     :", d["subscribers_count"], " # subscribers_count, 非 watchers_count")
 print("  forks        :", d["forks_count"])
 print("  open_issues  :", d["open_issues_count"])
