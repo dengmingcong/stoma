@@ -4,21 +4,19 @@
 
 ---
 
-## 问题
+## 手写模型的代价
 
-维护一套接口自动化测试，最花时间的不是写请求，是让模型和接口协议保持一致。
-
-一个接口有三样东西需要对得上：请求参数在哪、响应长什么样、什么状态码算成功。这三样都写在 OpenAPI 协议里，但测试代码里要重新抄一遍。
+OpenAPI 协议里已经写清楚了请求参数、响应结构和每个状态码的响应类型。接口测试代码里，这些内容要再抄一遍。
 
 抄的时候人是没有耐心的。少抄一个字段，接口返回 200，用例照样通过，断言形同虚设。协议新增了必填字段，模型里还是可选的，多出来的数据被静默丢掉。
 
-更麻烦的是 IDE 对接口一无所知。参数名写错不会有红线，字段名拼错要等到断言失败才知道。
+IDE 的补全帮不上忙。参数名写错不会有红线，字段名拼错要等到断言失败才知道。
 
-根源在于：**模型的来源是人，不是协议**。
+问题的根源是模型的来源是人，不是协议。
 
 ## 协议本身是唯一来源
 
-Stoma 的思路和 fastapi 相反。fastapi 是通过 Pydantic 模型生成 OpenAPI 描述的接口协议，Stoma 则是从 OpenAPI 生成 Pydantic 模型。
+Stoma 受 fastapi 启发，作用和 fastapi "相反"，fastapi 是通过 Pydantic 模型生成 OpenAPI 描述的接口协议，Stoma 则是从 OpenAPI 生成 Pydantic 模型。
 
 已经有 OpenAPI 协议的话，用 CLI 命令生成接口代码：
 
@@ -52,7 +50,7 @@ class GetUserByName(APIRoute):
 
 OpenAPI 协议中，一个接口可以包含多个 status code，每个 status code 的 content 又可以包含多个 Media type。
 
-Stoma 将一个 status code 下的一个 Media type 称为响应协议。生成时，它们被拆成每个响应协议一个 property：
+Stoma 将一个 status code 下的一个 Media type 称为响应协议。生成时，一个 status code 对应一个 property：
 
 ```python
 @router.get("/user/{username}")
@@ -116,7 +114,7 @@ with sync_playwright() as p:
 
 ## 小结
 
-请求参数是带类型的类属性，响应类型由响应协议指定，两边的来源都是 OpenAPI 协议，而不是手工抄写。IDE 因此能自动补全请求和响应参数。
+请求参数是带类型的类属性，响应类型由响应协议指定。两边的来源都是 OpenAPI 协议，IDE 能自动补全请求和响应参数。
 
 ## 安装
 
