@@ -1,50 +1,32 @@
 # OpenAPI 不该止步于接口文档：让 IDE 自动补全请求与响应
 
-> 我是 Stoma 的作者。这篇文章讲两个具体问题，以及我们做的这个工具怎么回答它们。
+> 我是 Stoma 的作者。这篇文章回答两个问题：接口定义已经有 OpenAPI 了，为什么接口测试代码还需要手工维护请求参数、响应模型和类型；Python 如何根据 HTTP 状态码推导不同的响应类型。
 
 ---
 
-## 一个具体场景
+## 问题
 
-你接手一个接口自动化测试项目，需求文档里贴着一份 Swagger 链接。你打开 IDE，准备写第一个用例：
+维护一套接口自动化测试，最花时间的不是写请求，是让模型和接口协议保持一致。
 
-```python
-requests.get("https://api.example.com/api/v3/user/user1")
-```
+一个接口有三样东西需要对得上：请求参数在哪、响应长什么样、什么状态码算成功。这三样都写在 OpenAPI 协议里，但测试代码里要重新抄一遍。
 
-然后你盯着 Swagger 页面找参数名：`username`？`userName`？必填还是选填？类型是 `string` 还是 `int`？
+抄的时候人是没有耐心的。少抄一个字段，接口返回 200，用例照样通过，断言形同虚设。协议新增了必填字段，模型里还是可选的，多出来的数据被静默丢掉。
 
-写完请求，你还要断言响应。于是再开一个标签页，对着 Swagger 的响应示例，比对 JSON 的层级：
+更麻烦的是 IDE 对接口一无所知。参数名写错不会有红线，字段名拼错要等到断言失败才知道。
 
-```python
-assert resp.json()["user"]["firstName"] == "John"
-```
+根源在于：**模型的来源是人，不是协议**。
 
-这套流程每个接口重复一遍。一个项目几百个接口，就是几百次「IDE ↔ 接口文档 ↔ 浏览器」的往返。
+## 协议本身是唯一来源
 
-更麻烦的是第二件事：**你无法信任 IDE 的提示**。它对接口一无所知 —— 参数名写错不会有红线，字段名拼错要等到断言失败才知道。
+Stoma 的思路和 fastapi 相反。fastapi 是通过 Pydantic 模型生成 OpenAPI 描述的接口协议，Stoma 则是从 OpenAPI 生成 Pydantic 模型。
 
-## 规范里其实什么都有
-
-OpenAPI 规范里，请求参数、每个状态码对应的响应结构，全都写得清清楚楚。问题在于规范是**给机器读的**（一份 JSON 或 YAML），不是给 Python 用的。
-
-于是就出现了那套手工活：手写 Pydantic 模型、运行时再校验一遍响应结构、或者干脆从响应里现场推导字段。三种做法断在了同一个地方 —— **模型的来源是人，不是协议**。协议改了，模型不会跟着改。
-
-这套流程还有一个隐蔽的代价：**协议新增字段时，你不会收到任何提示**。接口返回 200，用例照样绿，但断言还在对着旧结构做。多出来的数据被静默丢掉，测试看着通过，实际上什么都没验。
-
-## Stoma：让规范直接生成代码
-
-Stoma 的思路是把这一步反过来：**从 OpenAPI 生成 Pydantic 模型**。
-
-FastAPI 是从 Pydantic 模型生成 OpenAPI 描述，Stoma 正好相反。
-
-已经有规范的话，一行命令生成全部接口代码：
+已经有 OpenAPI 协议的话，用 CLI 命令生成接口代码：
 
 ```bash
 stoma spec.json --out app --prefix /api/v3
 ```
 
-生成出来的接口定义，请求参数和响应结构都是**带类型的类属性**：
+生成的接口定义，请求参数和响应协议都是带类型的类属性：
 
 ```python
 @router.get("/user/{username}")
@@ -52,7 +34,6 @@ class GetUserByName(APIRoute):
     """按用户名查询用户。"""
 
     username: str
-    """要查询的用户名，测试时用 user1"""
 
     @property
     def on_200_application_json(self) -> ResponseSpec[User]:
@@ -63,48 +44,93 @@ class GetUserByName(APIRoute):
         )
 ```
 
-## 请求参数：IDE 现在认识了
+因为接口是 Pydantic 模型，IDE 可以自动联想所有参数。
 
-`username` 不再是字符串拼接里的一个字面量，而是一个**带类型的类属性**。写 `GetUserByName(` 的时候，IDE 直接告诉你这个接口要哪些参数、什么类型。
+<img src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" alt="IDE 自动联想接口参数" />
 
-<img src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" alt="IDE 自动补全接口参数" />
+## 按状态码推导响应类型
 
-生成的这份代码，和你手写的模型最大的区别不是长得像，而是**它有出处**。协议里的参数叫什么、是什么类型，生成结果里就是什么 —— 没有第二次转述的机会，也就没有抄错的可能。
+OpenAPI 协议中，一个接口可以包含多个 status code，每个 status code 的 content 又可以包含多个 Media type。
 
-## 响应类型：按状态码推导
-
-OpenAPI 里一个接口可以声明多个状态码，每个状态码有自己的响应结构。Stoma 把它们拆成**每个状态码一个属性** —— `on_200_application_json` 对应成功时的 `User`，`on_400` 和 `on_404` 没有响应体，只需要校验状态码，`on_default` 兜住剩下的情况。
-
-调用的时候，选你关心的那个协议：
+Stoma 将一个 status code 下的一个 Media type 称为响应协议。生成时，它们被拆成每个响应协议一个 property：
 
 ```python
-endpoint = GetUserByName(username="user1")
-response = client.send(endpoint)
+@router.get("/user/{username}")
+class GetUserByName(APIRoute):
+    """按用户名查询用户。"""
 
-user = response.expect(endpoint.on_200_application_json)
+    username: str
+
+    @property
+    def on_200_application_json(self) -> ResponseSpec[User]:
+        return ResponseSpec(
+            status_code=200,
+            media_type="application/json",
+            expected_type=User,
+        )
+
+    @property
+    def on_400(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=400,
+        )
+
+    @property
+    def on_404(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=404,
+        )
+
+    @property
+    def on_default(self) -> EmptyResponseSpec:
+        return EmptyResponseSpec(
+            status_code=lambda c: c not in [200, 400, 404],
+        )
 ```
 
-`expect()` 按你选中的那个协议做三件事：校验状态码、校验媒体类型、按声明的类型校验响应体。字段对不上，抛的是 `ValidationError`，而不是一个等着人肉比对的 dict。
+`ResponseSpec` 称为通用响应协议，规定了 `status_code`、`media_type` 和 `expected_type`，并且 `ResponseSpec` 是泛型，泛型参数和 `expected_type` 一致。
 
-关键在**泛型**：`expect()` 的返回值类型由协议的类型参数推断出来。`on_200_application_json` 的类型是 `ResponseSpec[User]`，所以 `user` 就是 `User` —— IDE 知道，`user.first_name` 拼错了当场标红。
+`EmptyResponseSpec` 称为空响应协议，表示响应的 body 是空的，只需要校验 `status_code`。
 
-这也解决了状态码多起来之后的另一个麻烦。手工写的时候，「200 返回用户，404 返回空」这件事只存在于你的记忆里；生成之后，它变成了类里几个并排的属性 —— **看得见，就不容易记错**。
+调用时，选定要断言的响应协议：
 
-## 上下两层接起来了
+```python
+from playwright.sync_api import sync_playwright
+from stoma import Client
 
-请求侧，参数是类属性，IDE 能补全；响应侧，类型由「状态码 + 媒体类型」决定，IDE 同样知道。
+with sync_playwright() as p:
+    ctx = p.request.new_context(base_url="https://petstore3.swagger.io")
+    client = Client(context=ctx)
 
-两边合起来，就是同一件事：**代码即协议**。接口定义的来源不再是某个人的记忆，而是那份 OpenAPI 规范。规范改了，重新生成一次，代码跟着变。
+    endpoint = GetUserByName(username="user1")
+    response = client.send(endpoint)
+    user = response.expect(endpoint.on_200_application_json)
+    assert user.username == "user1"
+```
 
-## 上手
+`Client.send()` 返回 `Response` 实例，`Response` 实例的 `expect()` 方法预期一个响应协议，会按照协议对 Status Code、Media type 校验，并使用 `pydantic.TypeAdapter` 将返回体转换为响应协议指定的模型。
+
+得益于泛型特性，IDE 能自动推断 `expect()` 的返回值类型，可以使用点自动联想该类型的属性。
+
+<img src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-response.png" alt="IDE 自动联想响应类型" />
+
+## 小结
+
+请求参数是带类型的类属性，响应类型由响应协议指定，两边的来源都是 OpenAPI 协议，而不是手工抄写。IDE 因此能自动补全请求和响应参数。
+
+## 安装
+
+需要使用 Python 3.12 及以上版本。
 
 ```bash
 pip install stoma
 ```
 
-需要 Python 3.12 及以上版本。依赖 Playwright 的 Python 包，但**不需要浏览器二进制** —— Stoma 只用 `APIRequestContext` 发请求，不启动浏览器。
+Stoma 内部基于 Playwright [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext) 实现接口调用，不会对 `APIRequestContext` 做任何修改，所有特性都能正常使用。Stoma 只使用 `APIRequestContext`，从不启动浏览器，因此不需要安装浏览器二进制。
 
-想看完整示例，clone 一下 [stoma-demo](https://github.com/dengmingcong/stoma-demo) 仓库：
+## 示例
+
+演示仓库 [stoma-demo](https://github.com/dengmingcong/stoma-demo) 展示了在实际项目中如何使用 Stoma。
 
 ```bash
 git clone https://github.com/dengmingcong/stoma-demo.git
@@ -114,15 +140,23 @@ pip install -r requirements.txt
 pytest
 ```
 
-仓库里带的是 Swagger 官方 Petstore 的规范、生成好的接口定义，以及 8 个带断言的用例。
+> ⚠️ 演示后端是 Swagger 官方 Petstore 公共服务，人人共享，可用性不保证，可能返回 HTTP 500。这是服务状态问题，与 Stoma 无关。
 
-> ⚠️ 演示后端是 Swagger 官方 Petstore 公共服务，人人共享，可用性不保证，可能返回 HTTP 500 —— 这是服务状态问题，与 Stoma 无关。
+## 文档
 
-## 我们想听到什么
+- [快速开始](https://github.com/dengmingcong/stoma/blob/master/docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
+- 定义接口 — Stoma 中一个接口由接口路由、接口参数和响应协议组成。
+    * [接口路由](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-routes.md)
+    * [接口参数](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-parameters.md)
+    * [响应协议](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-response-specs.md)
+- [接口请求和断言](https://github.com/dengmingcong/stoma/blob/master/docs/guide/client.md) — 使用 `Client` 调用接口，对接口响应断言。
+- [生成接口](https://github.com/dengmingcong/stoma/blob/master/docs/guide/cli.md) — Stoma 提供了 CLI 命令基于 OpenAPI 协议自动生成接口。
 
-Stoma 还在早期，API 和 CLI 都会调整。
+## 关于
 
-比起 star，我们更想要的是你的反馈：生成的代码符合你的编码习惯吗？哪类接口形态还处理不了？文档里哪一段看不懂？
+我是 Stoma 的作者。Stoma 还在早期，API 和 CLI 都会调整。
+
+比起 star，更想要的是反馈：生成的代码符合你的编码习惯吗？哪些接口形态还处理不了？文档里哪一段看不懂？
 
 项目主页：https://github.com/dengmingcong/stoma
 
