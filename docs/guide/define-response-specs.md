@@ -2,7 +2,7 @@
 
 从 [OpenAPI Map](https://openapi-map.apihandyman.io/?version=3.0) 可以看出，一个 HTTP 接口的响应可以包含多个 status code，每个 status code 的 content 又可以包含多个 Media type。
 
-![OpenAPI Map](../assets/guide/define-response-specs/openapi.png)
+![OpenAPI Map](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/define-response-specs/openapi.png)
 
 Stoma 将一个 status code 下的一个 Media type 称为响应协议，用来定义对应 content 的数据类型。
 

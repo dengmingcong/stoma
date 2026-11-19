@@ -45,7 +45,7 @@ with sync_playwright() as p:
 
 得益于泛型特性，IDE 能自动推断 `expect()` 的返回值类型，可以使用点自动联想该类型的属性。
 
-![alt text](../assets/guide/quickstart/ide-autocomplete-response.png)
+![IDE 自动联想响应类型](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-response.png)
 
 ## 全局 Header 技巧
 

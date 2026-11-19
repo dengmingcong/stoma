@@ -6,13 +6,12 @@
 需要使用 Python 3.12 及以上版本。
 
 ```bash
-# 安装运行时需要的依赖
 pip install stoma
 ```
 
 ## 定义接口
 
-以 Swagger Petstore 接口 [getUserByName](https://petstore.swagger.io/#/user/getUserByName) 为例，说明 Stoma 中如何定义接口。
+以 Swagger Petstore 接口 [getUserByName](https://petstore3.swagger.io/#/user/getUserByName) 为例，说明 Stoma 中如何定义接口。
 
 ```python
 from typing import Annotated
@@ -86,11 +85,11 @@ with sync_playwright() as p:
 
 * Stoma 内部使用 Playwright [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext) 发送请求并管理 Cookie 等，Playwright 的所有特性均可以正常使用。
 * Stoma 将所有接口定义为 Pydantic 模型，IDE 可以自动联想所有参数。
-    ![alt text](../assets/guide/quickstart/ide-autocomplete-param.png)
+    ![IDE 自动联想接口参数](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-param.png)
     鼠标悬浮时还可查看参数的说明。
-    ![alt text](../assets/guide/quickstart/hover-param.png)
+    ![悬浮查看参数说明](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/hover-param.png)
 * `Client.send()` 返回 `Response` 实例，`Response` 实例的 `expect()` 方法预期一个响应协议，会按照协议对 Status Code、Media type 校验，并使用 `pydantic.TypeAdapter` 将返回体转换为响应协议指定的模型，利用泛型特性实现 IDE 自动联想。
-    ![alt text](../assets/guide/quickstart/ide-autocomplete-response.png)
+    ![IDE 自动联想响应类型](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-response.png)
 
 ## 回顾
 
