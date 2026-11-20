@@ -59,6 +59,29 @@ Options:
     └── <snake_case_operation_id>.py
 ```
 
+## 已知限制：类名与 stoma 的类型同名
+
+接口的类名由 operationId 派生（`uploadFile` → `UploadFile`）。如果派生的类名与 `stoma`
+导出的某个类型同名（`UploadFile`），生成的文件里类定义会遮住导入的类型：
+
+```python
+from stoma import (..., UploadFile)
+
+@router.post("/pet/{petId}/uploadImage", upload_as_multipart=False)
+class UploadFile(APIRoute):
+    ...
+    body: UploadFile   # 实际指向端点类自身，不是文件类型
+```
+
+此时该模块导入即报错：
+
+```
+ValueError: upload_as_multipart=False 要求 body 恰好包含一个 UploadFile 字段，实际有 0 个
+```
+
+**框架不做处理** —— 遇到这种情况由使用者自行决定怎么改（改类名、改注解，或换一种
+声明方式）。若不希望生成的代码触发这个问题，可让 operationId 避开 `stoma` 导出的类型名。
+
 ## 完整输出示例
 
 [stoma-demo](https://github.com/dengmingcong/stoma-demo) 仓库的 `app/` 目录就是用 `stoma` 命令生成的，

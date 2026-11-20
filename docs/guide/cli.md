@@ -59,6 +59,31 @@ The generated directory looks like this:
     └── <snake_case_operation_id>.py
 ```
 
+## Known limitation: a class name that collides with a Stoma type
+
+The class name of an endpoint is derived from its operationId (`uploadFile` → `UploadFile`).
+If the derived class name collides with one of the types Stoma exports (`UploadFile`), the
+class definition shadows the imported type:
+
+```python
+from stoma import (..., UploadFile)
+
+@router.post("/pet/{petId}/uploadImage", upload_as_multipart=False)
+class UploadFile(APIRoute):
+    ...
+    body: UploadFile   # actually refers to the endpoint class itself, not the file type
+```
+
+Importing that module then fails:
+
+```
+ValueError: upload_as_multipart=False 要求 body 恰好包含一个 UploadFile 字段，实际有 0 个
+```
+
+**The framework does not handle this** — it is up to you to decide how to fix it (rename the
+class, change the annotation, or declare it another way). To avoid hitting it, pick
+operationIds that don't collide with the type names Stoma exports.
+
 ## A full example of the output
 
 The `app/` directory of the [stoma-demo](https://github.com/dengmingcong/stoma-demo) repository was generated with the `stoma` command. The command and its output:
