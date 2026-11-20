@@ -2,7 +2,10 @@
 
 <!-- README-I18N:START -->
 
-**English** | [中文](./define-routes.zh.md)
+<p align="center">
+  <b>English</b> ·
+  <a href="./define-routes.zh.md">中文</a>
+</p>
 
 <!-- README-I18N:END -->
 Define an endpoint's route with the HTTP method decorators of an `APIRouter` instance (`get` / `post` and so on).

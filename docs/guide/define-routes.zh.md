@@ -2,7 +2,10 @@
 
 <!-- README-I18N:START -->
 
-[English](./define-routes.md) | **中文**
+<p align="center">
+  <a href="./define-routes.md">English</a> ·
+  <b>中文</b>
+</p>
 
 <!-- README-I18N:END -->
 通过 `APIRouter` 实例的 HTTP 方法装饰器（`get` / `post` 等）定义接口路由。

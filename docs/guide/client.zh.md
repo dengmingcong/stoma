@@ -2,7 +2,10 @@
 
 <!-- README-I18N:START -->
 
-[English](./client.md) | **中文**
+<p align="center">
+  <a href="./client.md">English</a> ·
+  <b>中文</b>
+</p>
 
 <!-- README-I18N:END -->
 Stoma 定义的接口只存储数据，调用接口使用 `stoma.Client` 实现。

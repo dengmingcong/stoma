@@ -2,7 +2,10 @@
 
 <!-- README-I18N:START -->
 
-**English** | [中文](./define-response-specs.zh.md)
+<p align="center">
+  <b>English</b> ·
+  <a href="./define-response-specs.zh.md">中文</a>
+</p>
 
 <!-- README-I18N:END -->
 As [OpenAPI Map](https://openapi-map.apihandyman.io/?version=3.0) shows, the response of an HTTP endpoint can contain multiple status codes, and the content of each status code can contain multiple media types.

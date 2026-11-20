@@ -2,7 +2,10 @@
 
 <!-- README-I18N:START -->
 
-**English** | [中文](./define-parameters.zh.md)
+<p align="center">
+  <b>English</b> ·
+  <a href="./define-parameters.zh.md">中文</a>
+</p>
 
 <!-- README-I18N:END -->
 Stoma declares parameters in the `Annotated[T, Mark()]` style.

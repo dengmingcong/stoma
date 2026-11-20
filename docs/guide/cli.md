@@ -2,7 +2,10 @@
 
 <!-- README-I18N:START -->
 
-**English** | [中文](./cli.zh.md)
+<p align="center">
+  <b>English</b> ·
+  <a href="./cli.zh.md">中文</a>
+</p>
 
 <!-- README-I18N:END -->
 Stoma provides a CLI command, `stoma`, that generates endpoint code from an OpenAPI spec file.

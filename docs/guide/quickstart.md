@@ -3,7 +3,10 @@
 
 <!-- README-I18N:START -->
 
-**English** | [中文](./quickstart.zh.md)
+<p align="center">
+  <b>English</b> ·
+  <a href="./quickstart.zh.md">中文</a>
+</p>
 
 <!-- README-I18N:END -->
 

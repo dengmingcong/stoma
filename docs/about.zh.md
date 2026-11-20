@@ -2,7 +2,10 @@
 
 <!-- README-I18N:START -->
 
-[English](./about.md) | **中文**
+<p align="center">
+  <a href="./about.md">English</a> ·
+  <b>中文</b>
+</p>
 
 <!-- README-I18N:END -->
 关于 Stoma 项目的由来。

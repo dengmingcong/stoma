@@ -2,7 +2,10 @@
 
 <!-- README-I18N:START -->
 
-[English](./define-parameters.md) | **中文**
+<p align="center">
+  <a href="./define-parameters.md">English</a> ·
+  <b>中文</b>
+</p>
 
 <!-- README-I18N:END -->
 Stoma 通过 `Annotated[T, Mark()]` 风格声明参数。

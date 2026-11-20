@@ -2,7 +2,10 @@
 
 <!-- README-I18N:START -->
 
-**English** | [中文](./about.zh.md)
+<p align="center">
+  <b>English</b> ·
+  <a href="./about.zh.md">中文</a>
+</p>
 
 <!-- README-I18N:END -->
 Where the Stoma project came from.
