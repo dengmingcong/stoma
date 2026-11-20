@@ -17,7 +17,7 @@
 
 <p align="center">
   <b>English</b> ·
-  <a href="./README.zh.md">中文</a>
+  <a href="https://github.com/dengmingcong/stoma/blob/master/README.zh.md">中文</a>
 </p>
 
 <!-- README-I18N:END -->

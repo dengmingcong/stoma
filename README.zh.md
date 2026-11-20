@@ -16,7 +16,7 @@
 <!-- README-I18N:START -->
 
 <p align="center">
-  <a href="./README.md">English</a> ·
+  <a href="https://github.com/dengmingcong/stoma/blob/master/README.md">English</a> ·
   <b>中文</b>
 </p>
 
