@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "stoma"
 version = "0.3.0"
-description = "Python API automation and testing framework — the code is the protocol"
+description = "Define with OpenAPI. Autocomplete with Stoma."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
