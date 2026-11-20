@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import warnings
 from dataclasses import dataclass
@@ -60,6 +59,7 @@ from stoma.openapi.schema import (
 from stoma.openapi.status_code import parse_status_key
 from stoma.openapi.type_mapping import is_primitive_json_type, python_type_name
 from stoma.openapi.version import Reference30, Reference31, SpecVersion
+from stoma.ruff_locator import find_ruff
 
 
 class _ReferenceLike(Protocol):
@@ -887,15 +887,15 @@ def render_to_file(
     file_path = output_path / file_name
     file_path.write_text(rendered_code, encoding="utf-8")
 
-    if enable_ruff and shutil.which("ruff") is not None:
+    if enable_ruff and (ruff_path := find_ruff()) is not None:
         subprocess.run(
-            ["ruff", "format", str(file_path)],
+            [ruff_path, "format", str(file_path)],
             check=False,
             capture_output=True,
             timeout=30,
         )
         subprocess.run(
-            ["ruff", "check", "--select", "I,F401", "--fix", str(file_path)],
+            [ruff_path, "check", "--select", "I,F401", "--fix", str(file_path)],
             check=False,
             capture_output=True,
             timeout=30,

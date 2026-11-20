@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import ast
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Annotated
@@ -25,6 +24,7 @@ from stoma.openapi.renderer import (
     make_endpoint_renderer,
     render_to_file,
 )
+from stoma.ruff_locator import find_ruff
 
 app = typer.Typer(
     help="Stoma - OpenAPI 接口代码生成工具",
@@ -69,15 +69,15 @@ def make(
         if schemas or has_json_payloads:
             typer.echo("→ 生成 models.py", err=True)
             generate_models(raw_spec, out / "models.py")
-            if shutil.which("ruff") is not None:
+            if (ruff_path := find_ruff()) is not None:
                 subprocess.run(
-                    ["ruff", "format", str(out / "models.py")],
+                    [ruff_path, "format", str(out / "models.py")],
                     check=False,
                     capture_output=True,
                     timeout=30,
                 )
                 subprocess.run(
-                    ["ruff", "check", "--select", "I,F401", "--fix", str(out / "models.py")],
+                    [ruff_path, "check", "--select", "I,F401", "--fix", str(out / "models.py")],
                     check=False,
                     capture_output=True,
                     timeout=30,
