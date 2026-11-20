@@ -13,10 +13,11 @@
   <img width="80%" style="border-radius: 8px;" alt="IDE autocompletes API parameters" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
 </p>
 
-<p align="center">
-  <b>English</b> ·
-  <a href="https://github.com/dengmingcong/stoma/blob/master/README.zh.md">中文</a>
-</p>
+<!-- README-I18N:START -->
+
+**English** | [中文](./README.zh.md)
+
+<!-- README-I18N:END -->
 
 <p align="center">
   <a href="#installation">Installation</a> ·
@@ -103,8 +104,6 @@ with sync_playwright() as p:
 
 
 ## Docs
-
-The guide below is written in Chinese.
 
 - [Quickstart](https://github.com/dengmingcong/stoma/blob/master/docs/guide/quickstart.md) — installation and a walkthrough against a real API.
 - Defining an endpoint — an endpoint in Stoma is made of a route, its parameters, and its response specs.

@@ -13,10 +13,11 @@
   <img width="80%" style="border-radius: 8px;" alt="IDE 自动联想接口参数" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
 </p>
 
-<p align="center">
-  <a href="https://github.com/dengmingcong/stoma/blob/master/README.md">English</a> ·
-  <b>中文</b>
-</p>
+<!-- README-I18N:START -->
+
+[English](./README.md) | **中文**
+
+<!-- README-I18N:END -->
 
 <p align="center">
   <a href="#安装">安装</a> ·
@@ -98,17 +99,17 @@ with sync_playwright() as p:
 
 ## 文档
 
-- [快速开始](https://github.com/dengmingcong/stoma/blob/master/docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
+- [快速开始](https://github.com/dengmingcong/stoma/blob/master/docs/guide/quickstart.zh.md) — 安装并以真实接口为例介绍用法。
 - 定义接口 — Stoma 中一个接口由接口路由、接口参数和响应协议组成。
-    * [接口路由](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-routes.md)
-    * [接口参数](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-parameters.md)
-    * [响应协议](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-response-specs.md)
-- [接口请求和断言](https://github.com/dengmingcong/stoma/blob/master/docs/guide/client.md) — 使用 `Client` 调用接口，对接口响应断言。
-- [生成接口](https://github.com/dengmingcong/stoma/blob/master/docs/guide/cli.md) — Stoma 提供了 CLI 命令基于 OpenAPI 协议自动生成接口。
+    * [接口路由](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-routes.zh.md)
+    * [接口参数](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-parameters.zh.md)
+    * [响应协议](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-response-specs.zh.md)
+- [接口请求和断言](https://github.com/dengmingcong/stoma/blob/master/docs/guide/client.zh.md) — 使用 `Client` 调用接口，对接口响应断言。
+- [生成接口](https://github.com/dengmingcong/stoma/blob/master/docs/guide/cli.zh.md) — Stoma 提供了 CLI 命令基于 OpenAPI 协议自动生成接口。
 
 也可以看看演示仓库 [stoma-demo](https://github.com/dengmingcong/stoma-demo)，演示在实际项目中如何使用 Stoma。
 
 
 ## 关于
 
-[关于 Stoma](https://github.com/dengmingcong/stoma/blob/master/docs/about.md) — 项目由来、灵感与依赖。
+[关于 Stoma](https://github.com/dengmingcong/stoma/blob/master/docs/about.zh.md) — 项目由来、灵感与依赖。

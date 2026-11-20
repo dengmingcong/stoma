@@ -1,14 +1,19 @@
 # Client
 
-Stoma 定义的接口只存储数据，调用接口使用 `stoma.Client` 实现。
+<!-- README-I18N:START -->
 
-## 调用接口
+**English** | [中文](./client.zh.md)
 
-Stoma 内部基于 Playwright [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext) 实现接口调用，Stoma 不会对 `APIRequestContext` 做任何修改，所有特性都能正常使用。
+<!-- README-I18N:END -->
+Endpoints defined in Stoma only hold data; calling them is done with `stoma.Client`.
 
-`Client` 不直接创建 `APIRequestContext`，由用户建好后传入，由用户控制 Context 的声明周期，Stoma 会将接口的数据收集后发送给 `APIRequestContext`。
+## Calling an endpoint
 
-以调用接口 `GetUserByName` 为例。
+Stoma implements endpoint calls on top of Playwright's [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext). Stoma does not modify `APIRequestContext` in any way, so every feature works as usual.
+
+`Client` does not create the `APIRequestContext` itself. You create it and pass it in, which keeps the lifetime of the context under your control; Stoma collects the endpoint's data and hands it to the `APIRequestContext`.
+
+Take calling the endpoint `GetUserByName` as the example.
 
 ```python
 from playwright.sync_api import sync_playwright
@@ -24,32 +29,32 @@ with sync_playwright() as p:
     assert user.username == "user1"
 ```
 
-实现过程：
+What happens:
 
-1. 创建 `Client` 实例，传入事先创建的 `APIRequestContext` 实例。
-2. 创建接口实例，确定接口参数的值。
-3. 调用 `Client.send()`，传入接口实例。
+1. Create a `Client` instance, passing in the `APIRequestContext` you created beforehand.
+2. Create the endpoint instance, giving the endpoint's parameters their values.
+3. Call `Client.send()`, passing in the endpoint instance.
 
-### 响应
+### Response
 
-`Client.send()` 始终返回 [stoma.Response](../../src/stoma/dependencies/response.py) 实例。
+`Client.send()` always returns a [stoma.Response](../../src/stoma/dependencies/response.py) instance.
 
-`Response` 实例只有一个属性 `raw`，保存的是 `APIRequestContext` 接口请求函数的返回值，即 `playwright.sync_api.APIResponse`。
+A `Response` instance has a single attribute, `raw`, which holds the return value of the `APIRequestContext` request call — that is, a `playwright.sync_api.APIResponse`.
 
-### 校验
+### Assertions
 
-`Response` 的 `expect()` 方法接受 [响应协议](./define-response-specs.md) 实例，可以临时创建一个响应协议，也可以使用接口已经绑定好的响应协议，示例中使用的是 property `on_200` 绑定的响应协议。
+The `expect()` method of a `Response` takes a [response spec](.define-response-specs.md) instance. You can create one on the fly, or use one already bound to the endpoint — the example above uses the spec bound to the property `on_200`.
 
-* 如果传入的是通用响应协议 `ResponseSpec`，Stoma 会校验响应的 `status_code`、`media_type`，并使用 `expected_type` 基于 `pydantic.TypeAdapter` 对响应体做校验并返回对应对象，示例中 `response.expect(endpoint.on_200)` 返回的就是 `User` 对象。
-* 如果传入的是空响应协议 `EmptyResponseSpec`，Stoma 只会校验响应的 `status_code`，不返回任何值。
+* If you pass a general response spec `ResponseSpec`, Stoma validates the response's `status_code` and `media_type`, and uses `expected_type` with `pydantic.TypeAdapter` to validate the body and return the corresponding object — `response.expect(endpoint.on_200)` returns a `User` object.
+* If you pass an empty response spec `EmptyResponseSpec`, Stoma validates only the response's `status_code` and returns nothing.
 
-得益于泛型特性，IDE 能自动推断 `expect()` 的返回值类型，可以使用点自动联想该类型的属性。
+Thanks to generics, the IDE infers the return type of `expect()`, and dot-completion lists the attributes of that type.
 
-![IDE 自动联想响应类型](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-response.png)
+![IDE autocompletes the response type](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-response.png)
 
-## 全局 Header 技巧
+## Global headers
 
-[创建 Playwright APIRequestContext](https://playwright.dev/python/docs/api/class-apirequest) 时，可以传入全局 Header 控制全局行为，比如传入认证后的 token 实现接口认证：
+When you [create a Playwright APIRequestContext](https://playwright.dev/python/docs/api/class-apirequest), you can pass global headers to control the behavior of every request — for example, an auth token:
 
 ```python
 ctx = p.request.new_context(
@@ -59,6 +64,4 @@ ctx = p.request.new_context(
 client = Client(context=ctx)
 ```
 
-`extra_http_headers` 会在所有请求上携带。
-
-
+`extra_http_headers` is sent with every request.

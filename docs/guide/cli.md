@@ -1,8 +1,13 @@
-# 生成接口
+# Generating endpoints
 
-Stoma 提供了 CLI 命令 `stoma` 从 OpenAPI 规范文件自动生成接口代码。
+<!-- README-I18N:START -->
 
-## 命令概览
+**English** | [中文](./cli.zh.md)
+
+<!-- README-I18N:END -->
+Stoma provides a CLI command, `stoma`, that generates endpoint code from an OpenAPI spec file.
+
+## Command overview
 
 ```
 Usage: stoma [OPTIONS] SPEC
@@ -21,34 +26,36 @@ Options:
   --help                Show this message and exit.
 ```
 
-参数说明：
+The help text above is the output of the program itself, so it is shown as-is.
 
-* `SPEC`：指定 OpenAPI 规范文件路径，当前只支持 `.json`、`.yml` 和 `.yaml` 后缀，且只支持 OpenAPI 3.0 和 3.1。
-* `--out` / `-o`：指定输出目录路径，默认为当前目录（`Path(".")`）。
-* `--prefix`：为这一批次接口生成公共路径前缀。
+Arguments:
 
-## 生成逻辑
+* `SPEC`: the path to the OpenAPI spec file. Only `.json`, `.yml` and `.yaml` suffixes are supported, and only OpenAPI 3.0 and 3.1.
+* `--out` / `-o`: the output directory. Defaults to the current directory (`Path(".")`).
+* `--prefix`: a shared path prefix for the endpoints generated in this batch.
 
-简要说明生成过程运行逻辑。
+## How generation works
 
-1. 校验输入，确认规范文件存在。
-2. 读取规范文件，按声明的 OpenAPI 版本（3.0.x / 3.1.x）派发后续处理。
-3. 预处理规范中的引用。
-4. 解析为统一的中间表示，规范化每个接口的方法、路径、参数、请求体与响应。
-    注意：要求每个操作都有非空的 operationId。
-5. 使用 [datamodel-code-generator](https://datamodel-code-generator.koxudaxi.dev/) 生成数据模型，保存到 `models.py`，模型类名由 operationId 派生。
-6. 生成 `router.py`，将所有接口汇总到一个路由模板中，`--prefix` 作为公共路径前缀传入。
-7. 逐接口渲染。每个接口输出一份以 operationId 蛇形命名的文件，依次完成：
-    a. 解析路径、查询、头部参数并生成对应的字段声明。
-    b. 按请求体的实际形态（JSON 对象、表单、二进制、纯文本）选择对应的渲染分支。
-    c. 按「状态码 + 媒体类型」生成一条响应协议。
-8. 为生成的每个文件依次执行 `ruff format` 与 `ruff check --select I,F401 --fix`，若系统未安装 ruff 则跳过。
-9. 收集并按类别输出生成过程中的问题：
-    * 同一接口的请求体存在多种 Media type：仅采用第一种，作为警告输出并继续。
-    * 响应引用的模型不存在于生成的 `models.py`：改用通用响应类型，作为警告输出并继续。
-    * 当前不支持的接口形态（如顶层组合 schema 等）：跳过该接口文件的生成并输出错误。
+A brief description of the generation process.
 
-生成的文件目录为：
+1. Validate the input — confirm the spec file exists.
+2. Read the spec file and dispatch on the declared OpenAPI version (3.0.x / 3.1.x).
+3. Preprocess the references in the spec.
+4. Parse into a unified intermediate representation, normalizing the method, path, parameters, request body and responses of every endpoint.
+    Note: every operation must have a non-empty operationId.
+5. Use [datamodel-code-generator](https://datamodel-code-generator.koxudaxi.dev/) to generate the data models, saved to `models.py`. Model class names are derived from the operationId.
+6. Generate `router.py`, collecting all endpoints into one router template, with `--prefix` passed in as the shared path prefix.
+7. Render endpoint by endpoint. Each endpoint produces one file named after the snake_case operationId, in this order:
+    a. Parse the path, query and header parameters and generate the matching field declarations.
+    b. Pick the rendering branch that matches the actual shape of the request body (JSON object, form, binary, plain text).
+    c. Generate one response spec per "status code + media type".
+8. Run `ruff format` and `ruff check --select I,F401 --fix` on each generated file. If ruff is not installed, this step is skipped.
+9. Collect the problems found during generation and report them by category:
+    * The request body of one endpoint has multiple media types: only the first is used, reported as a warning, and generation continues.
+    * A response references a model that is missing from the generated `models.py`: a generic response type is used instead, reported as a warning, and generation continues.
+    * An unsupported endpoint shape (such as a top-level composed schema): the file for that endpoint is skipped and an error is reported.
+
+The generated directory looks like this:
 
 ```
 <out>/
@@ -59,10 +66,9 @@ Options:
     └── <snake_case_operation_id>.py
 ```
 
-## 完整输出示例
+## A full example of the output
 
-[stoma-demo](https://github.com/dengmingcong/stoma-demo) 仓库的 `app/` 目录就是用 `stoma` 命令生成的，
-运行的命令及输出如下：
+The `app/` directory of the [stoma-demo](https://github.com/dengmingcong/stoma-demo) repository was generated with the `stoma` command. The command and its output:
 
 ```shell
 $ stoma spec.json -o app
