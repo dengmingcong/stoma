@@ -1,3 +1,60 @@
+## v0.4.0 (2026-11-20)
+
+### Feat
+
+- drop code formatting from CLI generation
+- locate ruff via its Python package instead of PATH
+- make ruff a runtime dependency so generated imports are always tidy
+- complete project metadata for PyPI discoverability
+- add promotion audience personas
+- add promotion metrics baseline
+
+### Fix
+
+- use absolute URLs for the README language switcher
+- also sort imports in generated models.py
+- repair broken sibling doc links, add i18n link regression test
+- use absolute URLs for README demo images
+- remove references to the nonexistent stoma[cli] extra
+- remove stale pytest ignore flag and sync docstrings
+
+### Docs
+
+- describe how ruff is located for import tidying
+- document the class-name collision limitation
+- align English docs with Chinese source, per spec owner review
+- keep language switcher on README only
+- center the language switcher
+- translate guide and about docs, make English the default
+- make English the default language
+- narrow promotion scope to TesterHome only
+- add intro
+- rewrite promotion master article
+- rewrite master article with concrete subjects
+- rewrite master article in the project's documentation voice
+- add promotion master article
+- drop references to removed success criteria
+- fix quickstart install command and absolute image URLs
+- drop maturity, version range and language-scope statements
+- simplify README
+- restructure README to the agreed section names and order
+- rewrite README with the agreed section order
+- remove Juejin landing page
+- add Juejin landing page
+- add promotion channel ledger
+- align README example with the Petstore-based demo
+- add license notice and absolute URL for about page
+- point README example project at the Petstore-based demo
+- use absolute URLs for README guide links
+- add minimal runnable example to README
+- add install section to README
+- update CLI output example to match the demo repository
+- correct stale CLI docstring
+- correct the regression gate result in coverage audit
+- add TesterHome to promotion channel mapping
+- add coverage audit for examples directory removal
+- add demo gif
+
 ## v0.3.0 (2026-08-25)
 
 ### Feat

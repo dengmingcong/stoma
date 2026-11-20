@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stoma"
-version = "0.3.0"
+version = "0.4.0"
 description = "Define with OpenAPI. Autocomplete with Stoma."
 readme = "README.md"
 requires-python = ">=3.12"
