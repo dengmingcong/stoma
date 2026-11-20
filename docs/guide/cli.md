@@ -42,7 +42,11 @@ A brief description of the generation process.
     a. Parse the path, query and header parameters and generate the matching field declarations.
     b. Pick the rendering branch that matches the actual shape of the request body (JSON object, form, binary, plain text).
     c. Generate one response spec per "status code + media type".
-8. Run `ruff format` and `ruff check --select I,F401 --fix` on each generated file. If ruff is not installed, this step is skipped.
+8. Run `ruff format` and `ruff check --select I,F401 --fix` on each generated file.
+   ruff is a dependency of Stoma and gets installed with `pip install stoma` — it is looked up
+   through its Python package first (which does not depend on PATH), so `uv run stoma` and
+   calling it directly inside a container both find it. The step is skipped only when ruff
+   genuinely cannot be located.
 9. Collect the problems found during generation and report them by category:
     * The request body of one endpoint has multiple media types: only the first is used, reported as a warning, and generation continues.
     * A response references a model that is missing from the generated `models.py`: a generic response type is used instead, reported as a warning, and generation continues.

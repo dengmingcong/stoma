@@ -42,7 +42,10 @@ Options:
     a. 解析路径、查询、头部参数并生成对应的字段声明。
     b. 按请求体的实际形态（JSON 对象、表单、二进制、纯文本）选择对应的渲染分支。
     c. 按「状态码 + 媒体类型」生成一条响应协议。
-8. 为生成的每个文件依次执行 `ruff format` 与 `ruff check --select I,F401 --fix`，若系统未安装 ruff 则跳过。
+8. 为生成的每个文件依次执行 `ruff format` 与 `ruff check --select I,F401 --fix`。
+   ruff 是 Stoma 的依赖，随 `pip install stoma` 一同安装 —— 查找时先走 ruff 的 Python 包
+   （不依赖 PATH），因此 `uv run stoma`、容器内直接调用等场景也能找到；
+   确实找不到时才跳过这一步。
 9. 收集并按类别输出生成过程中的问题：
     * 同一接口的请求体存在多种 Media type：仅采用第一种，作为警告输出并继续。
     * 响应引用的模型不存在于生成的 `models.py`：改用通用响应类型，作为警告输出并继续。
