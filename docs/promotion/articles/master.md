@@ -10,7 +10,7 @@
 requests.get("https://api.example.com/api/v3/user/user1")
 ```
 
-用户名参数是 `username` 还是 `userName`？`age` 类型是 `str` 还是 `int`？有没有 `email` 参数来着？为了确认，不得不来回在接口文档和 IDE 之间切换。
+用户名参数是 `username` 还是 `userName`？`age` 类型是 `str` 还是 `int`？有没有 `email` 参数来着？为了确认，不得不在接口文档和 IDE 之间来回切换。
 
 写完请求，还要断言响应，于是再次对着接口文档对比 JSON 层级：
 
