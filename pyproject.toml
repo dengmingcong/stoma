@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "stoma"
 version = "0.3.0"
-description = "Pythonic 接口自动化与接口自动化测试框架，代码即协议"
+description = "Python API automation and testing framework — the code is the protocol"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

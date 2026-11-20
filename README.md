@@ -10,30 +10,39 @@
 <p align="center"><b>Define with OpenAPI. Autocomplete with Stoma.</b></p>
 
 <p align="center">
-  <img width="80%" style="border-radius: 8px;" alt="IDE 自动联想接口参数" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
+  <img width="80%" style="border-radius: 8px;" alt="IDE autocompletes API parameters" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
 </p>
 
 <p align="center">
-  <a href="#安装">安装</a> ·
-  <a href="#示例">示例</a> ·
-  <a href="#关键特性">关键特性</a> ·
-  <a href="#文档">文档</a> ·
-  <a href="#关于">关于</a>
+  <b>English</b> ·
+  <a href="https://github.com/dengmingcong/stoma/blob/master/README.zh.md">中文</a>
+</p>
+
+<p align="center">
+  <a href="#installation">Installation</a> ·
+  <a href="#example">Example</a> ·
+  <a href="#key-features">Key features</a> ·
+  <a href="#docs">Docs</a> ·
+  <a href="#about">About</a>
 </p>
 
 ---
 
-## 安装
+## Installation
 
-需要 Python 3.12 或更高版本。
+Requires Python 3.12 or higher.
 
 ```bash
 pip install stoma
 ```
 
-## 示例
+Stoma depends on the Playwright Python package, but **not on the browser binaries** — it only
+uses `APIRequestContext`, never launches a browser, so there is nothing to download with
+`playwright install`.
 
-定义接口：
+## Example
+
+Define an endpoint:
 
 ```python
 from typing import Annotated
@@ -54,7 +63,7 @@ router = APIRouter(prefix="/api/v3")
 
 @router.get("/user/{username}")
 class GetUserByName(APIRoute):
-    """按用户名查询用户。"""
+    """Get user by user name."""
 
     username: str
 
@@ -67,7 +76,7 @@ class GetUserByName(APIRoute):
         )
 ```
 
-调用接口：
+Call it:
 
 ```python
 from playwright.sync_api import sync_playwright
@@ -83,27 +92,31 @@ with sync_playwright() as p:
     assert user.username == "user1"
 ```
 
-## 关键特性
+## Key features
 
-- 代码即协议：Stoma 保存接口调用所需的所有信息，调用接口时再也不用在 IDE 和接口文档之间切换。
-- 自动联想： 感谢 Pydantic 和范型特性，IDE 可以自动补全请求和响应参数。
-- OpenAPI CLI：提供 CLI 基于 OpenAPI 规范文档生成全部接口代码。
-  <img width="80%" style="border-radius: 8px;" alt="stoma CLI 生成接口代码" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
-
-
-## 文档
-
-- [快速开始](https://github.com/dengmingcong/stoma/blob/master/docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
-- 定义接口 — Stoma 中一个接口由接口路由、接口参数和响应协议组成。
-    * [接口路由](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-routes.md)
-    * [接口参数](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-parameters.md)
-    * [响应协议](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-response-specs.md)
-- [接口请求和断言](https://github.com/dengmingcong/stoma/blob/master/docs/guide/client.md) — 使用 `Client` 调用接口，对接口响应断言。
-- [生成接口](https://github.com/dengmingcong/stoma/blob/master/docs/guide/cli.md) — Stoma 提供了 CLI 命令基于 OpenAPI 协议自动生成接口。
-
-也可以看看演示仓库 [stoma-demo](https://github.com/dengmingcong/stoma-demo)，演示在实际项目中如何使用 Stoma。
+- **The code is the protocol**: Stoma holds everything needed to call an endpoint, so you no
+  longer have to switch between your IDE and the API documentation.
+- **Autocomplete**: thanks to Pydantic and generics, the IDE autocompletes both request
+  parameters and response types.
+- **OpenAPI CLI**: a CLI command generates the whole set of endpoint code from an OpenAPI spec.
+  <img width="80%" style="border-radius: 8px;" alt="stoma CLI generating endpoint code" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
 
 
-## 关于
+## Docs
 
-[关于 Stoma](https://github.com/dengmingcong/stoma/blob/master/docs/about.md) — 项目由来、灵感与依赖。
+The guide below is written in Chinese.
+
+- [Quickstart](https://github.com/dengmingcong/stoma/blob/master/docs/guide/quickstart.md) — installation and a walkthrough against a real API.
+- Defining an endpoint — an endpoint in Stoma is made of a route, its parameters, and its response specs.
+    * [Routes](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-routes.md)
+    * [Parameters](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-parameters.md)
+    * [Response specs](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-response-specs.md)
+- [Calling an endpoint and asserting the response](https://github.com/dengmingcong/stoma/blob/master/docs/guide/client.md) — use `Client` to call an endpoint and assert on its response.
+- [Generating endpoints](https://github.com/dengmingcong/stoma/blob/master/docs/guide/cli.md) — Stoma provides a CLI command that generates endpoints from an OpenAPI spec.
+
+See also the demo repository [stoma-demo](https://github.com/dengmingcong/stoma-demo), which shows how Stoma is used in a real project.
+
+
+## About
+
+[About Stoma](https://github.com/dengmingcong/stoma/blob/master/docs/about.md) — where the project comes from, its inspiration, and its dependencies.

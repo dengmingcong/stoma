@@ -42,8 +42,13 @@
 
 | 渠道标识 | 平台 | 语言 | 内容定位 | 与社区既有话题的关联说明 | 投放状态 | 投放时间 | 可被社区正常访问 | 非作者互动数 | referrer 域名 | 落地页路径 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `pypi` | PyPI | `zh` | 项目页的 `long_description` 即主仓 README（由 US1 产出），是 Python 库最高意图的发现面 | PyPI 搜索「api testing」时项目页出现在结果里 —— 主动搜索是这类读者的既有行为。 | 已就位 | 2026-11-16 | 是 | 不适用 | `pypi.org` | [`README.md`](../../README.md) |
-| `github-topics` | GitHub Topics | `zh` | 通过 `topic:api-testing` 等 topic 页被搜到，仓库的 topics 字段即入口 | `topic:api-testing` 等 topic 页是可浏览的列表页，GitHub 用户本就习惯从 topic 找工具。 | 已就位 | 2026-11-16 | 是 | 不适用 | `github.com` | [`README.md`](../../README.md) |
+| `pypi` | PyPI | `en` | 项目页的 `long_description` 即主仓 README（**2026-11-20 起默认英文**），是 Python 库最高意图的发现面 | PyPI 搜索「api testing」时项目页出现在结果里 —— 主动搜索是这类读者的既有行为。 | 已就位 | 2026-11-16 | 是 | 不适用 | `pypi.org` | [`README.md`](../../README.md) |
+| `github-topics` | GitHub Topics | `en` | 通过 `topic:api-testing` 等 topic 页被搜到，仓库的 topics 字段即入口 | `topic:api-testing` 等 topic 页是可浏览的列表页，GitHub 用户本就习惯从 topic 找工具。 | 已就位 | 2026-11-16 | 是 | 不适用 | `github.com` | [`README.md`](../../README.md) |
+
+> **默认语言已转为英文**（2026-11-20，规格所有者决定）—— 仓库首页 `README.md` 与 PyPI 项目页
+> 的 `long_description` 均默认显示英文，中文 README 降级为 [`README.zh.md`](../../README.zh.md)，
+> 两个 README 互带语言切换链接。中文用户仍可从 `README.zh.md` 读取完整内容。
+> 注意：PyPI 搜索结果的摘要取自 `pyproject.toml` 的 `description` 字段，它也随默认语言转为英文。
 
 ---
 
