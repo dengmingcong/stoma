@@ -1,58 +1,54 @@
 # OpenAPI 不该止步于接口文档：让 IDE 自动补全请求与响应
 
-> 我是 Stoma 的作者。这篇文章回答两个问题：接口定义已经有 OpenAPI 了，为什么接口测试代码还需要手工维护请求参数、响应模型和类型；Python 如何根据 HTTP 状态码推导不同的响应类型。
+## 痛点
 
----
+我做了几年接口自动化测试工程师，每次接手新项目开始写自动化测试脚本都会遇到一个问题，让我很痛苦。
 
-## 手写模型的代价
-
-OpenAPI 协议里已经写清楚了请求参数、响应结构和每个状态码的响应类型。接口测试代码里，这些内容要再抄一遍。
-
-抄的时候人是没有耐心的。少抄一个字段，接口返回 200，用例照样通过，断言形同虚设。协议新增了必填字段，模型里还是可选的，多出来的数据被静默丢掉。
-
-IDE 的补全帮不上忙。参数名写错不会有红线，字段名拼错要等到断言失败才知道。
-
-问题的根源是模型的来源是人，不是协议。
-
-## 协议本身是唯一来源
-
-Stoma 受 fastapi 启发，作用和 fastapi "相反"，fastapi 是通过 Pydantic 模型生成 OpenAPI 描述的接口协议，Stoma 则是从 OpenAPI 生成 Pydantic 模型。
-
-已经有 OpenAPI 协议的话，用 CLI 命令生成接口代码：
-
-```bash
-stoma spec.json --out app --prefix /api/v3
-```
-
-生成的接口定义，请求参数和响应协议都是带类型的类属性：
+开发给了接口文档，打开 IDE 准备写第一个用例：
 
 ```python
-@router.get("/user/{username}")
-class GetUserByName(APIRoute):
-    """按用户名查询用户。"""
-
-    username: str
-
-    @property
-    def on_200_application_json(self) -> ResponseSpec[User]:
-        return ResponseSpec(
-            status_code=200,
-            media_type="application/json",
-            expected_type=User,
-        )
+requests.get("https://api.example.com/api/v3/user/user1")
 ```
 
-因为接口是 Pydantic 模型，IDE 可以自动联想所有参数。
+用户名参数是 `username` 还是 `userName`？`age` 类型是 `str` 还是 `int`？有没有 `email` 参数来着？为了确认，不得不来回在接口文档和 IDE 之间切换。
 
-<img src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" alt="IDE 自动联想接口参数" />
-
-## 按状态码推导响应类型
-
-OpenAPI 协议中，一个接口可以包含多个 status code，每个 status code 的 content 又可以包含多个 Media type。
-
-Stoma 将一个 status code 下的一个 Media type 称为响应协议。生成时，一个 status code 对应一个 property：
+写完请求，还要断言响应，于是再次对着接口文档对比 JSON 层级：
 
 ```python
+assert resp.json()["user"]["firstName"] == "John"
+```
+
+现在有了 AI，那就让 AI 来写，写完之后一运行才发现有一个参数写错了，IDE 没有提示也没能第一时间发现。
+
+我在想，OpenAPI 为接口定义了请求和响应，IDE 为什么不能自动补全呢？怎样才能不用左边屏幕打开 IDE，右边屏幕打开接口文档呢？
+
+## Stoma - 让 OpenAPI 规范本身变成代码
+
+我开发了一个接口自动化框架 Stoma 来解决这个问题。
+
+> ℹ️ GitHub 地址：[Stoma](https://github.com/dengmingcong/stoma)。
+
+### 定义接口
+
+Stoma 的核心是「代码即协议」，在 Stoma 里这样定义接口：
+
+```python
+from typing import Annotated
+from pydantic import BaseModel, Field
+from stoma import APIRoute, APIRouter, ResponseSpec, EmptyResponseSpec
+
+class User(BaseModel):
+    id: Annotated[int | None, Field(examples=[10])] = None
+    """Example: 10"""
+
+    username: Annotated[str | None, Field(examples=["theUser"])] = None
+    """Example: 'theUser'"""
+
+    first_name: Annotated[str | None, Field(alias="firstName", examples=["John"])] = None
+    """Example: 'John'"""
+
+router = APIRouter(prefix="/api/v3")
+
 @router.get("/user/{username}")
 class GetUserByName(APIRoute):
     """按用户名查询用户。"""
@@ -72,28 +68,15 @@ class GetUserByName(APIRoute):
         return EmptyResponseSpec(
             status_code=400,
         )
-
-    @property
-    def on_404(self) -> EmptyResponseSpec:
-        return EmptyResponseSpec(
-            status_code=404,
-        )
-
-    @property
-    def on_default(self) -> EmptyResponseSpec:
-        return EmptyResponseSpec(
-            status_code=lambda c: c not in [200, 400, 404],
-        )
 ```
 
-`ResponseSpec` 称为通用响应协议，规定了 `status_code`、`media_type` 和 `expected_type`，并且 `ResponseSpec` 是泛型，泛型参数和 `expected_type` 一致。
+接口定义包含了所有的请求参数、所有的响应状态码以及对应的返回类型，IDE 可以自动联想。
 
-`EmptyResponseSpec` 称为空响应协议，表示响应的 body 是空的，只需要校验 `status_code`。
-
-调用时，选定要断言的响应协议：
+### 调用接口
 
 ```python
 from playwright.sync_api import sync_playwright
+
 from stoma import Client
 
 with sync_playwright() as p:
@@ -106,56 +89,24 @@ with sync_playwright() as p:
     assert user.username == "user1"
 ```
 
-`Client.send()` 返回 `Response` 实例，`Response` 实例的 `expect()` 方法预期一个响应协议，会按照协议对 Status Code、Media type 校验，并使用 `pydantic.TypeAdapter` 将返回体转换为响应协议指定的模型。
+IDE 能自动联想请求参数以及指定状态码对应的响应参数，参数名写错了 IDE 也能立即通知用户。
 
-得益于泛型特性，IDE 能自动推断 `expect()` 的返回值类型，可以使用点自动联想该类型的属性。
+<img width="80%" style="border-radius: 8px;" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" alt="IDE 自动联想接口参数" />
 
-<img src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-response.png" alt="IDE 自动联想响应类型" />
+### 底层是 Playwright
 
-## 小结
+Stoma 内部基于 Playwright [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext) 发送请求，Playwright 的全部特性（含 Cookie 持久化）都能正常使用，极大地扩展了 Stoma 的适用范围。
 
-请求参数是带类型的类属性，响应类型由响应协议指定。两边的来源都是 OpenAPI 协议，IDE 能自动补全请求和响应参数。
+## 脚手架工具
 
-## 安装
+Stoma 提供了 CLI 基于 OpenAPI 生成全部接口代码，如：
 
-需要使用 Python 3.12 及以上版本。
-
-```bash
-pip install stoma
+```shell
+stoma openapi.yaml -o petstore --prefix /api/v3
 ```
 
-Stoma 内部基于 Playwright [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext) 实现接口调用，不会对 `APIRequestContext` 做任何修改，所有特性都能正常使用。Stoma 只使用 `APIRequestContext`，从不启动浏览器，因此不需要安装浏览器二进制。
-
-## 示例
-
-演示仓库 [stoma-demo](https://github.com/dengmingcong/stoma-demo) 展示了在实际项目中如何使用 Stoma。
-
-```bash
-git clone https://github.com/dengmingcong/stoma-demo.git
-cd stoma-demo
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pytest
-```
-
-> ⚠️ 演示后端是 Swagger 官方 Petstore 公共服务，人人共享，可用性不保证，可能返回 HTTP 500。这是服务状态问题，与 Stoma 无关。
+<img width="80%" style="border-radius: 8px;" alt="stoma CLI 生成接口代码" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
 
 ## 文档
 
-- [快速开始](https://github.com/dengmingcong/stoma/blob/master/docs/guide/quickstart.md) — 安装并以真实接口为例介绍用法。
-- 定义接口 — Stoma 中一个接口由接口路由、接口参数和响应协议组成。
-    * [接口路由](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-routes.md)
-    * [接口参数](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-parameters.md)
-    * [响应协议](https://github.com/dengmingcong/stoma/blob/master/docs/guide/define-response-specs.md)
-- [接口请求和断言](https://github.com/dengmingcong/stoma/blob/master/docs/guide/client.md) — 使用 `Client` 调用接口，对接口响应断言。
-- [生成接口](https://github.com/dengmingcong/stoma/blob/master/docs/guide/cli.md) — Stoma 提供了 CLI 命令基于 OpenAPI 协议自动生成接口。
-
-## 关于
-
-我是 Stoma 的作者。Stoma 还在早期，API 和 CLI 都会调整。
-
-比起 star，更想要的是反馈：生成的代码符合你的编码习惯吗？哪些接口形态还处理不了？文档里哪一段看不懂？
-
-项目主页：https://github.com/dengmingcong/stoma
-
-> 第一次听说 Stoma 是从哪里？欢迎在 Discussions 里说一声 —— 掘金、知乎、V2EX、开源中国、TesterHome、朋友推荐、搜索引擎，或者其他。
+完整文档见 GitHub 仓库 [Stoma](https://github.com/dengmingcong/stoma)。
