@@ -40,10 +40,6 @@ Requires Python 3.12 or higher.
 pip install stoma
 ```
 
-Stoma depends on the Playwright Python package, but **not on the browser binaries** — it only
-uses `APIRequestContext`, never launches a browser, so there is nothing to download with
-`playwright install`.
-
 ## Example
 
 Define an endpoint:

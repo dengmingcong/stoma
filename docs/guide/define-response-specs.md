@@ -4,7 +4,7 @@ As [OpenAPI Map](https://openapi-map.apihandyman.io/?version=3.0) shows, the res
 
 ![OpenAPI Map](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/define-response-specs/openapi.png)
 
-Stoma calls one media type under one status code a **response spec**, and uses it to define the data type of the corresponding content.
+Stoma calls one media type under one status code a response spec, and uses it to define the data type of the corresponding content.
 
 ## Example
 

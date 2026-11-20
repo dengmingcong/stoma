@@ -21,8 +21,6 @@ Options:
   --help                Show this message and exit.
 ```
 
-The help text above is the output of the program itself, so it is shown as-is.
-
 Arguments:
 
 * `SPEC`: the path to the OpenAPI spec file. Only `.json`, `.yml` and `.yaml` suffixes are supported, and only OpenAPI 3.0 and 3.1.
