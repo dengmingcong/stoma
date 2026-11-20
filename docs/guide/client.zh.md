@@ -38,7 +38,7 @@ with sync_playwright() as p:
 
 ### 校验
 
-`Response` 的 `expect()` 方法接受 [响应协议](.define-response-specs.zh.md) 实例，可以临时创建一个响应协议，也可以使用接口已经绑定好的响应协议，示例中使用的是 property `on_200` 绑定的响应协议。
+`Response` 的 `expect()` 方法接受 [响应协议](./define-response-specs.zh.md) 实例，可以临时创建一个响应协议，也可以使用接口已经绑定好的响应协议，示例中使用的是 property `on_200` 绑定的响应协议。
 
 * 如果传入的是通用响应协议 `ResponseSpec`，Stoma 会校验响应的 `status_code`、`media_type`，并使用 `expected_type` 基于 `pydantic.TypeAdapter` 对响应体做校验并返回对应对象，示例中 `response.expect(endpoint.on_200)` 返回的就是 `User` 对象。
 * 如果传入的是空响应协议 `EmptyResponseSpec`，Stoma 只会校验响应的 `status_code`，不返回任何值。

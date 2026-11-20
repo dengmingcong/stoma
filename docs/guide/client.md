@@ -38,7 +38,7 @@ A `Response` instance has a single attribute, `raw`, which holds the return valu
 
 ### Assertions
 
-The `expect()` method of a `Response` takes a [response spec](.define-response-specs.md) instance. You can create one on the fly, or use one already bound to the endpoint — the example above uses the spec bound to the property `on_200`.
+The `expect()` method of a `Response` takes a [response spec](./define-response-specs.md) instance. You can create one on the fly, or use one already bound to the endpoint — the example above uses the spec bound to the property `on_200`.
 
 * If you pass a general response spec `ResponseSpec`, Stoma validates the response's `status_code` and `media_type`, and uses `expected_type` with `pydantic.TypeAdapter` to validate the body and return the corresponding object — `response.expect(endpoint.on_200)` returns a `User` object.
 * If you pass an empty response spec `EmptyResponseSpec`, Stoma validates only the response's `status_code` and returns nothing.
