@@ -13,8 +13,6 @@
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 import warnings
 from dataclasses import dataclass
 from enum import Enum
@@ -868,17 +866,17 @@ def render_to_file(
     output_dir: str | Path,
     file_name: str,
     rendered_code: str,
-    enable_ruff: bool = True,
 ) -> Path:
     """将渲染后的代码写入文件。
 
     ``file_name`` 由 ``EndpointRenderer.render()`` 一并返回（从
     ``operation_id`` 派生），本函数只负责落盘。
 
+    不做任何格式化 —— 生成代码的排版交给使用者自行处理。
+
     :param output_dir: 输出目录。
     :param file_name: 目标文件名（含 ``.py`` 后缀）。
     :param rendered_code: 渲染后的 Python 代码。
-    :param enable_ruff: 是否在写入后调用 ruff format + isort fix。默认为 True。
     :return: 写入的文件路径。
     """
     output_path = Path(output_dir)
@@ -886,20 +884,6 @@ def render_to_file(
 
     file_path = output_path / file_name
     file_path.write_text(rendered_code, encoding="utf-8")
-
-    if enable_ruff and shutil.which("ruff") is not None:
-        subprocess.run(
-            ["ruff", "format", str(file_path)],
-            check=False,
-            capture_output=True,
-            timeout=30,
-        )
-        subprocess.run(
-            ["ruff", "check", "--select", "I,F401", "--fix", str(file_path)],
-            check=False,
-            capture_output=True,
-            timeout=30,
-        )
 
     return file_path
 

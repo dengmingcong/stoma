@@ -1,8 +1,8 @@
-# 生成接口
+# Generating endpoints
 
-Stoma 提供了 CLI 命令 `stoma` 从 OpenAPI 规范文件自动生成接口代码。
+Stoma provides a CLI command, `stoma`, that generates endpoint code from an OpenAPI spec file.
 
-## 命令概览
+## Command overview
 
 ```
 Usage: stoma [OPTIONS] SPEC
@@ -21,34 +21,33 @@ Options:
   --help                Show this message and exit.
 ```
 
-参数说明：
+Arguments:
 
-* `SPEC`：指定 OpenAPI 规范文件路径，当前只支持 `.json`、`.yml` 和 `.yaml` 后缀，且只支持 OpenAPI 3.0 和 3.1。
-* `--out` / `-o`：指定输出目录路径，默认为当前目录（`Path(".")`）。
-* `--prefix`：为这一批次接口生成公共路径前缀。
+* `SPEC`: the path to the OpenAPI spec file. Only `.json`, `.yml` and `.yaml` suffixes are supported, and only OpenAPI 3.0 and 3.1.
+* `--out` / `-o`: the output directory. Defaults to the current directory (`Path(".")`).
+* `--prefix`: a shared path prefix for the endpoints generated in this batch.
 
-## 生成逻辑
+## How generation works
 
-简要说明生成过程运行逻辑。
+A brief description of the generation process.
 
-1. 校验输入，确认规范文件存在。
-2. 读取规范文件，按声明的 OpenAPI 版本（3.0.x / 3.1.x）派发后续处理。
-3. 预处理规范中的引用。
-4. 解析为统一的中间表示，规范化每个接口的方法、路径、参数、请求体与响应。
-    注意：要求每个操作都有非空的 operationId。
-5. 使用 [datamodel-code-generator](https://datamodel-code-generator.koxudaxi.dev/) 生成数据模型，保存到 `models.py`，模型类名由 operationId 派生。
-6. 生成 `router.py`，将所有接口汇总到一个路由模板中，`--prefix` 作为公共路径前缀传入。
-7. 逐接口渲染。每个接口输出一份以 operationId 蛇形命名的文件，依次完成：
-    a. 解析路径、查询、头部参数并生成对应的字段声明。
-    b. 按请求体的实际形态（JSON 对象、表单、二进制、纯文本）选择对应的渲染分支。
-    c. 按「状态码 + 媒体类型」生成一条响应协议。
-8. 为生成的每个文件依次执行 `ruff format` 与 `ruff check --select I,F401 --fix`，若系统未安装 ruff 则跳过。
-9. 收集并按类别输出生成过程中的问题：
-    * 同一接口的请求体存在多种 Media type：仅采用第一种，作为警告输出并继续。
-    * 响应引用的模型不存在于生成的 `models.py`：改用通用响应类型，作为警告输出并继续。
-    * 当前不支持的接口形态（如顶层组合 schema 等）：跳过该接口文件的生成并输出错误。
+1. Validate the input — confirm the spec file exists.
+2. Read the spec file and dispatch on the declared OpenAPI version (3.0.x / 3.1.x).
+3. Preprocess the references in the spec.
+4. Parse into a unified intermediate representation, normalizing the method, path, parameters, request body and responses of every endpoint.
+    Note: every operation must have a non-empty operationId.
+5. Use [datamodel-code-generator](https://datamodel-code-generator.koxudaxi.dev/) to generate the data models, saved to `models.py`. Model class names are derived from the operationId.
+6. Generate `router.py`, collecting all endpoints into one router template, with `--prefix` passed in as the shared path prefix.
+7. Render endpoint by endpoint. Each endpoint produces one file named after the snake_case operationId, in this order:
+    a. Parse the path, query and header parameters and generate the matching field declarations.
+    b. Pick the rendering branch that matches the actual shape of the request body (JSON object, form, binary, plain text).
+    c. Generate one response spec per "status code + media type".
+8. Collect the problems found during generation and report them by category:
+    * The request body of one endpoint has multiple media types: only the first is used, reported as a warning, and generation continues.
+    * A response references a model that is missing from the generated `models.py`: a generic response type is used instead, reported as a warning, and generation continues.
+    * An unsupported endpoint shape (such as a top-level composed schema): the file for that endpoint is skipped and an error is reported.
 
-生成的文件目录为：
+The generated directory looks like this:
 
 ```
 <out>/
@@ -59,45 +58,45 @@ Options:
     └── <snake_case_operation_id>.py
 ```
 
-## 完整输出示例
+The generated code is **not formatted** — that is left to you, for example:
 
-`tests/examples/petstore/app` 下的文件就是用 `stoma` 命令生成的，运行的命令及输出如下：
+```bash
+ruff format app/
+ruff check --select I,F401 --fix app/
+```
+
+## Known limitation: a class name that collides with a Stoma type
+
+The class name of an endpoint is derived from its operationId (`uploadFile` → `UploadFile`).
+If the derived class name collides with one of the types Stoma exports (`UploadFile`), the
+class definition shadows the imported type:
+
+```python
+from stoma import (..., UploadFile)
+
+@router.post("/pet/{petId}/uploadImage", upload_as_multipart=False)
+class UploadFile(APIRoute):
+    ...
+    body: UploadFile   # actually refers to the endpoint class itself, not the file type
+```
+
+Importing that module then fails:
+
+```
+ValueError: upload_as_multipart=False 要求 body 恰好包含一个 UploadFile 字段，实际有 0 个
+```
+
+**The framework does not handle this** — it is up to you to decide how to fix it (rename the
+class, change the annotation, or declare it another way). To avoid hitting it, pick
+operationIds that don't collide with the type names Stoma exports.
+
+## A full example of the output
+
+The `app/` directory of the [stoma-demo](https://github.com/dengmingcong/stoma-demo) repository was generated with the `stoma` command. The command and its output:
 
 ```shell
-$ stoma tests/examples/petstore/spec/openapi.json -o tests/examples/petstore/app --prefix=/api/v3
+$ stoma spec.json -o app
 → 生成 models.py
 → 生成 router.py
-→ 渲染 POST /pet
-→ 渲染 PUT /pet
-→ 渲染 GET /pet/findByStatus
-→ 渲染 GET /pet/findByTags
-→ 渲染 GET /pet/{petId}
-→ 渲染 POST /pet/{petId}
-→ 渲染 DELETE /pet/{petId}
-→ 渲染 POST /pet/{petId}/uploadImage
-→ 渲染 GET /store/inventory
-→ 渲染 POST /store/order
-→ 渲染 GET /store/order/{orderId}
-→ 渲染 DELETE /store/order/{orderId}
-→ 渲染 POST /user
-→ 渲染 POST /user/createWithList
-→ 渲染 GET /user/login
-→ 渲染 GET /user/logout
-→ 渲染 GET /user/{username}
-→ 渲染 PUT /user/{username}
-→ 渲染 DELETE /user/{username}
-⚠ 以下 endpoint 有多个 media type（已用第一个）：
-  - POST /pet
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-  - PUT /pet
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-  - POST /store/order
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-  - POST /user
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-  - PUT /user/{username}
-    endpoint 有多个 media type，已静默使用 'application/json'（其他被忽略：application/json, application/xml, application/x-www-form-urlencoded）
-⚠ 以下 endpoint 生成失败（spec 不被支持）：
-  - GET /pet/findByTags
-    Unsupported nullable param schema: 'array'
+→ 渲染 GET /users/{user_id}
 ```

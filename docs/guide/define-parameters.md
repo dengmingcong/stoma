@@ -1,66 +1,66 @@
-# 接口参数
+# Parameters
 
-Stoma 通过 `Annotated[T, Mark()]` 风格声明参数。
+Stoma declares parameters in the `Annotated[T, Mark()]` style.
 
-Stoma 定义了 `Path()`、`Query()`、`Header()`、`Body()`、`Form()`、`UploadFile` 六种参数标记，分别对应 HTTP 请求的不同位置。
+Stoma defines six parameter marks — `Path()`, `Query()`, `Header()`, `Body()`, `Form()` and `UploadFile` — each corresponding to a different position in an HTTP request.
 
 ```info
-`Path()`、`Query()`、`Header()`、`Body()`、`Form()` 实际是函数，返回的是同名数据类型的实例，`UploadFile` 是一种类型。
+`Path()`, `Query()`, `Header()`, `Body()` and `Form()` are functions that return an instance of the data type of the same name; `UploadFile` is a type.
 ```
 ## Path()
 
-`Path()` 用于声明路径参数，用于替换路径中的占位符。
+`Path()` declares a path parameter, used to replace a placeholder in the path.
 
 ```python
 @router.get("/users/{user_id}")
 class GetUserById(APIRoute):
-    """根据 ID 获取用户。"""
+    """Get a user by ID."""
 
     user_id: Annotated[int, Path()]
 ```
 
-`Client` 发送请求之前，会使用字段 `user_id` 的值替换路径中的占位符。
+Before `Client` sends the request, it replaces the placeholder in the path with the value of the field `user_id`.
 
 ## Query()
 
-`Query()` 用于声明查询参数。
+`Query()` declares a query parameter.
 
 ```python
 @router.get("/users")
 class GetUsers(APIRoute):
-    """获取用户列表，支持分页。"""
+    """Get a list of users, with pagination."""
 
     limit: Annotated[int, Query()] = 20
     offset: Annotated[int, Query()] = 0
 ```
 
-`Client` 发送请求之前，会将查询参数附加在 URL 后面（`?limit=20&offset=0`）。
+Before `Client` sends the request, it appends the query parameters to the URL (`?limit=20&offset=0`).
 
 ## Header()
 
-`Header()` 用于声明请求头参数，常见场景是传递认证令牌。
+`Header()` declares a request header parameter — a common way to pass an auth token.
 
 ```python
 @router.get("/users")
 class GetUsers(APIRoute):
-    """获取用户列表，需要认证。"""
+    """Get a list of users, requires authentication."""
 
     authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")] = "Bearer token"
 ```
 
-`Client()` 发送请求之前会将请求头传递给 Playwright（`{"Authorization": "Bearer token"}`）。
+Before `Client()` sends the request, it passes the headers to Playwright (`{"Authorization": "Bearer token"}`).
 
 ## Body()
 
-`Body()` 标记用于声明请求体参数。
+The `Body()` mark declares a request body parameter.
 
-单个 Body 参数和多个 Body 参数的处理有差异。
+A single body parameter and multiple body parameters are handled differently.
 
-### 单个 Body 参数
+### A single body parameter
 
-单个 Body 参数可能是 Pydantic 模型，也可能是标量（`str`、`int` 等），处理方式也有差异。
+A single body parameter may be a Pydantic model or a scalar (`str`, `int`, and so on), and the two are handled differently.
 
-#### Pydantic 模型
+#### Pydantic model
 
 ```python
 from typing import Annotated
@@ -75,42 +75,42 @@ router = APIRouter()
 
 @router.post("/users")
 class CreateUser(APIRoute):
-    """创建用户。"""
+    """Create a user."""
 
     body: Annotated[UserCreateRequest, Body()]
 ```
 
-只有一个 Body 参数且参数类型是 Pydantic 模型时，Stoma 会忽略字段名，只将模型的字段传给 Playwright：
+When there is exactly one body parameter and its type is a Pydantic model, Stoma ignores the field name and passes only the model's fields to Playwright:
 
 ```json
 {
-    "name": "...", 
+    "name": "...",
     "email": "..."
 }
 ```
 
-如果想要将模型字段包裹在字段名中，需设置 `embed=True`。
+To wrap the model's fields in the field name instead, set `embed=True`.
 
 ```python
 @router.post("/users")
 class CreateUser(APIRoute):
-    """创建用户。"""
+    """Create a user."""
 
     body: Annotated[UserCreateRequest, Body(embed=True)]
 ```
 
-这样 Stoma 传给 Playwright 时会嵌套字段名：
+Now Stoma nests the field name when it passes the body to Playwright:
 
 ```json
 {
     "body": {
-        "name": "...", 
+        "name": "...",
         "email": "..."
     }
 }
 ```
 
-#### 标量
+#### Scalar
 
 ```python
 from typing import Annotated
@@ -120,40 +120,40 @@ router = APIRouter()
 
 @router.post("/text-body")
 class SendText(APIRoute):
-    """发送纯文本请求体。"""
+    """Send a plain text request body."""
 
     content: Annotated[str, Body()] = "some text"
 ```
 
-只有一个 Body 参数且参数类型是标量时，Stoma 也会忽略字段名，只将字段的值传给 Playwright：
+When there is exactly one body parameter and its type is a scalar, Stoma ignores the field name too and passes only the field's value to Playwright:
 
 ```
 some text
 ```
 
-请求头中的 Content-Type 由 Playwright 确定，如果想要指定 Content-Type，可以通过设置 `media_type` 实现。
+Playwright decides the `Content-Type` header. To set it yourself, use `media_type`.
 
 ```python
 @router.post("/text-body")
 class SendText(APIRoute):
-    """发送纯文本请求体。"""
+    """Send a plain text request body."""
 
     content: Annotated[str, Body(media_type="text/plain")] = "some text"
 ```
 
-这种情况下，Content-Type 头被设置为 `text/plain`。
+In this case the `Content-Type` header is set to `text/plain`.
 
-如果想要将字段名也传给 Playwright，需要设置 `embed=True`。
+To pass the field name to Playwright as well, set `embed=True`.
 
 ```python
 @router.post("/text-body")
 class SendText(APIRoute):
-    """发送纯文本请求体。"""
+    """Send a plain text request body."""
 
     content: Annotated[str, Body(embed=True)] = "some text"
 ```
 
-这样 Stoma 会传给 Playwright：
+Now Stoma passes this to Playwright:
 
 ```json
 {
@@ -161,15 +161,15 @@ class SendText(APIRoute):
 }
 ```
 
-注意，此时 `media_type` 不再生效，因为 Content-Type 会被确定为 `application/json`。
+Note that `media_type` no longer takes effect here, because the `Content-Type` is determined to be `application/json`.
 
-所以，只有同时满足以下三个条件，`media_type` 才会生效：
+So `media_type` only takes effect when all three of these conditions hold:
 
-1. 只有 1 个 Body 参数。
-2. `embed=False`。
-3. 字段类型是标量。
+1. There is exactly 1 body parameter.
+2. `embed=False`.
+3. The field type is a scalar.
 
-### 多个 Body 参数
+### Multiple body parameters
 
 ```python
 from typing import Annotated
@@ -184,27 +184,27 @@ router = APIRouter()
 
 @router.post("/users")
 class CreateUser(APIRoute):
-    """创建用户。"""
+    """Create a user."""
 
     data: Annotated[UserCreateRequest, Body()]
     phone: Annotated[str, Body()]
 ```
 
-存在多个 Body 参数时，Stoma 会忽略 `embed` 和 `media_type`，始终以 dict 形式传递给 Playwright，将字段名作为 key。
+When there are multiple body parameters, Stoma ignores `embed` and `media_type` and always passes a dict to Playwright, using the field names as keys.
 
 ```json
 {
     "data": {
-        "name": "...", 
+        "name": "...",
         "email": "..."
-    }, 
+    },
     "phone": "..."
 }
 ```
 
 ## Form()
 
-`Form()` 标记用于声明表单数据，只能与标量类型或标量列表一起使用。
+The `Form()` mark declares form data, and can only be used with scalar types or lists of scalars.
 
 ```python
 from typing import Annotated
@@ -214,19 +214,19 @@ router = APIRouter()
 
 @router.post("/login")
 class Login(APIRoute):
-    """用户登录，支持标签。"""
+    """Log in a user, supports tags."""
 
     username: Annotated[str, Form()]
     tags: Annotated[list[str], Form()] = []
 ```
 
-Stoma 会将 `Form()` 字段的值填充到 Playwright [FormData](https://playwright.dev/python/docs/api/class-formdata) 实例，并最终赋值给 [APIRequestContext.fetch()](https://playwright.dev/python/docs/api/class-apirequestcontext#api-request-context-fetch) 方法的 `form=` 参数，Playwright 会自动设置 `Content-Type` 请求头为 `application/x-www-form-urlencoded`。
+Stoma fills the values of the `Form()` fields into a Playwright [FormData](https://playwright.dev/python/docs/api/class-formdata) instance, and finally assigns it to the `form=` argument of [APIRequestContext.fetch()](https://playwright.dev/python/docs/api/class-apirequestcontext#api-request-context-fetch). Playwright sets the `Content-Type` header to `application/x-www-form-urlencoded` automatically.
 
-对于标量列表，会调用 `FormData` 的 `append()` 方法添加表单数据。
+For lists of scalars, Stoma calls the `append()` method of `FormData` to add the form data.
 
 ## UploadFile
 
-UploadFile 用于声明文件上传字段。
+`UploadFile` declares a file upload field.
 
 ```python
 from stoma import APIRoute, APIRouter, ResponseSpec, UploadFile
@@ -235,16 +235,16 @@ router = APIRouter()
 
 @router.post("/upload")
 class UploadAvatar(APIRoute):
-    """上传用户头像。"""
+    """Upload a user avatar."""
 
     avatar: UploadFile
 ```
 
-`UploadFile` 目前只有一个参数 `path`，类型为 `pathlib.Path`，用于指定本地文件路径，Stoma 会将 `path` 的值填充到 Playwright [FormData](https://playwright.dev/python/docs/api/class-formdata) 实例，并最终赋值给 [APIRequestContext.fetch()](https://playwright.dev/python/docs/api/class-apirequestcontext#api-request-context-fetch) 方法的 `multipart=` 参数，Playwright 会自动推断文件名并将 `Content-Type` 请求头设置为 `multipart/form-data`。
+`UploadFile` currently takes a single argument, `path`, of type `pathlib.Path`, which gives the path of the local file. Stoma fills the value of `path` into a Playwright [FormData](https://playwright.dev/python/docs/api/class-formdata) instance, and finally assigns it to the `multipart=` argument of [APIRequestContext.fetch()](https://playwright.dev/python/docs/api/class-apirequestcontext#api-request-context-fetch). Playwright infers the filename and sets the `Content-Type` header to `multipart/form-data`.
 
 ## Form() + UploadFile
 
-`Form()` 字段可以和 `UploadFile` 字段一起使用，Stoma 会将填充后的 [FormData](https://playwright.dev/python/docs/api/class-formdata) 实例赋值给 [APIRequestContext.fetch()](https://playwright.dev/python/docs/api/class-apirequestcontext#api-request-context-fetch) 方法的 `multipart=` 参数，Playwright 会将 `Content-Type` 请求头设置为 `multipart/form-data`。
+`Form()` fields and `UploadFile` fields can be used together. Stoma assigns the filled [FormData](https://playwright.dev/python/docs/api/class-formdata) instance to the `multipart=` argument of [APIRequestContext.fetch()](https://playwright.dev/python/docs/api/class-apirequestcontext#api-request-context-fetch), and Playwright sets the `Content-Type` header to `multipart/form-data`.
 
 ```python
 import pathlib
@@ -255,19 +255,19 @@ router = APIRouter()
 
 @router.post("/upload-mix")
 class UploadWithForm(APIRoute):
-    """同时发送表单字段和文件。"""
+    """Send a form field and a file together."""
 
     username: Annotated[str, Form()]
     avatar: UploadFile
 ```
 
-⚠️ 注意：存在 `Form()` 或 `UploadFile` 参数时，不能存在 `Body()` 参数。
+⚠️ Note: when there are `Form()` or `UploadFile` parameters, there must be no `Body()` parameter.
 
-### Postman binary Body
+### Binary body, Postman style
 
-从前面的示例可以看出，只要存在 `UploadFile` 字段，Stoma 都会将请求头设置为 `multipart/form-data`，但是 OpenAPI 支持上传单个文件时将请求头 `Content-Type` 设置为上传文件的 [Media type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types)，可以参考 Postman 中类型为 binary 的 Body（单文件上传）。
+From the examples above you can see that as long as there is an `UploadFile` field, Stoma sets the header to `multipart/form-data`. But OpenAPI also allows uploading a single file with the `Content-Type` header set to the file's [media type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types) — the same as the binary Body in Postman (single file upload).
 
-Stoma 使用 `upload_as_multipart=False` 支持这种情况，请求体会被替换为文件的原始字节内容（而不是 multipart 编码），并将请求头 `Content-Type` 设置为上传文件的 Media type。
+Stoma supports this with `upload_as_multipart=False`: the request body is replaced with the raw bytes of the file (rather than multipart encoding), and the `Content-Type` header is set to the file's media type.
 
 ```python
 import pathlib
@@ -277,45 +277,45 @@ router = APIRouter()
 
 @router.post("/raw-upload", upload_as_multipart=False)
 class RawUpload(APIRoute):
-    """裸字节上传。"""
+    """Upload raw bytes."""
 
     file: UploadFile
 ```
 
-`upload_as_multipart=False` 只在这种情况下生效：
+`upload_as_multipart=False` only takes effect in this case:
 
-* body 只包含一个 `UploadFile` 字段，且没有其他 `Form()` 字段。
+* the body contains exactly one `UploadFile` field and no other `Form()` fields.
 
-## 省略标记
+## Omitting the mark
 
-`Path()`、`Query()`、`Header()`、`Body()` 标记可以省略。
+The `Path()`, `Query()`, `Header()` and `Body()` marks can be omitted.
 
-以路径参数为例，省略 `Path()` 标记时，如果字段名和路径占位符一致，会被自动识别为路径参数。
+Take a path parameter as the example: when `Path()` is omitted and the field name matches the path placeholder, it is recognized as a path parameter automatically.
 
 ```python
 @router.get("/users/{user_id}")
 class GetUserById(APIRoute):
-    """根据 ID 获取用户。"""
+    """Get a user by ID."""
 
     user_id: int
 ```
 
-如果有别名，需要别名和路径占位符一致。
+If the field has an alias, the alias has to match the path placeholder.
 
 ```python
 @router.get("/users/{userId}")
 class GetUserById(APIRoute):
-    """根据 ID 获取用户。"""
+    """Get a user by ID."""
 
     user_id: Annotated[int, Field(serialization_alias="userId")]
 ```
 
-### 识别顺序
+### Recognition order
 
-注意：不管什么类型的参数，有别名时就只会用别名对比，没有别名才会使用字段名。后面用参数名表示别名和字段名的竞争结果。
+Note that for any type of parameter, when there is an alias only the alias is compared; the field name is used only when there is no alias. Below, "parameter name" refers to the result of that competition between alias and field name.
 
-多种类型参数省略标记时，识别顺序如下：
+When several kinds of parameter omit their mark, the recognition order is:
 
-1. 参数名和路径占位符一致，则识别为路径参数。
-2. 判断类型是否是复合类型，如果是复合类型，则识别为请求体参数。
-3. 非复合类型（标量）识别为查询参数。
+1. If the parameter name matches a path placeholder, it is recognized as a path parameter.
+2. Check whether the type is a composite type; if it is, it is recognized as a request body parameter.
+3. A non-composite type (a scalar) is recognized as a query parameter.

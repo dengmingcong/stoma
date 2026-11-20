@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "stoma"
 version = "0.3.0"
-description = "Pythonic 接口自动化与接口自动化测试框架，代码即协议"
+description = "Define with OpenAPI. Autocomplete with Stoma."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [
     { name = "dengmingcong", email = "mc.deng@outlook.com" },
 ]
-keywords = ["http", "api", "testing", "automation", "openapi", "pydantic", "fastapi"]
+keywords = ["http", "api", "testing", "automation", "openapi", "pydantic", "fastapi", "api-testing", "pytest", "rest", "swagger", "http-client", "type-safety"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3.12",
@@ -43,6 +43,12 @@ test = [
 
 [project.urls]
 Repository = "https://github.com/dengmingcong/stoma"
+Homepage = "https://github.com/dengmingcong/stoma"
+Documentation = "https://github.com/dengmingcong/stoma/blob/master/README.md"
+Changelog = "https://github.com/dengmingcong/stoma/blob/master/CHANGELOG.md"
+Issues = "https://github.com/dengmingcong/stoma/issues"
+Demo = "https://github.com/dengmingcong/stoma-demo"
+Funding = "https://github.com/sponsors/dengmingcong"
 
 [project.scripts]
 stoma = "stoma.cli:app"
@@ -102,7 +108,7 @@ check_untyped_defs = false
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "--ignore=tests/examples"
+addopts = ""
 
 [tool.commitizen]
 name = "cz_customize"

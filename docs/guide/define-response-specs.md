@@ -1,14 +1,14 @@
-# 响应协议
+# Response specs
 
-从 [OpenAPI Map](https://openapi-map.apihandyman.io/?version=3.0) 可以看出，一个 HTTP 接口的响应可以包含多个 status code，每个 status code 的 content 又可以包含多个 Media type。
+As [OpenAPI Map](https://openapi-map.apihandyman.io/?version=3.0) shows, the response of an HTTP endpoint can contain multiple status codes, and the content of each status code can contain multiple media types.
 
-![OpenAPI Map](../assets/guide/define-response-specs/openapi.png)
+![OpenAPI Map](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/define-response-specs/openapi.png)
 
-Stoma 将一个 status code 下的一个 Media type 称为响应协议，用来定义对应 content 的数据类型。
+Stoma calls one media type under one status code a response spec, and uses it to define the data type of the corresponding content.
 
-## 示例
+## Example
 
-以 Swagger Petstore 接口 [getUserByName](https://petstore.swagger.io/#/user/getUserByName) 为例，OpenAPI 协议如下。
+Take the Swagger Petstore endpoint [getUserByName](https://petstore.swagger.io/#/user/getUserByName) as the example. The OpenAPI spec looks like this:
 
 ```json
 {
@@ -48,12 +48,12 @@ Stoma 将一个 status code 下的一个 Media type 称为响应协议，用来�
 }
 ```
 
-可以看出：
+You can see that:
 
-* `responses` 有多个 status code。
-* status code 为 200 时，可能返回两种 Media type，但数据类型都是 `User`。
+* `responses` has several status codes.
+* For status code 200 there may be two media types, but the data type is `User` in both cases.
 
-在 Stoma 中，对应的响应协议如下。
+In Stoma, the corresponding response specs are:
 
 ```python
 @router.get("/user/{username}")
@@ -101,16 +101,16 @@ class GetUserByName(APIRoute):
         )
 ```
 
-Stoma 以 `@property` 的形式绑定响应协议，名字并没有限制，只要能区分即可。类型有两种，`ResponseSpec` 和 `EmptyResponseSpec`。
+Stoma binds response specs as `@property`. The name is not constrained — it only has to be distinguishable. There are two types, `ResponseSpec` and `EmptyResponseSpec`.
 
-## 通用响应协议
+## ResponseSpec
 
-`ResponseSpec` 称为通用响应协议，规定了 `status_code`、`media_type` 和 `expected_type`，并且 `ResponseSpec` 是泛型，泛型参数和 `expected_type` 一致。
+`ResponseSpec` is the general response spec. It specifies `status_code`, `media_type` and `expected_type`, and it is generic — the generic parameter matches `expected_type`.
 
-## 空响应协议
+## EmptyResponseSpec
 
-`EmptyResponseSpec` 称为空响应协议，表示响应的 body 是空的，对应 OpenAPI 如下情况：
+`EmptyResponseSpec` is the empty response spec. It means the response body is empty, and it covers these OpenAPI cases:
 
-* status code 无对应 content。
-* status code 有对应 content 但是没有定义 Media type。
-* 定义了 Media type 但是没有定义 schema。
+* the status code has no matching content.
+* the status code has matching content but no media type is defined.
+* a media type is defined but no schema is defined.

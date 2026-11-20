@@ -12,8 +12,7 @@ Playwright runtime + 同一个 asyncio loop。
   "It looks like you are using Playwright Sync API inside the asyncio loop"。
 - 解决方式是让整 pytest session 共用一个 Playwright 实例 → 共用一个
   asyncio loop，没有任何 loop 切换。
-- 子目录 ``tests/integration``、``tests/examples/petstore``、
-  ``tests/examples/api_rest_sh`` 都不再各自定义 ``_shared_playwright``，
+- 子目录 ``tests/integration`` 不再各自定义 ``_shared_playwright``，
   pytest 自动从顶层 conftest 继承。
 """
 

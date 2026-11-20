@@ -27,7 +27,7 @@ import pytest
 from click.testing import Result
 from playwright.sync_api import Playwright
 
-pytest.importorskip("typer", reason="CLI 测试需要 typer (stoma[cli])")
+pytest.importorskip("typer", reason="CLI 测试需要 typer")
 from typer.testing import CliRunner
 
 from stoma import UploadFile

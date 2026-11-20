@@ -1,13 +1,14 @@
 """Stoma CLI。
 
-提供 stoma make 命令从 OpenAPI 规范生成接口代码。
+提供 stoma SPEC --out DIR 命令从 OpenAPI 规范生成接口代码。
+
+只注册了一个命令，Typer 会把它提升为顶层命令，因此调用形式是
+``stoma <spec> [--out DIR] [--prefix PREFIX]``，命令名不作为子命令出现。
 """
 
 from __future__ import annotations
 
 import ast
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Annotated
 
@@ -66,13 +67,6 @@ def make(
         if schemas or has_json_payloads:
             typer.echo("→ 生成 models.py", err=True)
             generate_models(raw_spec, out / "models.py")
-            if shutil.which("ruff") is not None:
-                subprocess.run(
-                    ["ruff", "format", str(out / "models.py")],
-                    check=False,
-                    capture_output=True,
-                    timeout=30,
-                )
 
     # 渲染每个 endpoint 的 route.py。
     generated_files: list[Path] = []
@@ -92,7 +86,6 @@ def make(
         output_dir=out,
         file_name="router.py",
         rendered_code=router_code,
-        enable_ruff=True,
     )
 
     endpoints_init_path = out / "endpoints" / "__init__.py"
@@ -107,7 +100,6 @@ def make(
                 output_dir=out / "endpoints",
                 file_name=file_name,
                 rendered_code=rendered_code,
-                enable_ruff=True,
             )
             generated_files.append(file_path)
         except OpenAPISchemaError as e:

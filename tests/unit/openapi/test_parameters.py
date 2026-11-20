@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 from stoma.cli import app
 from stoma.openapi.parameters import make_param_fields
 from stoma.openapi.parser import make_openapi_parser
+from tests.unit.conftest import assert_field_line
 
 FIXTURE_NULLABLE_PARAM: Path = Path(__file__).parent / "fixtures" / "nullable_param.yaml"
 
@@ -116,11 +117,16 @@ paths:
         assert "from pydantic import Field" in content
         assert "from typing import Annotated" in content
         # required header 参数：转为 snake_case + Annotated[..., Header(), Field(serialization_alias=...)]
-        assert 'authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]' in content
+        assert_field_line(
+            content,
+            "authorization",
+            "Annotated[str, Header(), Field(serialization_alias='Authorization')]",
+        )
         # non-required header 参数：转为 snake_case + Annotated[..., Header(), Field(serialization_alias=...)] = None
-        assert (
-            'x_request_id: Annotated[str | None, Header(), Field(serialization_alias="X-Request-ID")] = None'
-            in content
+        assert_field_line(
+            content,
+            "x_request_id",
+            "Annotated[str | None, Header(), Field(serialization_alias='X-Request-ID')] = None",
         )
 
     def test_required_vs_optional_path_param(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -413,12 +419,17 @@ paths:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "list_items.py").read_text(encoding="utf-8")
         # 1. operation 级覆盖 path_item 级 X-Tenant-ID（required=False）
-        assert (
-            'x_tenant_id: Annotated[str | None, Header(), Field(serialization_alias="X-Tenant-ID")] = None'
-            in content
+        assert_field_line(
+            content,
+            "x_tenant_id",
+            "Annotated[str | None, Header(), Field(serialization_alias='X-Tenant-ID')] = None",
         )
         # 2. path_item 级 Authorization 被 operation 继承（required=True）
-        assert 'authorization: Annotated[str, Header(), Field(serialization_alias="Authorization")]' in content
+        assert_field_line(
+            content,
+            "authorization",
+            "Annotated[str, Header(), Field(serialization_alias='Authorization')]",
+        )
         # 3. operation 级独有的 q
         assert "q: str | None = None" in content
 
@@ -456,7 +467,11 @@ paths:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "list_items.py").read_text(encoding="utf-8")
         # 继承 path_item 级，required=True → str（无 | None，无 default）
-        assert 'x_tenant_id: Annotated[str, Header(), Field(serialization_alias="X-Tenant-ID")]' in content
+        assert_field_line(
+            content,
+            "x_tenant_id",
+            "Annotated[str, Header(), Field(serialization_alias='X-Tenant-ID')]",
+        )
 
 
 class TestNullableParameterSchemas:

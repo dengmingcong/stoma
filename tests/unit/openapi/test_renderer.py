@@ -37,6 +37,7 @@ from stoma.openapi.parser import make_openapi_parser
 from stoma.openapi.renderer import make_endpoint_renderer
 from stoma.openapi.status_code import parse_status_key
 from stoma.openapi.version import Reference31
+from tests.unit.conftest import assert_field_line, assert_models_import
 
 # ============================================================
 # Request Body
@@ -973,16 +974,6 @@ paths:
 # ============================================================
 
 
-_CONTENT_TYPE_LINE_TEMPLATE: str = (
-    'content_type: Annotated[str, Header(), Field(serialization_alias="Content-Type")] = "{media_type}"'
-)
-
-
-def _content_type_line(media_type: str) -> str:
-    """生成 auto Content-Type 字段声明的完整字符串。"""
-    return _CONTENT_TYPE_LINE_TEMPLATE.format(media_type=media_type)
-
-
 def _build_spec_with_components(
     path: str,
     method: str,
@@ -1221,7 +1212,7 @@ components:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "set_importance.py").read_text(encoding="utf-8")
         # scalar body 字段名固定 body，media_type 嵌入 Body(media_type=...)
-        assert 'body: Annotated[int, Body(media_type="application/json")]' in content
+        assert_field_line(content, "body", "Annotated[int, Body(media_type='application/json')]")
         # scalar 走 Body(media_type=...) 路径，不生成 Content-Type Header field
         assert "content_type" not in content
         compile(content, "set_importance.py", "exec")
@@ -1262,7 +1253,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "post_scalar.py").read_text(encoding="utf-8")
-        assert 'body: Annotated[str, Body(media_type="application/json")]' in content
+        assert_field_line(content, "body", "Annotated[str, Body(media_type='application/json')]")
         # scalar 走 Body(media_type=...) 路径，不生成 Content-Type Header field
         assert "content_type" not in content
         compile(content, "post_scalar.py", "exec")
@@ -1297,7 +1288,11 @@ components:
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
-        assert _content_type_line("application/octet-stream") in content
+        assert_field_line(
+            content,
+            "content_type",
+            "Annotated[str, Header(), Field(serialization_alias='Content-Type')] = 'application/octet-stream'",
+        )
         compile(content, "upload_raw.py", "exec")
 
     def test_binary_image_png(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -1330,7 +1325,11 @@ components:
         assert "upload_as_multipart=False" in content
         # auto Content-Type header 触发 Header + Field import
         assert "from pydantic import Field" in content
-        assert _content_type_line("image/png") in content
+        assert_field_line(
+            content,
+            "content_type",
+            "Annotated[str, Header(), Field(serialization_alias='Content-Type')] = 'image/png'",
+        )
         compile(content, "upload_image.py", "exec")
 
     def test_form_urlencoded_non_snake_case_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -1361,8 +1360,8 @@ components:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "submit_form.py").read_text(encoding="utf-8")
         # 非 snake_case 字段自动加 serialization_alias 保留原名
-        assert 'user_name: Annotated[str, Form(), Field(serialization_alias="user-name")]' in content
-        assert 'x_api_key: Annotated[str, Form(), Field(serialization_alias="X-API-Key")]' in content
+        assert_field_line(content, "user_name", "Annotated[str, Form(), Field(serialization_alias='user-name')]")
+        assert_field_line(content, "x_api_key", "Annotated[str, Form(), Field(serialization_alias='X-API-Key')]")
         compile(content, "submit_form.py", "exec")
 
     def test_multipart_form_non_snake_case_field(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -1394,7 +1393,7 @@ components:
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "upload_with_attrs.py").read_text(encoding="utf-8")
         # multipart 标量字段非 snake_case 时加 alias
-        assert 'user_name: Annotated[str, Form(), Field(serialization_alias="user-name")]' in content
+        assert_field_line(content, "user_name", "Annotated[str, Form(), Field(serialization_alias='user-name')]")
         # file 字段保持裸 UploadFile（无 alias）
         assert "file: UploadFile" in content
         compile(content, "upload_with_attrs.py", "exec")
@@ -1506,7 +1505,7 @@ components:
 
         assert result.exit_code == 0, result.output
         content = (out_dir / "endpoints" / "upload_non_snake.py").read_text(encoding="utf-8")
-        assert 'avatar_file: Annotated[UploadFile, Field(serialization_alias="avatar-file")]' in content
+        assert_field_line(content, "avatar_file", "Annotated[UploadFile, Field(serialization_alias='avatar-file')]")
         assert "from pydantic import Field" in content
         assert "content_type" not in content
         compile(content, "upload_non_snake.py", "exec")
@@ -2129,7 +2128,7 @@ components:
         assert "def on_404(self) -> ResponseSpec[Error]:" in route
         assert "expected_type=User" in route
         assert "expected_type=Error" in route
-        assert "from ..models import Error, User" in route
+        assert_models_import(route, "Error", "User")
         assert "APIRoute[" not in route
 
     def test_response_with_duplicate_status_codes_dedup(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -2375,7 +2374,7 @@ components:
         assert "expected_type=User" in route
         assert "expected_type=Error" in route
         assert "expected_type=ServerError" in route
-        assert "from ..models import Error, ServerError, User" in route
+        assert_models_import(route, "Error", "ServerError", "User")
         assert "APIRoute[" not in route
 
     def test_response_with_inline_multi_status_uses_counter_suffix(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -2445,10 +2444,9 @@ paths:
         assert "def on_400(self) -> ResponseSpec[GetXResponse1]:" in route
         assert "expected_type=GetXResponse" in route
         assert "expected_type=GetXResponse1" in route
-        assert "from ..models import GetXResponse, GetXResponse1" in route
-        assert "APIRoute[" not in route
         # import 行同时列出两者。
-        assert "from ..models import GetXResponse, GetXResponse1" in route
+        assert_models_import(route, "GetXResponse", "GetXResponse1")
+        assert "APIRoute[" not in route
 
     def test_response_with_mixed_ref_and_inline_multi_status(self, cli_runner: CliRunner, tmp_path: Path) -> None:
         """验证 200 ``$ref User`` + 400/500 inline 时 ``$ref`` 不消耗 inline 计数器。
@@ -2531,7 +2529,7 @@ components:
         assert "expected_type=User" in route
         assert "expected_type=GetXResponse" in route
         assert "expected_type=GetXResponse1" in route
-        assert "from ..models import GetXResponse, GetXResponse1, User" in route
+        assert_models_import(route, "GetXResponse", "GetXResponse1", "User")
         assert "APIRoute[" not in route
 
     def test_error_status_codes_still_generate_models(self, cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -2612,7 +2610,7 @@ paths:
         assert "def on_500(self) -> ResponseSpec[ServerError]:" in route
         assert "expected_type=Error" in route
         assert "expected_type=ServerError" in route
-        assert "from ..models import Error, ServerError" in route
+        assert_models_import(route, "Error", "ServerError")
         assert "APIRoute[" not in route
 
     def test_parser_has_json_payloads_with_only_errors(self, cli_runner: CliRunner, tmp_path: Path) -> None:

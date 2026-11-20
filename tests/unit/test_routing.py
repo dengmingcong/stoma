@@ -1303,7 +1303,7 @@ def test_property_on_allowed() -> None:
     """``@property def on_200(self) -> ResponseSpec[Model]: return ResponseSpec(...)`` 不抛错（渲染器生成的合法代码）。
 
     ``on_*`` 字段绑定到 :class:`BaseResponseSpec` 实例时，校验跳过；
-    这是渲染器生成 endpoint 文件时的合法模式（``tests/examples/**/app/endpoints/*.py``）。
+    这是渲染器生成 endpoint 文件时的合法模式（见 demo 仓库的 ``app/endpoints/*.py``）。
     """
 
     from stoma.dependencies.response import ResponseSpec

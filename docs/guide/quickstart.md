@@ -1,21 +1,16 @@
-# 快速开始
+# Quickstart
 
+## Installation
 
-## 安装
-
-需要使用 Python 3.12 及以上版本。
+Requires Python 3.12 or higher.
 
 ```bash
-# 安装运行时需要的依赖
 pip install stoma
-
-# 安装运行时需要的依赖，并增加 CLI 需要的依赖
-pip install stoma[cli]
 ```
 
-## 定义接口
+## Defining an endpoint
 
-以 Swagger Petstore 接口 [getUserByName](https://petstore.swagger.io/#/user/getUserByName) 为例，说明 Stoma 中如何定义接口。
+Take the Swagger Petstore endpoint [getUserByName](https://petstore3.swagger.io/#/user/getUserByName) as the example, and see how an endpoint is defined in Stoma.
 
 ```python
 from typing import Annotated
@@ -65,13 +60,13 @@ class GetUserByName(APIRoute):
         )
 ```
 
-* `router = APIRouter(prefix="/api/v3")` - 实例化 `APIRouter`，并为所有关联接口设置公共的路径前缀 `/api/v3`。
-* `@router.get("/user/{username}")` - 定义接口的请求方法（`GET`）和路径（`/user/{username}`），其中包含一个路径参数 `username`。最终接口路径为 `/api/v3/user/{username}`。
-* `class GetUserByName(APIRoute):` - 定义接口，Stoma 中一个接口必须是 `APIRoute` 子类。同时 `APIRoute` 是 Pydantic `BaseModel` 子类，所以 Stoma 中定义接口和定义 Pydantic 模型是相同的书写方式。
-    -  `username: str` - Path 参数。如果字段名和路径参数相同，会被识别为 Path 参数。
-    - property `on_200` - 声明 status code 为 200 时的响应协议。
+* `router = APIRouter(prefix="/api/v3")` — instantiates an `APIRouter` and sets the shared path prefix `/api/v3` for every endpoint registered on it.
+* `@router.get("/user/{username}")` — defines the HTTP method (`GET`) and the path (`/user/{username}`) of the endpoint, which contains one path parameter, `username`. The resulting path is `/api/v3/user/{username}`.
+* `class GetUserByName(APIRoute):` — defines the endpoint. Every endpoint in Stoma must be a subclass of `APIRoute`. `APIRoute` is itself a subclass of Pydantic's `BaseModel`, so defining an endpoint in Stoma and defining a Pydantic model use the same syntax.
+    -  `username: str` — a path parameter. When the field name matches the path parameter, it is recognized as a path parameter.
+    - property `on_200` — declares the response spec for status code 200.
 
-## 调用接口
+## Calling an endpoint
 
 ```python
 from playwright.sync_api import sync_playwright
@@ -87,18 +82,18 @@ with sync_playwright() as p:
     assert user.username == "user1"
 ```
 
-* Stoma 内部使用 Playwright [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext) 发送请求并管理 Cookie 等，Playwright 的所有特性均可以正常使用。
-* Stoma 将所有接口定义为 Pydantic 模型，IDE 可以自动联想所有参数。
-    ![alt text](../assets/guide/quickstart/ide-autocomplete-param.png)
-    鼠标悬浮时还可查看参数的说明。
-    ![alt text](../assets/guide/quickstart/hover-param.png)
-* `Client.send()` 返回 `Response` 实例，`Response` 实例的 `expect()` 方法预期一个响应协议，会按照协议对 Status Code、Media type 校验，并使用 `pydantic.TypeAdapter` 将返回体转换为响应协议指定的模型，利用泛型特性实现 IDE 自动联想。
-    ![alt text](../assets/guide/quickstart/ide-autocomplete-response.png)
+* Stoma sends requests through Playwright's [APIRequestContext](https://playwright.dev/python/docs/api/class-apirequestcontext) and manages cookies and the rest; every Playwright feature works as usual.
+* Stoma defines every endpoint as a Pydantic model, so the IDE autocompletes all parameters.
+    ![IDE autocompletes API parameters](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-param.png)
+    Hovering a parameter also shows its description.
+    ![Hovering shows the parameter description](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/hover-param.png)
+* `Client.send()` returns a `Response` instance. The `expect()` method of a `Response` takes a response spec, validates the status code and media type against it, and converts the body into the model the spec names using `pydantic.TypeAdapter` — generics make the IDE infer the return type.
+    ![IDE autocompletes the response type](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/quickstart/ide-autocomplete-response.png)
 
-## 回顾
+## Recap
 
-以上涵盖了从安装到写出第一个可运行脚本的全流程。Stoma 的核心用法可以归结为三步：
+That covers the whole path from installation to a first runnable script. The core of Stoma comes down to three steps:
 
-1. 用 `APIRoute` 定义接口，声明参数和响应类型。
-2. 用 `APIRouter` 组织路由。
-3. 用 `Client` 发送请求。
+1. Define the endpoint with `APIRoute`, declaring its parameters and response types.
+2. Organize the routes with `APIRouter`.
+3. Send the request with `Client`.
