@@ -1,13 +1,5 @@
 # Client
 
-<!-- README-I18N:START -->
-
-<p align="center">
-  <a href="./client.md">English</a> ·
-  <b>中文</b>
-</p>
-
-<!-- README-I18N:END -->
 Stoma 定义的接口只存储数据，调用接口使用 `stoma.Client` 实现。
 
 ## 调用接口
@@ -68,5 +60,4 @@ client = Client(context=ctx)
 ```
 
 `extra_http_headers` 会在所有请求上携带。
-
 

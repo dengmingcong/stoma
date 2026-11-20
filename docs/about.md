@@ -1,13 +1,5 @@
 # About Stoma
 
-<!-- README-I18N:START -->
-
-<p align="center">
-  <b>English</b> ·
-  <a href="./about.zh.md">中文</a>
-</p>
-
-<!-- README-I18N:END -->
 Where the Stoma project came from.
 
 ## Inspiration

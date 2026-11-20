@@ -1,15 +1,5 @@
 # Quickstart
 
-
-<!-- README-I18N:START -->
-
-<p align="center">
-  <b>English</b> ·
-  <a href="./quickstart.zh.md">中文</a>
-</p>
-
-<!-- README-I18N:END -->
-
 ## Installation
 
 Requires Python 3.12 or higher.

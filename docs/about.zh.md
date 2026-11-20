@@ -1,13 +1,5 @@
 # 关于 Stoma
 
-<!-- README-I18N:START -->
-
-<p align="center">
-  <a href="./about.md">English</a> ·
-  <b>中文</b>
-</p>
-
-<!-- README-I18N:END -->
 关于 Stoma 项目的由来。
 
 ## 启发

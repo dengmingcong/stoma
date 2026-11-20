@@ -1,13 +1,5 @@
 # 接口参数
 
-<!-- README-I18N:START -->
-
-<p align="center">
-  <a href="./define-parameters.md">English</a> ·
-  <b>中文</b>
-</p>
-
-<!-- README-I18N:END -->
 Stoma 通过 `Annotated[T, Mark()]` 风格声明参数。
 
 Stoma 定义了 `Path()`、`Query()`、`Header()`、`Body()`、`Form()`、`UploadFile` 六种参数标记，分别对应 HTTP 请求的不同位置。

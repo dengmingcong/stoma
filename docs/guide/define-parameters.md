@@ -1,13 +1,5 @@
 # Parameters
 
-<!-- README-I18N:START -->
-
-<p align="center">
-  <b>English</b> ·
-  <a href="./define-parameters.zh.md">中文</a>
-</p>
-
-<!-- README-I18N:END -->
 Stoma declares parameters in the `Annotated[T, Mark()]` style.
 
 Stoma defines six parameter marks — `Path()`, `Query()`, `Header()`, `Body()`, `Form()` and `UploadFile` — each corresponding to a different position in an HTTP request.

@@ -1,15 +1,5 @@
 # 快速开始
 
-
-<!-- README-I18N:START -->
-
-<p align="center">
-  <a href="./quickstart.md">English</a> ·
-  <b>中文</b>
-</p>
-
-<!-- README-I18N:END -->
-
 ## 安装
 
 需要使用 Python 3.12 及以上版本。

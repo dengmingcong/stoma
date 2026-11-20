@@ -1,13 +1,5 @@
 # Response specs
 
-<!-- README-I18N:START -->
-
-<p align="center">
-  <b>English</b> ·
-  <a href="./define-response-specs.zh.md">中文</a>
-</p>
-
-<!-- README-I18N:END -->
 As [OpenAPI Map](https://openapi-map.apihandyman.io/?version=3.0) shows, the response of an HTTP endpoint can contain multiple status codes, and the content of each status code can contain multiple media types.
 
 ![OpenAPI Map](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/define-response-specs/openapi.png)

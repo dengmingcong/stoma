@@ -1,13 +1,5 @@
 # 生成接口
 
-<!-- README-I18N:START -->
-
-<p align="center">
-  <a href="./cli.md">English</a> ·
-  <b>中文</b>
-</p>
-
-<!-- README-I18N:END -->
 Stoma 提供了 CLI 命令 `stoma` 从 OpenAPI 规范文件自动生成接口代码。
 
 ## 命令概览

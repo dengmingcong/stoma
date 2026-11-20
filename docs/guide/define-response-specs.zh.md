@@ -1,13 +1,5 @@
 # 响应协议
 
-<!-- README-I18N:START -->
-
-<p align="center">
-  <a href="./define-response-specs.md">English</a> ·
-  <b>中文</b>
-</p>
-
-<!-- README-I18N:END -->
 从 [OpenAPI Map](https://openapi-map.apihandyman.io/?version=3.0) 可以看出，一个 HTTP 接口的响应可以包含多个 status code，每个 status code 的 content 又可以包含多个 Media type。
 
 ![OpenAPI Map](https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/guide/define-response-specs/openapi.png)

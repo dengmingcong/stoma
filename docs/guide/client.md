@@ -1,13 +1,5 @@
 # Client
 
-<!-- README-I18N:START -->
-
-<p align="center">
-  <b>English</b> ·
-  <a href="./client.zh.md">中文</a>
-</p>
-
-<!-- README-I18N:END -->
 Endpoints defined in Stoma only hold data; calling them is done with `stoma.Client`.
 
 ## Calling an endpoint
