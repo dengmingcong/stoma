@@ -76,6 +76,12 @@ def make(
                     capture_output=True,
                     timeout=30,
                 )
+                subprocess.run(
+                    ["ruff", "check", "--select", "I,F401", "--fix", str(out / "models.py")],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
 
     # 渲染每个 endpoint 的 route.py。
     generated_files: list[Path] = []
