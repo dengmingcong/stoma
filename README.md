@@ -7,7 +7,9 @@
   <a href="https://github.com/dengmingcong/stoma/blob/master/LICENSE"><img alt="License" src="https://img.shields.io/github/license/dengmingcong/stoma.svg"></a>
 </p>
 
-<p align="center"><b>Define with OpenAPI. Autocomplete with Stoma.</b></p>
+<p align="center"><b>Typed HTTP API Definitions for Python.</b></p>
+
+<p align="center">Your IDE autocompletes them.</p>
 
 <p align="center">
   <img width="80%" style="border-radius: 8px;" alt="IDE autocompletes API parameters" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
@@ -42,7 +44,7 @@ pip install stoma
 
 ## Example
 
-Define an endpoint:
+Declare an endpoint:
 
 ```python
 from typing import Annotated
@@ -94,12 +96,24 @@ with sync_playwright() as p:
 
 ## Key features
 
-- **The code is the protocol**: Stoma holds everything needed to call an endpoint, so you no
+- **The code is the protocol** — Stoma holds everything needed to call an endpoint, so you no
   longer have to switch between your IDE and the API documentation.
-- **Autocomplete**: thanks to Pydantic and generics, the IDE autocompletes both request
+- **IDE autocomplete** — thanks to Pydantic and generics, the IDE autocompletes both request
   parameters and response types.
-- **OpenAPI CLI**: a CLI command generates the whole set of endpoint code from an OpenAPI spec.
+- **API testing** — define an endpoint, call it, assert on the typed response.
+- **A typed response per status code** — every status code gets its own response type, inferred
+  statically.
+- **AI can read it** — method, path, parameter names and types, response type per status code,
+  docstrings: all stated in the definition, so an assistant has what it needs.
+- **Code generation** — a CLI command generates the whole set of endpoint code from an
+  OpenAPI spec.
   <img width="80%" style="border-radius: 8px;" alt="stoma CLI generating endpoint code" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
+
+Stoma is for **defining and calling** HTTP APIs — it does not implement server-side routing.
+Defining by hand and generating from a spec are **two parallel paths**: OpenAPI is **one input
+source**, not a prerequisite. The CLI path applies to open APIs where an OpenAPI spec is
+available (or convertible to one); without a spec, defining by hand works just as well. When
+the API changes, regenerate — the definitions stay in sync with the spec.
 
 
 ## Docs
