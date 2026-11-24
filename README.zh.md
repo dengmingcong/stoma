@@ -9,7 +9,7 @@
 
 <p align="center"><b>Typed HTTP API Definitions for Python.</b></p>
 
-<p align="center">这些参数，IDE 都会自动补全。</p>
+<p align="center">Your IDE autocompletes them.</p>
 
 <p align="center">
   <img width="80%" style="border-radius: 8px;" alt="IDE 自动联想接口参数" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
