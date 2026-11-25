@@ -7,7 +7,9 @@
   <a href="https://github.com/dengmingcong/stoma/blob/master/LICENSE"><img alt="License" src="https://img.shields.io/github/license/dengmingcong/stoma.svg"></a>
 </p>
 
-<p align="center"><b>Define with OpenAPI. Autocomplete with Stoma.</b></p>
+<p align="center"><b>Typed HTTP API Definitions for Python.</b></p>
+
+<p align="center">Your IDE autocompletes them.</p>
 
 <p align="center">
   <img width="80%" style="border-radius: 8px;" alt="IDE 自动联想接口参数" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/autocomplete.gif" />
@@ -42,7 +44,7 @@ pip install stoma
 
 ## 示例
 
-定义接口：
+声明接口：
 
 ```python
 from typing import Annotated
@@ -94,11 +96,13 @@ with sync_playwright() as p:
 
 ## 关键特性
 
-- 代码即协议：Stoma 保存接口调用所需的所有信息，调用接口时再也不用在 IDE 和接口文档之间切换。
-- 自动联想： 感谢 Pydantic 和范型特性，IDE 可以自动补全请求和响应参数。
-- OpenAPI CLI：提供 CLI 基于 OpenAPI 规范文档生成全部接口代码。
+- **代码即协议** —— Stoma 保存接口调用所需的所有信息，调用接口时再也不用在 IDE 和接口文档之间切换。
+- **IDE 自动补全** —— 得益于 Pydantic 和泛型，IDE 可以自动补全请求参数和响应类型。
+- **接口测试** —— 定义接口、调用接口、对带类型的响应断言或提取。
+- **重视状态码** —— 每个 HTTP 状态码都有自己的响应类型，且可静态推导。
+- **AI 友好** —— 方法、路径、参数名与类型、每个状态码的响应类型、docstring 全部写在定义里，AI 不容易出错。
+- **代码生成** —— 一条 CLI 命令即可基于 OpenAPI 规范生成整套接口代码。
   <img width="80%" style="border-radius: 8px;" alt="stoma CLI 生成接口代码" src="https://raw.githubusercontent.com/dengmingcong/stoma/master/docs/assets/readme/cli.gif" />
-
 
 ## 文档
 

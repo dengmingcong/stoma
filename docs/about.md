@@ -4,7 +4,7 @@ Where the Stoma project came from.
 
 ## Inspiration
 
-Stoma is inspired by fastapi, and does the opposite of what fastapi does: fastapi generates the OpenAPI description of an endpoint from Pydantic models, while Stoma generates Pydantic models from an OpenAPI spec.
+Stoma is inspired by fastapi, but works in the opposite direction: fastapi generates an OpenAPI description from Pydantic models, while Stoma lets you define an endpoint directly as Python types — and, when a spec is available, generate the same definitions from an OpenAPI document.
 
 When designing Stoma, I wanted to make API requests as convenient as Postman does.
 

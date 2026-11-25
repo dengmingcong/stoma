@@ -4,7 +4,7 @@
 
 ## 启发
 
-Stoma 受 fastapi 启发，作用和 fastapi “相反”，fastapi 是通过 Pydantic 模型生成 OpenAPI 描述的接口协议，Stoma 则是从 OpenAPI 生成 Pydantic 模型。
+Stoma 受 fastapi 启发，方向却相反：fastapi 由 Pydantic 模型生成 OpenAPI 描述，Stoma 则直接用 Python 类型定义接口；已有规范时，也可以从 OpenAPI 生成同样的定义。
 
 设计 Stoma 时，我期望能像 Postman 一样，可以方便地实现接口请求。
 
